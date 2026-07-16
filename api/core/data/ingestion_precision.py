@@ -230,6 +230,13 @@ def promote_table_column_types_from_varchar(
         col_type = str(col_info[2]).upper()
         if col_type != "VARCHAR":
             continue
+        if "\x00" in str(col_name):
+            # NUL 字节列名连引号包裹都救不了(DuckDB ParserException),
+            # 跳过该列的促升,不让整表促升失败
+            logger.warning(
+                "promote skipped column with NUL byte in name (table %s)", table_name
+            )
+            continue
         if is_identifier_column_name(col_name):
             continue
 

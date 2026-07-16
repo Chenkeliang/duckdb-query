@@ -104,6 +104,11 @@ class ExcelImportSheet(BaseModel):
             self.header_row_index = None
         elif self.header_row_index is None or self.header_row_index <= 0:
             self.header_row_index = 1
+        elif self.header_row_index > 1_048_576:  # xlsx 物理行上限
+            raise ValueError(
+                f"header_row_index {self.header_row_index} exceeds the xlsx "
+                "row limit (1048576)"
+            )
         return self
 
 

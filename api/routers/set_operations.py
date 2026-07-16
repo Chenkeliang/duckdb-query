@@ -63,6 +63,38 @@ def _timed_execute_fetch(con: Any, sql: str) -> tuple:
     )
     return columns, records
 
+def _xlsx_safe_projection(con: Any, sql: str) -> str:
+    """xlsx 数字单元格物理上是 float64:高精度 DECIMAL(p>15)/(U)BIGINT/HUGEINT
+    直接写入会静默失真(如 DECIMAL(38,9) 变 1.23e+19)。这些列 CAST 成文本导出
+    (Excel 里显示为文本单元格,但数值逐位精确——财务铁律优先于单元格类型美观)。
+    DESCRIBE 失败(多语句等)时原样返回,由 COPY 自行处理。
+    """
+    try:
+        described = con.execute(f"DESCRIBE ({sql.rstrip().rstrip(';')})").fetchall()
+    except Exception:  # pylint: disable=broad-exception-caught
+        return sql
+    projections = []
+    needs_wrap = False
+    for row in described:
+        name, dtype = str(row[0]), str(row[1]).upper()
+        quoted = '"' + name.replace('"', '""') + '"'
+        lossy = "HUGEINT" in dtype or dtype.startswith(("BIGINT", "UBIGINT"))
+        if dtype.startswith(("DECIMAL", "NUMERIC")):
+            digits = dtype[dtype.find("(") + 1 : dtype.find(",")] if "(" in dtype else "38"
+            try:
+                lossy = int(digits) > 15  # float64 有效十进制位约 15-17
+            except ValueError:
+                lossy = True
+        if lossy:
+            projections.append(f"CAST({quoted} AS VARCHAR) AS {quoted}")
+            needs_wrap = True
+        else:
+            projections.append(quoted)
+    if not needs_wrap:
+        return sql
+    return f"SELECT {', '.join(projections)} FROM ({sql.rstrip().rstrip(';')})"
+
+
 router = APIRouter()
 
 
@@ -646,8 +678,10 @@ def export_set_operation(request: SetOperationExportRequest):
                             con.execute("LOAD excel")
                         except Exception:  # 已加载时无害；真缺失由 COPY 报错
                             pass
+                        xlsx_sql = _xlsx_safe_projection(con, sql)
                         copy_sql = (
-                            f"COPY ({sql}) TO '{file_path}' (FORMAT xlsx, HEADER true)"
+                            f"COPY ({xlsx_sql}) TO '{file_path}' "
+                            f"(FORMAT xlsx, HEADER true)"
                         )
 
                         logger.info(f"Executing Excel export: {copy_sql}")

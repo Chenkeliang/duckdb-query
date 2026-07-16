@@ -372,8 +372,11 @@ def _repair_excel_coordinates(file_path: str) -> Optional[str]:
                             # 实在解不开，跳过此文件
                             continue
                     
-                    # 更加宽容的正则，匹配 r="digits"
-                    patched = re.sub(r'r=["\'](\d+)["\']', r'r="A\1"', text)
+                    # 只修 <c> 单元格元素上缺列字母的 r 属性;裸匹配 r="digits"
+                    # 会误伤 <row r="N">(行号本就该是纯数字),把整条修复路径打废
+                    patched = re.sub(
+                        r'(<c\b[^>]*?\br=)["\'](\d+)["\']', r'\1"A\2"', text
+                    )
                     
                     # 写回时统一转换为 utf-8
                     data = patched.encode("utf-8")

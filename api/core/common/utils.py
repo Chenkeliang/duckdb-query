@@ -47,7 +47,14 @@ def jsonable_encoder(obj: Any) -> Any:
     elif isinstance(obj, (bytes, bytearray, memoryview)):
         return bytes(obj).decode("utf-8", errors="replace")
     elif isinstance(obj, dict):
-        return {key: jsonable_encoder(value) for key, value in obj.items()}
+        # MAP 的 key 可以是 DATE/数值等非字符串(json.dumps 对非基元 key 直接
+        # 抛 TypeError):key 一律先编码再转字符串
+        return {
+            (key if isinstance(key, str) else str(jsonable_encoder(key))): (
+                jsonable_encoder(value)
+            )
+            for key, value in obj.items()
+        }
     elif isinstance(obj, (list, tuple, set)):
         return [jsonable_encoder(item) for item in obj]
     elif isinstance(obj, UUID):

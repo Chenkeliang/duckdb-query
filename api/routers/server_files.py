@@ -4,7 +4,7 @@ import os
 from typing import List, Optional
 
 from fastapi import APIRouter, Query
-from pydantic import BaseModel, field_validator
+from pydantic import BaseModel, Field, field_validator
 
 from core.common.exceptions import (
     AuthorizationError,
@@ -64,7 +64,7 @@ class ExcelSheetImportConfig(BaseModel):
     name: str
     target_table: str
     header_rows: int = 1
-    header_row_index: Optional[int] = 0
+    header_row_index: Optional[int] = Field(default=0, ge=0, le=1_048_576)
     fill_merged: bool = False
     mode: str = "create"  # create, append, replace
 
