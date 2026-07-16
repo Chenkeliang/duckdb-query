@@ -33,7 +33,11 @@ def jsonable_encoder(obj: Any) -> Any:
         return obj.isoformat()
     elif isinstance(obj, timedelta):
         # INTERVAL 列：此前 Arrow 路径泄漏 DateOffset 对象（垃圾输出），
-        # 契约钉为 str(timedelta)，如 '3 days, 0:00:00'（pd.Timedelta 同分支）
+        # 契约钉为 str(stdlib timedelta)，如 '3 days, 0:00:00'。
+        # pd.Timedelta 的 str 文案不同（'3 days 00:00:00'，负值差异更大），
+        # 先归一到 stdlib，保证走 fetchdf 与走精确路径的输出一致
+        if hasattr(obj, "to_pytimedelta"):
+            obj = obj.to_pytimedelta()
         return str(obj)
     elif isinstance(obj, decimal.Decimal):
         # 使用十进制字符串，避免 float 精度损失；前端按字符串展示/筛选

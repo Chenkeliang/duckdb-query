@@ -2,6 +2,7 @@
 import duckdb
 import logging
 import pandas as pd
+import threading
 import time
 from typing import List, Dict, Any, Optional, Tuple
 import re
@@ -322,6 +323,13 @@ def _apply_duckdb_configuration(connection, temp_dir: str):
         _apply_default_duckdb_config(connection, temp_dir)
 
 
+# autoinstall_known_extensions 是数据库实例级 GLOBAL 开关（duckdb_settings()
+# 实测 scope=GLOBAL），连接池扩容与 engine_compat 保存两条路径都会做
+# "关→操作→恢复"。并发交错会把别人的禁网窗口提前恢复成 true（可复现），
+# 让启动路径意外联网；进程内互斥即可（窗口毫秒级：LOAD 本地文件 + 若干 SET）。
+_autoinstall_toggle_lock = threading.Lock()
+
+
 def _install_duckdb_extensions(connection, extensions: List[str]):
     """启动阶段加载扩展：只加载本地已有的，绝不联网。
 
@@ -338,28 +346,30 @@ def _install_duckdb_extensions(connection, extensions: List[str]):
     if not extensions:
         return
 
-    try:
-        connection.execute("SET autoinstall_known_extensions=false")
-    except Exception as exc:  # noqa: BLE001
-        logger.debug("disable autoinstall before startup LOAD failed: %s", exc)
-    try:
-        for ext_name in extensions:
-            try:
-                connection.execute(f"LOAD {ext_name};")
-                logger.info(f"DuckDB extension {ext_name} loaded")
-            except Exception as load_error:
-                # 常态:未预置/未安装的扩展在全新环境必然走到这里,按 debug 降噪
-                logger.debug(
-                    "DuckDB extension %s not available locally, skipped at startup "
-                    "(install via extensions page, or auto-installed on first use): %s",
-                    ext_name,
-                    load_error,
-                )
-    finally:
+    with _autoinstall_toggle_lock:
         try:
-            connection.execute("SET autoinstall_known_extensions=true")
+            connection.execute("SET autoinstall_known_extensions=false")
         except Exception as exc:  # noqa: BLE001
-            logger.debug("restore autoinstall after startup LOAD failed: %s", exc)
+            logger.debug("disable autoinstall before startup LOAD failed: %s", exc)
+        try:
+            for ext_name in extensions:
+                try:
+                    connection.execute(f"LOAD {ext_name};")
+                    logger.info(f"DuckDB extension {ext_name} loaded")
+                except Exception as load_error:
+                    # 常态:未预置/未安装的扩展在全新环境必然走到这里,按 debug 降噪
+                    logger.debug(
+                        "DuckDB extension %s not available locally, skipped at startup "
+                        "(install via extensions page, or auto-installed on first use): %s",
+                        ext_name,
+                        load_error,
+                    )
+        finally:
+            try:
+                connection.execute("SET autoinstall_known_extensions=true")
+            except Exception as exc:  # noqa: BLE001
+                # 恢复失败 = 全进程联邦扩展 autoinstall 失效直至重启，必须可见
+                logger.warning("restore autoinstall after startup LOAD failed: %s", exc)
 
 
 # 引擎兼容性配置对应的 DuckDB SET GLOBAL 选项名，分别由 sqlite_scanner / mysql /
@@ -390,21 +400,23 @@ def apply_engine_compat_settings(connection, engine_compat: Optional[Dict[str, A
     enabled = [opt for opt in ENGINE_COMPAT_OPTIONS if bool(engine_compat.get(opt, False))]
     if not enabled:
         return
-    try:
-        connection.execute("SET autoinstall_known_extensions=false")
-    except Exception as exc:  # noqa: BLE001
-        logger.debug("disable autoinstall before engine_compat failed: %s", exc)
-    try:
-        for option in enabled:
-            try:
-                connection.execute(f"SET GLOBAL {option}=true")
-            except Exception as exc:  # noqa: BLE001  扩展未装时的预期失败，静默降级
-                logger.debug("engine_compat SET GLOBAL %s=true skipped: %s", option, exc)
-    finally:
+    with _autoinstall_toggle_lock:
         try:
-            connection.execute("SET autoinstall_known_extensions=true")
+            connection.execute("SET autoinstall_known_extensions=false")
         except Exception as exc:  # noqa: BLE001
-            logger.debug("restore autoinstall after engine_compat failed: %s", exc)
+            logger.debug("disable autoinstall before engine_compat failed: %s", exc)
+        try:
+            for option in enabled:
+                try:
+                    connection.execute(f"SET GLOBAL {option}=true")
+                except Exception as exc:  # noqa: BLE001  扩展未装时的预期失败，静默降级
+                    logger.debug("engine_compat SET GLOBAL %s=true skipped: %s", option, exc)
+        finally:
+            try:
+                connection.execute("SET autoinstall_known_extensions=true")
+            except Exception as exc:  # noqa: BLE001
+                # 恢复失败 = 全进程联邦扩展 autoinstall 失效直至重启，必须可见
+                logger.warning("restore autoinstall after engine_compat failed: %s", exc)
 
 
 def _apply_default_duckdb_config(connection, temp_dir: str):
@@ -483,6 +495,17 @@ def _fetchall_dataframe(res, desc):
     df = pd.DataFrame(res.fetchall(), columns=names, dtype=object)
     for name, col in zip(names, desc):
         type_str = str(col[1]).upper()
+        if type_str == "TIMESTAMP_NS":
+            # fetchall 把 TIMESTAMP_NS 转成 stdlib datetime（微秒上限），
+            # 纳秒分量在取数阶段即截断，后续无法挽救——显式告警而非静默。
+            # 单独查询 TIMESTAMP_NS（不与 DECIMAL/HUGEINT 同帧）走 fetchdf
+            # 保留纳秒。
+            logger.warning(
+                "TIMESTAMP_NS column %s truncated to microseconds on the exact "
+                "fetch path (queried alongside DECIMAL/HUGEINT); query it "
+                "without high-precision numeric columns to keep nanoseconds",
+                name,
+            )
         if type_str == "DATE" or type_str.startswith("TIMESTAMP"):
             # 日期/时间戳列转回 datetime64，保持与 fetchdf 路径一致的序列化
             # 格式（object 列会走 isoformat 带 "T"）。用 astype[us] 而非 to_datetime：
@@ -502,11 +525,15 @@ def _needs_exact_fetch(type_str):
     """该列类型经 fetchdf 会失真，需走 fetchall 保真路径。
 
     DECIMAL：fetchdf 压成 float64（约 15-17 位有效数字）。
-    HUGEINT：fetchdf 压成 float64。
-    BIGINT 子串（含 UBIGINT、BIGINT[] 等）：列含 NULL 时 fetchdf 整列变
-    float64，>2^53 的值静默失真（fetch 阶段即坏，JSON 层的字符串守护救不回）。
+    HUGEINT：fetchdf 压成 float64（实测 1.7e38 直接变浮点）。
+    注意 (U)BIGINT 不在此列：fetchdf 对可空整型返回 pandas Int64/UInt64
+    可空 dtype，>2^53 逐位精确（实测 duckdb 1.5.3）——历史上观测到的
+    "可空 BIGINT 坏值 9007199254740992.0" 发生在 normalize 的整帧
+    convert_dtypes/map 降型（已在 utils 逐列化+去 map 修复），不在 fetch
+    阶段。BIGINT 触发会把 COUNT(*)/主键等几乎所有查询帧推上逐行慢路径
+    （实测 2M 行 ~3 倍耗时），得不偿失。
     """
-    return "DECIMAL" in type_str or "HUGEINT" in type_str or "BIGINT" in type_str
+    return "DECIMAL" in type_str or "HUGEINT" in type_str
 
 
 def fetch_query_dataframe(connection, query):

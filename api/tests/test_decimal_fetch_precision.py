@@ -57,18 +57,23 @@ def test_plain_query_keeps_fetchdf_path(con):
     assert str(df["a"].dtype) == "float64"
 
 
-def test_bigint_column_routes_to_exact_path(con):
+def test_bigint_frames_stay_on_fetchdf_and_remain_exact(con):
+    """BIGINT 不触发慢速精确路径（COUNT(*)/主键帧保持向量化 fetchdf），
+    精度由 fetchdf 的 Int64 可空 dtype + normalize 层保障。"""
     df = fetch_query_dataframe(
         con, "SELECT 9007199254740993::BIGINT AS b, count(*) OVER () AS c"
     )
+    assert str(df["b"].dtype) in ("int64", "Int64")  # fetchdf 路径，非 object
     records = normalize_dataframe_output(df)
     assert records[0]["b"] == "9007199254740993"  # >2^53 → 字符串
     assert records[0]["c"] == 1  # 安全范围仍是数字
 
 
 def test_nullable_bigint_beyond_js_safe_int_not_corrupted(con):
-    """v1.1.5 活 bug：含 NULL 的 BIGINT 列被 fetchdf 压成 float64，
-    9007199254740993 静默变成 9007199254740992.0。"""
+    """v1.1.5 活 bug：含 NULL 的 BIGINT 列输出 9007199254740992.0。
+    实测定位：fetchdf 本身返回精确的 Int64 可空 dtype，坏值发生在旧
+    normalize 的整帧 convert_dtypes/map 降型（已逐列化 + 去 map 修复）。
+    本测试把 fetchdf→normalize 全链路钉死。"""
     df = fetch_query_dataframe(
         con,
         "SELECT * FROM (VALUES (9007199254740993::BIGINT), (NULL), (42)) t(b) "
@@ -131,9 +136,9 @@ def test_hugeint_beyond_js_safe_int_serialized_as_string(con):
 
 
 def test_hugeint_alongside_date_keeps_datetime_format(con):
-    """HUGEINT 若以裸 Python 大整数进帧，normalize 的 convert_dtypes 会抛
-    OverflowError 导致整帧退化 object、同帧日期列变 isoformat（带 "T"）。
-    HUGEINT 必须以 Decimal 形态承载，保住日期的空格分隔格式。"""
+    """HUGEINT 以裸 Python 大整数进帧（fetchall 原生形态），normalize 的
+    整帧 convert_dtypes 对超 int64 值抛 OverflowError；靠逐列降级隔离
+    （utils.normalize），单列失败不再拖垮同帧日期列的 datetime64 空格格式。"""
     df = fetch_query_dataframe(
         con,
         "SELECT 170141183460469231731687303715884105727::HUGEINT AS h, "
@@ -177,6 +182,18 @@ def test_interval_alongside_decimal_pinned_contract(con):
     )
     records = normalize_dataframe_output(df)
     assert records[0]["itv"] == "3 days, 0:00:00"
+
+
+def test_interval_format_consistent_between_paths(con):
+    """同一 INTERVAL 值，走 fetchdf（pd.Timedelta）与走精确路径（stdlib
+    timedelta）必须输出同一字符串（jsonable 先归一到 stdlib 再 str）。"""
+    exact = normalize_dataframe_output(
+        fetch_query_dataframe(con, "SELECT INTERVAL 3 DAY AS itv, 1.5::DECIMAL(4,2) AS d")
+    )[0]["itv"]
+    plain = normalize_dataframe_output(
+        fetch_query_dataframe(con, "SELECT INTERVAL 3 DAY AS itv")
+    )[0]["itv"]
+    assert exact == plain == "3 days, 0:00:00"
 
 
 def test_double_nan_inf_serialize_as_null_in_exact_frames(con):
