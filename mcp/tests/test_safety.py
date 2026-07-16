@@ -18,6 +18,20 @@ def test_plain_explain_is_read_safe():
     assert is_write_sql("EXPLAIN SELECT * FROM t") is False
 
 
+def test_duckdb_read_only_statements_are_read_safe():
+    """回归:PIVOT/SUMMARIZE 等 DuckDB 只读语句曾被误判为写操作,
+    normal 模式下无谓要求 confirm、read-only 模式下被硬拦。"""
+    assert is_write_sql("PIVOT t ON m USING SUM(v) GROUP BY c") is False
+    assert is_write_sql("UNPIVOT t ON a, b INTO NAME k VALUE v") is False
+    assert is_write_sql("SUMMARIZE t") is False
+    assert is_write_sql("FROM t SELECT city LIMIT 1") is False
+    assert is_write_sql("TABLE t") is False
+    assert is_write_sql("VALUES (1), (2)") is False
+    # 改写型包裹仍以 CREATE/INSERT 开头,不受放行影响
+    assert is_write_sql("CREATE TABLE x AS PIVOT t ON m USING SUM(v)") is True
+    assert is_write_sql("INSERT INTO x FROM t") is True
+
+
 def test_explain_analyze_is_not_read_safe():
     """回归：EXPLAIN ANALYZE 会真的执行被包裹的语句(采集运行时指标)，不是
     纯粹展示执行计划——DuckDB 和 Postgres 语义一致。曾经的正则只看开头关键字，

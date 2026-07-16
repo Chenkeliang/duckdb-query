@@ -4,7 +4,13 @@ import re
 # wrapped statement to collect real runtime metrics (same as Postgres) — a
 # negative lookahead keeps it out of the read-safe allowlist so e.g.
 # "EXPLAIN ANALYZE DELETE FROM t" isn't waved through read-only mode.
-_READ = re.compile(r"^\s*(SELECT|WITH|EXPLAIN(?!\s+ANALYZE)|PRAGMA|DESCRIBE|SHOW)\b", re.I)
+# PIVOT/UNPIVOT/SUMMARIZE/FROM-first/TABLE/VALUES 是 DuckDB 的只读查询语句
+# (改写型如 CREATE TABLE x AS PIVOT... 以 CREATE 开头,仍走写门)。
+_READ = re.compile(
+    r"^\s*(SELECT|WITH|EXPLAIN(?!\s+ANALYZE)|PRAGMA|DESCRIBE|SHOW"
+    r"|PIVOT|UNPIVOT|SUMMARIZE|FROM|TABLE|VALUES)\b",
+    re.I,
+)
 
 
 def is_write_sql(sql: str) -> bool:
