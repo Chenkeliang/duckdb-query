@@ -401,8 +401,15 @@ def execute_duckdb_query(
         # 使用可中断连接执行查询（如果有 query_id）
         if query_id:
             with interruptible_connection(query_id, sql_query) as conn:
-                result_columns, result_records = fetch_query_records(conn, sql_query)
-                query_column_types = describe_query_column_types(conn, sql_query)
+                result_columns, result_records, cursor_types = fetch_query_records(
+                    conn, sql_query
+                )
+                query_column_types = describe_query_column_types(
+                    conn, sql_query
+                ) or [
+                    {"name": name, "duckdb_type": dtype}
+                    for name, dtype in cursor_types
+                ]
 
                 # 可选：保存查询结果为新表（在同一连接上下文内）
                 if request.save_as_table:
@@ -449,8 +456,15 @@ def execute_duckdb_query(
                 )
         else:
             with with_duckdb_connection() as con:
-                result_columns, result_records = fetch_query_records(con, sql_query)
-                query_column_types = describe_query_column_types(con, sql_query)
+                result_columns, result_records, cursor_types = fetch_query_records(
+                    con, sql_query
+                )
+                query_column_types = describe_query_column_types(
+                    con, sql_query
+                ) or [
+                    {"name": name, "duckdb_type": dtype}
+                    for name, dtype in cursor_types
+                ]
 
                 if request.save_as_table:
                     table_name = request.save_as_table.strip()
@@ -829,7 +843,7 @@ def execute_federated_query(
             warnings.extend(str(w) for w in opt_warnings)
 
         # 3. 执行用户 SQL（使用优化后的语句）
-        result_pair = fetch_query_records(conn, opt_sql)
+        result_triplet = fetch_query_records(conn, opt_sql)
 
         # 4. 可选：保存查询结果为新表（使用原始 SQL，确保语义不变）
         if request.save_as_table:
@@ -850,7 +864,7 @@ def execute_federated_query(
         if attached_aliases:
             detach_databases_on_connection(conn, attached_aliases)
 
-        return result_pair
+        return result_triplet
 
     timeout_s = int(config_manager.get_app_config().federated_query_timeout or 300)
     query_id = query_id or f"fed:{uuid4().hex}"
@@ -868,8 +882,15 @@ def execute_federated_query(
             timer = threading.Timer(timeout_s, _on_timeout)
             timer.start()
             try:
-                result_columns, result_records = execute_in_connection(conn)
-                query_column_types = describe_query_column_types(conn, _opt["sql"])
+                result_columns, result_records, cursor_types = (
+                    execute_in_connection(conn)
+                )
+                query_column_types = describe_query_column_types(
+                    conn, _opt["sql"]
+                ) or [
+                    {"name": name, "duckdb_type": dtype}
+                    for name, dtype in cursor_types
+                ]
             finally:
                 timer.cancel()
             execution_time = _log_query_metrics_in_conn(

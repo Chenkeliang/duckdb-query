@@ -10,7 +10,10 @@ from typing import Any, Iterator, Optional, Set
 import duckdb
 from core.common.config_manager import config_manager
 from core.common.utils import describe_query_column_types
-from core.database.duckdb_engine import fetch_query_records, with_duckdb_connection
+from core.database.duckdb_engine import (
+    timed_fetch_query_records,
+    with_duckdb_connection,
+)
 from core.database.duckdb_pool import interruptible_connection
 from core.database.federated_attach import (
     attach_databases_on_connection,
@@ -43,25 +46,9 @@ logger = logging.getLogger(__name__)
 
 def _timed_execute_fetch(con: Any, sql: str) -> tuple:
     """执行 SQL 并记录慢查询 / 自动 EXPLAIN，返回 (columns, records)。"""
-    import time
-
-    from core.common.config_manager import config_manager
-    from core.database.query_metrics import log_query_duration
-
-    start = time.time()
-    columns, records = fetch_query_records(con, sql)
-    elapsed_ms = (time.time() - start) * 1000
-    explain_threshold = max(
-        config_manager.get_app_config().duckdb_auto_explain_threshold_ms or 0, 0
-    )
-    log_query_duration(
-        con,
-        sql,
-        elapsed_ms,
-        len(records),
-        explain_threshold_ms=explain_threshold,
-    )
+    columns, records, _cursor_types = timed_fetch_query_records(con, sql)
     return columns, records
+
 
 def _xlsx_safe_projection(con: Any, sql: str) -> str:
     """xlsx 数字单元格物理上是 float64:高精度 DECIMAL(p>15)/(U)BIGINT/HUGEINT

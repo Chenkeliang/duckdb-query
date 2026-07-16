@@ -51,7 +51,7 @@ def no_pyarrow(monkeypatch):
 
 
 def _records(con, sql):
-    _, records = fetch_query_records(con, sql)
+    _, records, _ = fetch_query_records(con, sql)
     return records
 
 
@@ -67,7 +67,7 @@ def test_decimal_preserves_exact_values(con):
 
 
 def test_columns_order_matches_projection(con):
-    columns, records = fetch_query_records(con, "SELECT 2 AS b, 1 AS a, 3 AS c")
+    columns, records, _ = fetch_query_records(con, "SELECT 2 AS b, 1 AS a, 3 AS c")
     assert columns == ["b", "a", "c"]
     assert list(records[0].keys()) == ["b", "a", "c"]
 
@@ -185,6 +185,26 @@ def test_decimal_value_object_available_upstream(con):
 def test_duplicate_column_names_keep_all_values(con):
     """复审实锤回归：SELECT 1 AS id, 2 AS id 曾经 dict 覆盖静默丢前值。
     契约对齐旧 pandas 语义：去重为 id, id_1，两个值都保留。"""
-    columns, records = fetch_query_records(con, "SELECT 1 AS id, 2 AS id, 3 AS id")
+    columns, records, _ = fetch_query_records(con, "SELECT 1 AS id, 2 AS id, 3 AS id")
     assert columns == ["id", "id_1", "id_2"]
     assert records[0] == {"id": 1, "id_1": 2, "id_2": 3}
+
+
+def test_timestamp_ns_exact_alongside_decimal(con):
+    """TIMESTAMP_NS 曾在取数层被截断为微秒(fetchall→stdlib datetime 上限);
+    现经 SELECT * REPLACE CAST VARCHAR 重包,纳秒逐位精确。"""
+    records = _records(
+        con,
+        "SELECT TIMESTAMP_NS '2024-07-15 10:00:00.123456789' AS ts, "
+        "1.5::DECIMAL(4,2) AS d",
+    )
+    assert records[0]["ts"] == "2024-07-15 10:00:00.123456789"
+    assert records[0]["d"] == "1.50"
+
+
+def test_cursor_types_fallback_for_pragma(con):
+    """PRAGMA/EXPLAIN 等不可 DESCRIBE 的语句:column_types 由游标 description
+    兜底(同一次执行取得,不重放语句),不再退化为空数组。"""
+    columns, _, cursor_types = fetch_query_records(con, "PRAGMA database_list")
+    assert columns == [name for name, _ in cursor_types]
+    assert dict(cursor_types)["name"] == "VARCHAR"

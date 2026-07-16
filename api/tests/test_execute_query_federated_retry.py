@@ -50,7 +50,7 @@ def test_retries_after_mysql_connection_lost():
         'IO Error: Failed to prepare MySQL query "SELECT ...": Server has gone away'
     )
     conn = _make_conn([("raise", err), ("ok", ROWS)])
-    columns, records = duckdb_engine.fetch_query_records(conn, QUERY)
+    columns, records, _ = duckdb_engine.fetch_query_records(conn, QUERY)
     assert columns == ["a"]
     assert records == [{"a": 1}, {"a": 2}]
     assert conn._calls["clear_cache"] == 1

@@ -26,7 +26,7 @@ from core.data.file_utils import load_file_to_duckdb
 from core.database.database_manager import db_manager
 from core.database.duckdb_engine import (
     build_single_table_query,
-    fetch_query_records,
+    timed_fetch_query_records,
     generate_improved_column_aliases,
     with_duckdb_connection,
 )
@@ -745,11 +745,15 @@ def perform_query(
             logger.info(f"Executing query: {query}")
 
             # 执行查询
-            columns_list, data_records = fetch_query_records(con, query)
+            columns_list, data_records, cursor_types = timed_fetch_query_records(
+                con, query
+            )
             logger.info(
                 f"Query completed, {len(data_records)} rows x {len(columns_list)} cols"
             )
-            column_types = describe_query_column_types(con, query)
+            column_types = describe_query_column_types(con, query) or [
+                {"name": name, "duckdb_type": dtype} for name, dtype in cursor_types
+            ]
 
             return create_success_response(
                 data={

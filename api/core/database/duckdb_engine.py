@@ -484,7 +484,11 @@ def get_db_connection():
 
 
 def fetch_query_records(connection, query):
-    """执行查询 → (columns, records)：JSON 安全，纯 Python，无 DataFrame 中间层。
+    """执行查询 → (columns, records, cursor_types)：JSON 安全，纯 Python。
+
+    cursor_types = 游标 description 的 (列名, DuckDB 类型串)——DESCRIBE 对
+    PRAGMA/EXPLAIN/多语句失败时调用方以它兜底 column_types（同一次执行取得，
+    绝不为拿类型重放语句造成副作用）。
 
     v1.2.1 传输主路径。列类型无关地保真（Decimal/任意精度 int 由 DuckDB
     原生给出，编码契约见 utils.records_from_cursor），也不再有
@@ -511,7 +515,49 @@ def fetch_query_records(connection, query):
         except Exception as clear_err:  # pylint: disable=broad-except
             logger.warning("mysql_clear_cache failed: %s", clear_err)
         res = connection.execute(query)
-    return records_from_cursor(res, res.description or [])
+
+    desc = res.description or []
+    cursor_types = [(str(col[0]), str(col[1])) for col in desc]
+
+    # TIMESTAMP_NS:duckdb-python 的 fetchall 转成 stdlib datetime(微秒上限),
+    # 纳秒分量在取数层即截断。重包一次 CAST AS VARCHAR——DuckDB 的文本形态
+    # 保留完整纳秒且已是空格分隔契约格式,字符串原样直达前端(零损失)。
+    ns_cols = [name for name, dtype in cursor_types if dtype.upper() == "TIMESTAMP_NS"]
+    if ns_cols and _is_read_only_query(query):
+        quoted = ", ".join(
+            f'CAST("{c.replace(chr(34), chr(34) * 2)}" AS VARCHAR) AS '
+            f'"{c.replace(chr(34), chr(34) * 2)}"'
+            for c in ns_cols
+        )
+        wrapped = f"SELECT * REPLACE ({quoted}) FROM ({query.rstrip().rstrip(';')})"
+        try:
+            res = connection.execute(wrapped)
+        except Exception as wrap_err:  # pylint: disable=broad-except
+            # 包不动(如多语句)则按微秒精度返回,不让查询整体失败
+            logger.debug("TIMESTAMP_NS rewrap failed, keeping microseconds: %s", wrap_err)
+            res = connection.execute(query)
+    columns, records = records_from_cursor(res, res.description or [])
+    return columns, records, cursor_types
+
+
+def timed_fetch_query_records(connection, query):
+    """fetch_query_records + 慢查询时长/auto-EXPLAIN 记录（join/pivot/集合操作
+    等非 execute 主端点共用；execute 主端点有自己的 _log_query_metrics_in_conn，
+    勿双记）。"""
+    from core.common.config_manager import config_manager
+    from core.database.query_metrics import log_query_duration
+
+    start = time.time()
+    columns, records, cursor_types = fetch_query_records(connection, query)
+    elapsed_ms = (time.time() - start) * 1000
+    explain_threshold = max(
+        config_manager.get_app_config().duckdb_auto_explain_threshold_ms or 0, 0
+    )
+    log_query_duration(
+        connection, query, elapsed_ms, len(records),
+        explain_threshold_ms=explain_threshold,
+    )
+    return columns, records, cursor_types
 
 
 def table_exists(table_name: str, con=None) -> bool:

@@ -8,7 +8,7 @@ import duckdb
 from fastapi import APIRouter, Header
 
 from core.database.duckdb_engine import (
-    fetch_query_records,
+    timed_fetch_query_records,
     with_duckdb_connection,
 )
 from core.database.duckdb_pool import interruptible_connection
@@ -148,7 +148,7 @@ def _preview_pivot_query(
         attach_list = getattr(request, "attach_databases", None) or None
 
         if attach_list:
-            columns, data = execute_sql_with_attach(
+            columns, data, _ = execute_sql_with_attach(
                 preview_sql,
                 attach_databases=attach_list,
                 query_id=query_id,
@@ -156,7 +156,7 @@ def _preview_pivot_query(
             total_rows = len(data)
             try:
                 count_sql = _build_preview_count_sql(generation.final_sql)
-                _, count_records = execute_sql_with_attach(
+                _, count_records, _ = execute_sql_with_attach(
                     count_sql,
                     attach_databases=attach_list,
                     query_id=None,
@@ -167,7 +167,7 @@ def _preview_pivot_query(
                 logger.warning("Failed to calculate preview total rows: %s", count_exc)
         elif query_id:
             with interruptible_connection(query_id, preview_sql) as conn:
-                columns, data = fetch_query_records(conn, preview_sql)
+                columns, data, _ = timed_fetch_query_records(conn, preview_sql)
                 total_rows = len(data)
                 try:
                     count_sql = _build_preview_count_sql(generation.final_sql)
@@ -178,7 +178,7 @@ def _preview_pivot_query(
                     logger.warning("Failed to calculate preview total rows: %s", count_exc)
         else:
             with with_duckdb_connection() as con:
-                columns, data = fetch_query_records(con, preview_sql)
+                columns, data, _ = timed_fetch_query_records(con, preview_sql)
                 total_rows = len(data)
                 try:
                     count_sql = _build_preview_count_sql(generation.final_sql)
