@@ -5,8 +5,9 @@
 from __future__ import annotations
 
 import datetime as _dt
-import re
 from typing import Any, Optional
+
+from core.common.duckdb_types import is_date_or_timestamp_type
 
 # create 系词干（小写子串匹配）。'creat' 覆盖 create/created/gmt_create。
 _CREATE_STEMS = ("creat", "ctime", "add_time", "insert_time")
@@ -15,13 +16,9 @@ _UPDATE_STEMS = ("updat", "modif", "mtime")
 
 
 def is_time_type(type_str: str) -> bool:
-    """可做时间界的列类型（排除 TIME / YEAR）。覆盖源库原生类型与 DuckDB 归一化类型。"""
-    t = re.sub(r"\(.*\)", "", (type_str or "")).upper().strip()
-    if t in ("DATE", "DATETIME"):
-        return True
-    if t.startswith("TIMESTAMP"):  # TIMESTAMP / TIMESTAMP_NS / TIMESTAMP WITHOUT TIME ZONE …
-        return True
-    return False
+    """可做时间界的列类型（排除 TIME / YEAR）。源库原生名/别名的归一与判定
+    统一走 core.common.duckdb_types,本处仅保留导出名。"""
+    return is_date_or_timestamp_type(type_str)
 
 
 def classify_audit_column(name: str) -> Optional[str]:

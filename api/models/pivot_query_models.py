@@ -93,7 +93,11 @@ class PivotValueConfig(BaseModel):
     )
     typeConversion: Optional[str] = Field(
         None,
-        description="Type conversion for the column before aggregation (e.g., 'decimal', 'double')",
+        description=(
+            "Type conversion for the column before aggregation — a canonical "
+            "DuckDB scalar type or full DECIMAL(p,s), e.g. 'DOUBLE', "
+            "'DECIMAL(38,6)'; bare DECIMAL is rejected as silently lossy"
+        ),
     )
 
     _allowed_aggregations: ClassVar[Set[AggregationFunction]] = {
@@ -125,6 +129,19 @@ class PivotValueConfig(BaseModel):
         if value not in cls._allowed_aggregations:
             raise ValueError(f"Aggregation {value} is not supported for pivot values")
         return value
+
+    @field_validator("typeConversion")
+    @classmethod
+    def validate_type_conversion(cls, value: Optional[str]) -> Optional[str]:
+        # 最终原样拼进 TRY_CAST(... AS X),必须过规范类型白名单;
+        # 'auto' 是"不转换"哨兵(生成器按此跳过),原样放行。
+        if value is None or not value.strip():
+            return None
+        if value.strip().lower() == "auto":
+            return "auto"
+        from core.common.duckdb_types import validate_cast_type
+
+        return validate_cast_type(value)
 
 
 class PivotConfig(BaseModel):
@@ -197,8 +214,20 @@ class ResolvedTypeCast(BaseModel):
     """用户确认的类型转换设置"""
 
     column: str = Field(..., description="目标列名")
-    cast: str = Field(..., description="TRY_CAST 目标类型表达式")
+    cast: str = Field(
+        ...,
+        description="TRY_CAST 目标类型(规范 DuckDB 标量类型或完整 DECIMAL(p,s))",
+    )
     table: Optional[str] = Field(None, description="所属表，可选")
+
+    @field_validator("cast")
+    @classmethod
+    def validate_cast_target(cls, value: str) -> str:
+        # 最终原样拼进 TRY_CAST(... AS X):在模型层就白名单化,
+        # 非法值得到干净的 422 而非生成期 500
+        from core.common.duckdb_types import validate_cast_type
+
+        return validate_cast_type(value)
 
 
 class PivotQueryConfig(BaseModel):

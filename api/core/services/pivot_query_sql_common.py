@@ -12,7 +12,11 @@ def _apply_column_cast_sql(
         return column_sql
     cast_target = _resolve_cast_expression(raw_column, casts_map)
     if cast_target:
-        return f"TRY_CAST({column_sql} AS {cast_target})"
+        # casts_map 值原样拼进 SQL——渲染前统一过规范类型白名单
+        # (纵深防御:无论上游模型层是否已校验)
+        from core.common.duckdb_types import validate_cast_type
+
+        return f"TRY_CAST({column_sql} AS {validate_cast_type(cast_target)})"
     return column_sql
 
 

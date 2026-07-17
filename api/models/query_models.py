@@ -122,9 +122,12 @@ class JoinCondition(BaseModel):
         cleaned = value.strip().upper()
         if not cleaned:
             return None
-        if not re.fullmatch(r"[A-Z0-9_(),\s]+", cleaned):
-            raise ValueError("Invalid cast type")
-        return cleaned
+        # 这些串最终原样拼进 TRY_CAST(... AS X):字符集正则只能挡引号类注入,
+        # 挡不住 "VARCHAR),(1" 这种括号构形——必须走规范类型白名单
+        # (别名归一,裸 DECIMAL 拒绝),返回规范拼写。
+        from core.common.duckdb_types import validate_cast_type
+
+        return validate_cast_type(cleaned)
 
 
 class Join(BaseModel):

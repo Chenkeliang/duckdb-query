@@ -7,6 +7,7 @@ import math
 from typing import List, Optional
 
 from models.pivot_query_models import ColumnStatistics, TableMetadata
+from core.common.duckdb_types import is_numeric_type
 from core.database.table_metadata_cache import table_metadata_cache
 
 logger = logging.getLogger(__name__)
@@ -80,25 +81,9 @@ def get_column_statistics(table_name: str, column_name: str, con) -> ColumnStati
         max_value = None
         avg_value = None
 
-        # 前缀匹配：DESCRIBE 返回的是 DECIMAL(38,2) 这类带参数的完整类型名
-        if str(data_type).upper().startswith(
-            (
-                "INTEGER",
-                "BIGINT",
-                "SMALLINT",
-                "TINYINT",
-                "HUGEINT",
-                "UBIGINT",
-                "UINTEGER",
-                "USMALLINT",
-                "UTINYINT",
-                "DOUBLE",
-                "FLOAT",
-                "REAL",
-                "DECIMAL",
-                "NUMERIC",
-            )
-        ):
+        # 数值判定统一走 core.common.duckdb_types(DECIMAL(38,2) 等带参
+        # 类型名与别名在那里归一)
+        if is_numeric_type(str(data_type)):
             minmax_sql = f"""
             SELECT
                 MIN("{column_name}") as min_val,
