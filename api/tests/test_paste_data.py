@@ -110,3 +110,112 @@ def test_paste_data_defaults_for_empty_cells():
             assert stored_row[4] == ""  # VARCHAR 默认为空串
     finally:
         _cleanup_table(table_name)
+
+
+def test_paste_decimal_infers_scale_and_keeps_exact_text():
+    """DECIMAL 泛型:标度按列内最大小数位推断,12.50 原样保真(回归:曾只有
+    DOUBLE 选项,12.50 落库变 12.5)。"""
+    table_name = f"paste_dec_{uuid4().hex[:8]}"
+    payload = {
+        "table_name": table_name,
+        "column_names": ["amt"],
+        "column_types": ["DECIMAL"],
+        "data_rows": [["12.50"], ["3.00"], ["0.01"]],
+        "delimiter": ",",
+        "has_header": False,
+    }
+    response = client.post("/api/paste-data", json=payload)
+    try:
+        assert response.json()["success"] is True
+        with with_duckdb_connection() as con:
+            col_type = {r[1]: r[2] for r in con.execute(
+                f'PRAGMA table_info("{table_name}")').fetchall()}["amt"]
+            assert col_type == "DECIMAL(38,2)", col_type
+            vals = [str(r[0]) for r in con.execute(
+                f'SELECT amt FROM "{table_name}" ORDER BY amt').fetchall()]
+            assert vals == ["0.01", "3.00", "12.50"], vals
+    finally:
+        _cleanup_table(table_name)
+        file_datasource_manager.delete_file_datasource(table_name)
+
+
+def test_paste_decimal_mixed_scale_normalizes_without_rounding():
+    table_name = f"paste_dec_{uuid4().hex[:8]}"
+    payload = {
+        "table_name": table_name,
+        "column_names": ["v"],
+        "column_types": ["DECIMAL"],
+        "data_rows": [["1.5"], ["1.505"]],
+        "delimiter": ",",
+        "has_header": False,
+    }
+    response = client.post("/api/paste-data", json=payload)
+    try:
+        assert response.json()["success"] is True
+        with with_duckdb_connection() as con:
+            col_type = {r[1]: r[2] for r in con.execute(
+                f'PRAGMA table_info("{table_name}")').fetchall()}["v"]
+            assert col_type == "DECIMAL(38,3)", col_type  # 最大标度归一,数值不变
+            vals = [str(r[0]) for r in con.execute(
+                f'SELECT v FROM "{table_name}" ORDER BY v').fetchall()]
+            assert vals == ["1.500", "1.505"], vals
+    finally:
+        _cleanup_table(table_name)
+        file_datasource_manager.delete_file_datasource(table_name)
+
+
+def test_paste_decimal_falls_back_to_varchar_on_mixed_content():
+    """混杂文本/零前导编码列:宁保 VARCHAR 忠实文本,绝不静默变值。"""
+    for rows, expected in (
+        ([["12.50"], ["abc"]], ["12.50", "abc"]),          # 混杂文本
+        ([["007.50"], ["1.25"]], ["007.50", "1.25"]),      # 零前导=编码语义
+    ):
+        table_name = f"paste_dec_{uuid4().hex[:8]}"
+        payload = {
+            "table_name": table_name,
+            "column_names": ["v"],
+            "column_types": ["DECIMAL"],
+            "data_rows": rows,
+            "delimiter": ",",
+            "has_header": False,
+        }
+        response = client.post("/api/paste-data", json=payload)
+        try:
+            assert response.json()["success"] is True
+            with with_duckdb_connection() as con:
+                col_type = {r[1]: r[2] for r in con.execute(
+                    f'PRAGMA table_info("{table_name}")').fetchall()}["v"]
+                assert col_type == "VARCHAR", (rows, col_type)
+                vals = sorted(str(r[0]) for r in con.execute(
+                    f'SELECT v FROM "{table_name}"').fetchall())
+                assert vals == sorted(expected), vals
+        finally:
+            _cleanup_table(table_name)
+            file_datasource_manager.delete_file_datasource(table_name)
+
+
+def test_paste_decimal_integer_column_and_empty_cells():
+    table_name = f"paste_dec_{uuid4().hex[:8]}"
+    payload = {
+        "table_name": table_name,
+        "column_names": ["n", "amt"],
+        "column_types": ["DECIMAL", "DECIMAL"],
+        "data_rows": [["12", "12.50"], ["7", ""]],
+        "delimiter": ",",
+        "has_header": False,
+    }
+    response = client.post("/api/paste-data", json=payload)
+    try:
+        assert response.json()["success"] is True
+        with with_duckdb_connection() as con:
+            types = {r[1]: r[2] for r in con.execute(
+                f'PRAGMA table_info("{table_name}")').fetchall()}
+            assert types["n"] == "BIGINT", types      # 全整数列推断为 BIGINT(同样无损)
+            assert types["amt"] == "DECIMAL(38,2)", types
+            rows = con.execute(
+                f'SELECT n, amt FROM "{table_name}" ORDER BY n').fetchall()
+            assert (rows[0][0], str(rows[0][1])) == (7, "None"), rows  # 空值→NULL,不造 0
+            assert (rows[1][0], str(rows[1][1])) == (12, "12.50"), rows
+    finally:
+        _cleanup_table(table_name)
+        file_datasource_manager.delete_file_datasource(table_name)

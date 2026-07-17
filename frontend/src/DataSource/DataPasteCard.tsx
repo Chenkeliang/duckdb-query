@@ -62,6 +62,7 @@ const DataPasteCard: React.FC<DataPasteCardProps> = ({ onDataSourceSaved }) => {
     () => [
       { value: "VARCHAR", label: t("page.datasource.paste.types.text") },
       { value: "INTEGER", label: t("page.datasource.paste.types.int") },
+      { value: "DECIMAL", label: t("page.datasource.paste.types.decimal") },
       { value: "DOUBLE", label: t("page.datasource.paste.types.float") },
       { value: "DATE", label: t("page.datasource.paste.types.date") },
       { value: "BOOLEAN", label: t("page.datasource.paste.types.bool") }
@@ -78,7 +79,9 @@ const DataPasteCard: React.FC<DataPasteCardProps> = ({ onDataSourceSaved }) => {
     const isFloat = nonEmpty.every(v =>
       /^\d*\.?\d+$/.test(v.toString().trim())
     );
-    if (isFloat) return "DOUBLE";
+    // 小数默认 DECIMAL：后端按列内数据推断标度，12.50 原样保真；
+    // 需要浮点语义可在下拉手动改 DOUBLE
+    if (isFloat) return "DECIMAL";
     const isDate = nonEmpty.every(v => !isNaN(Date.parse(v.toString().trim())));
     if (isDate) return "DATE";
     const isBool = nonEmpty.every(v =>

@@ -7,6 +7,9 @@ from fastapi import APIRouter
 from pydantic import BaseModel
 
 from core.common.exceptions import BaseAPIException, ValidationError as APIValidationError
+# 复用 CSV 促升的无损推断(最大小数位定标度、零前导/超容量不促升),
+# 让粘贴的 DECIMAL 列与文件导入走同一套财务准则,而非另造一份。
+from core.data.ingestion_precision import _infer_varchar_column_promotion
 from core.data.rows_ingest import load_rows_as_varchar_table
 from core.database.duckdb_engine import with_duckdb_connection
 from core.data.file_datasource_manager import (
@@ -73,6 +76,11 @@ def _build_column_expression(source_alias: str, column_name: str, column_type: s
     trimmed = f"NULLIF(TRIM({source_text}), '')"
     normalized_type = (column_type or "VARCHAR").upper()
 
+    if normalized_type.startswith("DECIMAL(") or normalized_type == "BIGINT":
+        # DECIMAL 由 _resolve_decimal_columns 按列内数据推断而来,推断已保证
+        # 每个非空值可无损转换;空值→NULL(不造 0),文本原样保真。
+        return f"TRY_CAST({trimmed} AS {normalized_type}) AS {safe_alias}"
+
     if normalized_type == "INTEGER":
         return f"COALESCE(TRY_CAST({trimmed} AS BIGINT), 0) AS {safe_alias}"
     if normalized_type == "DOUBLE":
@@ -96,6 +104,29 @@ def _build_column_expression(source_alias: str, column_name: str, column_type: s
     return f"COALESCE(TRIM({source_text}), '') AS {safe_alias}"
 
 
+def _resolve_decimal_columns(
+    connection, quoted_temp: str, column_definitions: List[Tuple[str, str]]
+) -> List[Tuple[str, str]]:
+    """把用户选的泛型 DECIMAL 解析成按列内数据推断的精确类型。
+
+    标度取列内最大小数位(数学上不可能舍入),与 CSV 导入促升同一套推断;
+    全整数列推断为 BIGINT(同样无损)。推断失败(混杂文本/零前导/超出
+    DECIMAL(38) 容量)则保持 VARCHAR 忠实文本——宁可不转,绝不静默变值。
+    """
+    resolved: List[Tuple[str, str]] = []
+    for name, col_type in column_definitions:
+        if (col_type or "").strip().upper() == "DECIMAL":
+            promoted = _infer_varchar_column_promotion(connection, quoted_temp, name)
+            # 推断器还会认日期/时间戳——但用户点的是"小数",只接受数值类结果
+            if promoted and (promoted.startswith("DECIMAL(") or promoted == "BIGINT"):
+                resolved.append((name, promoted))
+            else:
+                resolved.append((name, "VARCHAR"))
+        else:
+            resolved.append((name, col_type))
+    return resolved
+
+
 def _persist_pasted_rows(
     connection,
     table_name: str,
@@ -107,6 +138,9 @@ def _persist_pasted_rows(
     temp_table, cleanup = load_rows_as_varchar_table(connection, header, rows)
 
     quoted_temp = _quote_identifier(temp_table)
+    column_definitions = _resolve_decimal_columns(
+        connection, quoted_temp, column_definitions
+    )
     select_list = [
         _build_column_expression(source_alias, name, col_type)
         for name, col_type in column_definitions

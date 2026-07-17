@@ -951,7 +951,8 @@
         "types": {
           "text": "Text",
           "int": "Integer",
-          "float": "Decimal",
+          "decimal": "Decimal (exact)",
+          "float": "Float (double)",
           "date": "Date",
           "bool": "Boolean"
         },
