@@ -53,7 +53,7 @@ from core.common.exceptions import (
     ValidationError as APIValidationError,
 )
 from fastapi import APIRouter, Body, File, Form, Header, UploadFile
-from models.query_models import FederatedQueryRequest, FederatedQueryResponse
+from models.query_models import FederatedQueryRequest
 from pydantic import BaseModel
 from routers.query_sql_utils import statement_accepts_limit
 from utils.response_helpers import (

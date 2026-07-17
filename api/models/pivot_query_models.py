@@ -88,9 +88,8 @@ class PivotValueConfig(BaseModel):
     aggregation: AggregationFunction = Field(
         ..., description="Aggregation function applied to the column"
     )
-    alias: Optional[str] = Field(
-        None, description="Alias for the pivoted metric column"
-    )
+    # 注:曾有 alias 字段,但原生 PIVOT 的指标列名由透视值本身决定,alias
+    # 只被回显进 metadata、从不影响输出列名(前端也不读),已移除以免误导。
     typeConversion: Optional[str] = Field(
         None,
         description=(
@@ -115,13 +114,6 @@ class PivotValueConfig(BaseModel):
         if not value or not value.strip():
             raise ValueError("Pivot value column cannot be empty")
         return value.strip()
-
-    @field_validator("alias")
-    @classmethod
-    def validate_alias(cls, value: Optional[str]) -> Optional[str]:
-        if value is not None and not value.strip():
-            raise ValueError("Pivot value alias cannot be empty")
-        return value.strip() if value else None
 
     @field_validator("aggregation")
     @classmethod
@@ -166,10 +158,9 @@ class PivotConfig(BaseModel):
         None,
         description="Optional explicit list of column dimension values to enforce ordering",
     )
-    strategy: Optional[Literal["auto", "extension", "native"]] = Field(
-        "native",
-        description="Pivot strategy preference: auto|extension|native (native requires manual_column_values)",
-    )
+    # 注:曾有 strategy: auto|extension|native 字段,但生成器无条件走 native
+    # (extension 策略早已删除,uses_pivot_extension 恒 False),字段从不被读取,
+    # 已移除以免误导调用方(响应 metadata 的 strategy 由生成器内部计算)。
     column_value_limit: Optional[int] = Field(
         None,
         description="Optional max number of distinct values allowed for the first column dimension",

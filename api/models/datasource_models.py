@@ -47,33 +47,9 @@ class DataSourceResponse(BaseModel):
     size_bytes: Optional[int] = Field(None, description="大小（字节）")
 
 
-class BatchDeleteRequest(BaseModel):
-    """批量删除请求"""
-    ids: List[str] = Field(..., description="要删除的数据源 ID 列表", max_length=50)
-    force: bool = Field(False, description="强制删除，忽略依赖检查")
-
-
-class BatchTestRequest(BaseModel):
-    """批量测试请求"""
-    ids: List[str] = Field(..., description="要测试的数据源 ID 列表", max_length=50)
-    timeout: int = Field(10, description="每个连接的超时时间（秒）", ge=1, le=60)
-
-
-class BatchOperationResult(BaseModel):
-    """单个批量操作结果"""
-    id: str = Field(..., description="数据源 ID")
-    success: bool = Field(..., description="操作是否成功")
-    message: Optional[str] = Field(None, description="成功消息")
-    error: Optional[str] = Field(None, description="错误消息")
-    data: Optional[Dict[str, Any]] = Field(None, description="额外数据")
-
-
-class BatchOperationResponse(BaseModel):
-    """批量操作响应"""
-    success_count: int = Field(..., description="成功数量")
-    failure_count: int = Field(..., description="失败数量")
-    total_count: int = Field(..., description="总数量")
-    results: List[BatchOperationResult] = Field(..., description="详细结果列表")
+# 注:曾有 BatchDeleteRequest/BatchTestRequest/BatchOperationResult/
+# BatchOperationResponse 一套批量操作模型,但从未接入任何路由(前后端零引用),
+# 已移除;如将来做批量删除/测试接口再按需重建。
 
 
 class ConnectionTestResponse(BaseModel):

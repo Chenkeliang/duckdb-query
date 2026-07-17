@@ -47,7 +47,6 @@ class TestPivotQueryModeGeneration:
                 PivotValueConfig(
                     column="revenue",
                     aggregation=AggregationFunction.SUM,
-                    alias="total_revenue",
                 )
             ],
             manual_column_values=["2022", "2023"],
@@ -84,7 +83,6 @@ class TestPivotQueryModeGeneration:
                 PivotValueConfig(
                     column="revenue",
                     aggregation=AggregationFunction.SUM,
-                    alias="total_revenue",
                 )
             ],
             manual_column_values=["2022", "2023"],
@@ -165,7 +163,6 @@ class TestPivotQueryModeGeneration:
                 PivotValueConfig(
                     column="revenue",
                     aggregation=AggregationFunction.SUM,
-                    alias="total_revenue",
                 )
             ],
             # 无手动列值，强制走扩展；并设置列数量上限
@@ -215,7 +212,6 @@ class TestPivotQueryModeGeneration:
                 PivotValueConfig(
                     column="revenue",
                     aggregation=AggregationFunction.SUM,
-                    alias="total_revenue",
                 )
             ],
         )

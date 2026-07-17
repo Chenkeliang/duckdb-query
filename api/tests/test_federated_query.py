@@ -24,26 +24,23 @@ class TestFederatedQueryRequestModel:
         assert request.attach_databases is None
         assert request.is_preview is True
         assert request.save_as_table is None
-        assert request.timeout == 30000
 
     def test_valid_request_with_attach_databases(self):
         """测试带 attach_databases 的有效请求"""
         from models.query_models import FederatedQueryRequest, AttachDatabase
-        
+
         request = FederatedQueryRequest(
             sql="SELECT * FROM db1.users",
             attach_databases=[
                 AttachDatabase(alias="db1", connection_id="conn-123")
             ],
             is_preview=True,
-            timeout=60000
         )
-        
+
         assert request.sql == "SELECT * FROM db1.users"
         assert len(request.attach_databases) == 1
         assert request.attach_databases[0].alias == "db1"
         assert request.attach_databases[0].connection_id == "conn-123"
-        assert request.timeout == 60000
 
     def test_empty_sql_raises_validation_error(self):
         """
@@ -104,61 +101,8 @@ class TestFederatedQueryRequestModel:
         assert request.attach_databases[1].alias == "db2"
 
 
-class TestFederatedQueryResponseModel:
-    """测试 FederatedQueryResponse 模型"""
-
-    def test_success_response(self):
-        """
-        **Property 6: Federated Query Response Format**
-        **Validates: Requirements 2.3**
-        
-        测试成功响应格式
-        """
-        from models.query_models import FederatedQueryResponse
-        
-        response = FederatedQueryResponse(
-            success=True,
-            columns=["id", "name"],
-            data=[{"id": 1, "name": "test"}],
-            row_count=1,
-            execution_time_ms=100.5,
-            attached_databases=["db1"],
-            message="Query successful"
-        )
-        
-        assert response.success is True
-        assert response.columns == ["id", "name"]
-        assert len(response.data) == 1
-        assert response.row_count == 1
-        assert response.execution_time_ms == 100.5
-        assert response.attached_databases == ["db1"]
-        assert response.message == "Query successful"
-
-    def test_default_values(self):
-        """测试默认值"""
-        from models.query_models import FederatedQueryResponse
-        
-        response = FederatedQueryResponse(success=True)
-        
-        assert response.columns == []
-        assert response.data == []
-        assert response.row_count == 0
-        assert response.execution_time_ms == 0
-        assert response.attached_databases == []
-        assert response.message == ""
-        assert response.sql_query is None
-        assert response.warnings is None
-
-    def test_response_with_warnings(self):
-        """测试带警告的响应"""
-        from models.query_models import FederatedQueryResponse
-        
-        response = FederatedQueryResponse(
-            success=True,
-            warnings=["保存结果为表失败: 表已存在"]
-        )
-        
-        assert response.warnings == ["保存结果为表失败: 表已存在"]
+# 注:FederatedQueryResponse 模型已移除——联邦查询端点用 create_success_response
+# 返回 dict,从不用这个模型序列化(纯未使用的 schema),对应测试类一并移除。
 
 
 class TestAttachDatabaseModel:

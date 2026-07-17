@@ -58,6 +58,10 @@ task_utils = TaskUtils(EXPORTS_DIR)
 
 SUPPORTED_EXTERNAL_TYPES = {"mysql", "postgresql", "sqlite", "duckdb"}
 
+# 本地导出仅支持 DuckDB COPY 的这两种格式(excel 需转换、不走此路径)。
+# 单一来源,避免同文件两处各写一份字面量。
+LOCAL_EXPORT_FORMATS = ("csv", "parquet")
+
 
 def validate_attach_databases(attach_databases: Optional[List[AttachDatabase]]) -> None:
     """
@@ -686,10 +690,10 @@ def _serve_task_download(task_id: str, fmt: str):
     axios responseType:'blob' 把整个文件读进 webview 内存——那会把界面卡死。
     """
     try:
-        if fmt not in ["csv", "parquet"]:
+        if fmt not in LOCAL_EXPORT_FORMATS:
             raise APIValidationError(
                 "Unsupported format, only csv and parquet are allowed",
-                details={"field": "format", "allowed": ["csv", "parquet"]},
+                details={"field": "format", "allowed": list(LOCAL_EXPORT_FORMATS)},
             )
 
         file_path = generate_download_file(task_id, fmt)
@@ -759,7 +763,7 @@ def _export_result_file_to_local_path(task_id: str, fmt: str, target_path: str) 
     对带 query 的 URL 静默失败)、数据不再过一遍 HTTP。覆盖语义:原生存盘对话框
     已向用户确认过覆盖,此处直接覆盖。
     """
-    if fmt not in ("csv", "parquet"):
+    if fmt not in LOCAL_EXPORT_FORMATS:
         raise ValueError("Unsupported format, only csv and parquet are allowed")
     target = validate_local_target_path(target_path)
 

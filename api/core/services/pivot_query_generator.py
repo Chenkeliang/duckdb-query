@@ -77,8 +77,6 @@ def generate_pivot_query_sql(
             "System configuration has disabled pivot table feature, please contact administrator to enable"
         )
 
-    pivot_config.strategy = "native"
-
     base_sql = _generate_pivot_base_sql(config, pivot_config, resolved_casts)
     pivot_result = _generate_pivot_transformation_sql(
         base_sql=base_sql,
@@ -96,7 +94,6 @@ def generate_pivot_query_sql(
             {
                 "column": value.column,
                 "aggregation": value.aggregation.value,
-                "alias": value.alias,
             }
             for value in pivot_config.values
         ],
@@ -292,13 +289,10 @@ def _try_generate_native_pivot(
     for v in pivot_config.values:
         column_expr = _quote_identifier(v.column)
 
-        # 应用类型转换（如果指定了且不是自动）
-        if (
-            hasattr(v, "typeConversion")
-            and v.typeConversion
-            and v.typeConversion != "auto"
-        ):
-            column_expr = f"TRY_CAST({column_expr} AS {v.typeConversion.upper()})"
+        # 应用类型转换（指定且非 auto 哨兵）。typeConversion 已由模型层
+        # validate_cast_type 归一为规范拼写并白名单校验,此处直接用。
+        if v.typeConversion and v.typeConversion != "auto":
+            column_expr = f"TRY_CAST({column_expr} AS {v.typeConversion})"
 
         agg_items.append(_aggregation_sql_expr(v.aggregation, column_expr))
 

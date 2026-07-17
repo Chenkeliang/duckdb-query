@@ -22,7 +22,6 @@ from utils.response_helpers import (
 )
 
 from models.datasource_models import (
-    DataSourceErrorCode,
     DataSourceFilter,
     DataSourceStatus,
     DataSourceType,
@@ -56,7 +55,10 @@ async def test_database_connection(request: dict):
     """
     try:
         from core.database.database_manager import db_manager
-        from models.query_models import ConnectionTestRequest, DataSourceType
+        from models.query_models import ConnectionTestRequest
+        # query_models.DataSourceType 是连接/存储类型(mysql/sqlite…),与
+        # 模块级 datasource_models.DataSourceType(资产大类)同名不同义,起别名区分
+        from models.query_models import DataSourceType as ConnectionKind
         from utils.response_helpers import MessageCode, create_success_response
 
         # 构建测试请求
@@ -75,7 +77,7 @@ async def test_database_connection(request: dict):
                     logger.info(f"Test connection {stripped_id}: using existing password for test")
 
         test_request = ConnectionTestRequest(
-            type=DataSourceType(request.get("type")),
+            type=ConnectionKind(request.get("type")),
             params=test_request_params,
         )
 
@@ -322,13 +324,14 @@ async def create_database_connection(
     """
     try:
         from core.common.timezone_utils import get_current_time
-        from models.query_models import DatabaseConnection, DataSourceType
+        from models.query_models import DatabaseConnection
+        from models.query_models import DataSourceType as ConnectionKind
 
         # 构建 DatabaseConnection 对象
         db_conn = DatabaseConnection(
             id=connection.get("id"),
             name=connection.get("name"),
-            type=DataSourceType(connection.get("type")),
+            type=ConnectionKind(connection.get("type")),
             params=connection.get("params", {}),
             created_at=get_current_time(),
             updated_at=get_current_time(),
@@ -361,7 +364,7 @@ async def update_database_connection(
     try:
         from core.common.timezone_utils import get_current_time
         from core.database.database_manager import db_manager
-        from models.query_models import DataSourceType
+        from models.query_models import DataSourceType as ConnectionKind
 
         # 移除 db_ 前缀
         conn_id = id.replace("db_", "")
@@ -377,7 +380,7 @@ async def update_database_connection(
         updated_conn = DatabaseConnection(
             id=existing.id,
             name=connection.get("name", existing.name),
-            type=DataSourceType(connection.get("type", existing.type) or existing.type),
+            type=ConnectionKind(connection.get("type", existing.type) or existing.type),
             params=connection.get("params", existing.params),
             created_at=existing.created_at,
             updated_at=get_current_time(),

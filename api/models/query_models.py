@@ -65,42 +65,6 @@ class DatabaseConnection(BaseModel):
     last_tested: Optional[datetime.datetime] = None
 
 
-class MySQLConfig(BaseModel):
-    """MySQL配置模型，用于本地持久化"""
-
-    id: str
-    type: str = "mysql"
-    params: Dict[str, Any]
-    name: Optional[str] = None
-    status: ConnectionStatus = ConnectionStatus.INACTIVE
-    created_at: Optional[datetime.datetime] = None
-    updated_at: Optional[datetime.datetime] = None
-
-
-class PostgreSQLConfig(BaseModel):
-    """PostgreSQL配置模型"""
-
-    id: str
-    type: str = "postgresql"
-    params: Dict[str, Any]
-    name: Optional[str] = None
-    status: ConnectionStatus = ConnectionStatus.INACTIVE
-    created_at: Optional[datetime.datetime] = None
-    updated_at: Optional[datetime.datetime] = None
-
-
-class SQLiteConfig(BaseModel):
-    """SQLite配置模型"""
-
-    id: str
-    type: str = "sqlite"
-    params: Dict[str, Any]
-    name: Optional[str] = None
-    status: ConnectionStatus = ConnectionStatus.INACTIVE
-    created_at: Optional[datetime.datetime] = None
-    updated_at: Optional[datetime.datetime] = None
-
-
 class JoinCondition(BaseModel):
     """JOIN条件模型"""
 
@@ -139,17 +103,6 @@ class Join(BaseModel):
     alias_right: Optional[str] = None
 
 
-class MultiTableJoin(BaseModel):
-    """多表JOIN配置"""
-
-    tables: List[str]  # 表ID列表
-    joins: List[Join]  # JOIN关系列表
-    select_columns: Optional[List[str]] = None  # 选择的列
-    where_conditions: Optional[str] = None  # WHERE条件
-    order_by: Optional[str] = None  # 排序
-    limit: Optional[int] = None  # 限制行数
-
-
 class AttachDatabase(BaseModel):
     """外部数据库连接信息，用于联邦查询"""
 
@@ -173,9 +126,8 @@ class FederatedQueryRequest(BaseModel):
     save_as_table: Optional[str] = Field(
         None, description="将结果保存为 DuckDB 表的表名"
     )
-    timeout: Optional[int] = Field(
-        30000, description="查询超时时间（毫秒）"
-    )
+    # 注:曾有 timeout 字段(标注"查询超时ms"),但端点从不读取它——真正的
+    # 超时是服务端看门狗 federated_query_timeout(配置项),已移除以免误导。
 
     @field_validator("sql")
     @classmethod
@@ -184,22 +136,6 @@ class FederatedQueryRequest(BaseModel):
         if not value or not value.strip():
             raise ValueError("SQL query cannot be empty")
         return value.strip()
-
-
-class FederatedQueryResponse(BaseModel):
-    """联邦查询响应模型"""
-
-    success: bool = Field(..., description="查询是否成功")
-    columns: List[str] = Field(default_factory=list, description="列名列表")
-    data: List[Dict[str, Any]] = Field(default_factory=list, description="查询结果数据")
-    row_count: int = Field(0, description="返回的行数")
-    execution_time_ms: float = Field(0, description="执行时间（毫秒）")
-    attached_databases: List[str] = Field(
-        default_factory=list, description="成功 ATTACH 的数据库别名列表"
-    )
-    message: str = Field("", description="附加消息")
-    sql_query: Optional[str] = Field(None, description="执行的 SQL 语句")
-    warnings: Optional[List[str]] = Field(None, description="警告信息列表")
 
 
 class QueryRequest(BaseModel):
@@ -214,39 +150,6 @@ class QueryRequest(BaseModel):
     )
     # 联邦查询支持：需要 ATTACH 的外部数据库列表
     attach_databases: Optional[List[AttachDatabase]] = None
-
-
-class ExportFormat(str, Enum):
-    """导出格式枚举"""
-
-    CSV = "csv"
-    EXCEL = "excel"
-    JSON = "json"
-    PARQUET = "parquet"
-
-
-class ExportRequest(BaseModel):
-    """导出请求模型"""
-
-    query_request: QueryRequest
-    format: ExportFormat
-    filename: Optional[str] = None
-    chunk_size: Optional[int] = 10000  # 分块大小
-    include_headers: bool = True
-
-
-class ExportTask(BaseModel):
-    """导出任务模型"""
-
-    id: str
-    status: str  # 'pending', 'processing', 'completed', 'failed'
-    format: ExportFormat
-    filename: str
-    progress: float = 0.0
-    created_at: datetime.datetime
-    completed_at: Optional[datetime.datetime] = None
-    error_message: Optional[str] = None
-    file_size: Optional[int] = None
 
 
 class ConnectionTestRequest(BaseModel):
