@@ -12,10 +12,41 @@ _READ = re.compile(
     re.I,
 )
 
+# 注释与字符串/标识符字面量——先抹平,避免把字面量里的分号/关键字当真
+_COMMENTS_AND_STRINGS = re.compile(
+    r"--[^\n]*|/\*.*?\*/|'(?:''|[^'])*'|\"(?:\"\"|[^\"])*\"",
+    re.S,
+)
+
+# 任意位置出现即视为写(整词)。覆盖 DuckDB 的写/DDL/副作用语句。
+# WITH ... DELETE、SELECT 1; DROP ... 这类只看开头会漏,靠这一层兜住。
+_WRITE_KEYWORDS = re.compile(
+    r"\b(INSERT|UPDATE|DELETE|DROP|CREATE|ALTER|TRUNCATE|REPLACE|ATTACH|DETACH"
+    r"|COPY|INSTALL|LOAD|EXPORT|IMPORT|VACUUM|CHECKPOINT|CALL|SET|RESET"
+    r"|GRANT|REVOKE|MERGE|ANALYZE)\b",
+    re.I,
+)
+
 
 def is_write_sql(sql: str) -> bool:
-    """True unless the statement is clearly read-only."""
-    return _READ.match(sql or "") is None
+    """True unless the SQL is UNAMBIGUOUSLY a single read-only statement.
+
+    保守分类(宁可误判为写):先剥离注释与字符串字面量,再要求
+    (1) 非空、(2) 单语句(去掉尾分号后不含 ';')、(3) 开头是只读关键字、
+    (4) 全文不含任何写关键字。任一不满足即判写——只读误判只会多要一次
+    confirm/被读-only 模式拒,而漏判会放行破坏性语句(Codex P0-4)。
+    """
+    stripped = _COMMENTS_AND_STRINGS.sub(" ", sql or "").strip()
+    if not stripped:
+        return True
+    # 多语句:去掉结尾分号后仍含 ';' → 拒
+    if ";" in stripped.rstrip().rstrip(";"):
+        return True
+    if _READ.match(stripped) is None:
+        return True
+    if _WRITE_KEYWORDS.search(stripped):
+        return True
+    return False
 
 
 def tool_allowed(tier: str, mode: str) -> bool:

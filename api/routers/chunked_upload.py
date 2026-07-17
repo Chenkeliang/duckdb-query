@@ -186,10 +186,25 @@ def get_upload_dir() -> str:
     return upload_dir
 
 
+def _is_safe_basename(file_name: str) -> bool:
+    """file_name 是否为安全的纯文件名(无目录分隔 / .. / NUL)。"""
+    if not file_name or file_name in (".", ".."):
+        return False
+    if any(ch in file_name for ch in ("/", "\\", "\x00")):
+        return False
+    return os.path.basename(file_name) == file_name
+
+
 def _get_final_file_path(file_name: str) -> str:
     base_dir = os.path.dirname(get_upload_dir())
     os.makedirs(base_dir, exist_ok=True)
-    return os.path.join(base_dir, file_name)
+    # 纵深防御:只取末段文件名,并断言归一化后仍落在 base_dir 内
+    safe_name = os.path.basename(file_name)
+    final = os.path.join(base_dir, safe_name)
+    base_real = os.path.realpath(base_dir)
+    if os.path.commonpath([os.path.realpath(final), base_real]) != base_real:
+        raise APIValidationError("Resolved upload path escapes the upload directory")
+    return final
 
 
 def get_chunks_dir(upload_id: str) -> str:
@@ -333,8 +348,15 @@ async def init_upload(
         except ValueError as exc:
             raise APIValidationError(str(exc)) from exc
 
+        # 拒绝路径穿越:file_name 必须是纯文件名——否则最终落盘路径可 ../../
+        # 越出上传目录写任意文件
+        if not _is_safe_basename(file_name):
+            raise APIValidationError("Invalid file name: path components are not allowed")
+
         # 从配置中获取文件大小限制
         app_config = config_manager.get_app_config()
+        if file_size <= 0:
+            raise APIValidationError("Invalid file_size")
         if file_size > app_config.max_file_size:
             max_file_size_mb = app_config.max_file_size / 1024 / 1024
             return error_json_response(
@@ -450,6 +472,17 @@ async def upload_chunk(
         # 保存分块
         chunk_path = _build_chunk_path(session, chunk_number)
         chunk_content = await chunk.read()
+
+        # 单块不得超过声明的 chunk_size(末块可更小);累计不得超过声明的
+        # file_size——否则可声明小文件却分块灌入超大数据,绕过 init 的大小门
+        if len(chunk_content) > session["chunk_size"]:
+            raise APIValidationError(
+                f"Chunk {chunk_number} exceeds declared chunk size "
+                f"({len(chunk_content)} > {session['chunk_size']})"
+            )
+        session["received_bytes"] = session.get("received_bytes", 0) + len(chunk_content)
+        if session["received_bytes"] > session["file_size"]:
+            raise APIValidationError("Cumulative upload exceeds declared file size")
 
         with open(chunk_path, "wb") as f:
             f.write(chunk_content)

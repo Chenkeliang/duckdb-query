@@ -66,5 +66,5 @@ def register_all(mcp: FastMCP, client: DuckQueryClient, cfg: Config) -> None:
     add("read")(ai_settings.get_ai_settings)
     add("write")(ai_settings.configure_llm)
     add("write")(ai_settings.test_llm_provider)
-    add("read")(export.export_results)
+    add("write")(export.export_results)  # 写文件的副作用,不在只读模式暴露
     add("read")(passthrough.duckquery_request)

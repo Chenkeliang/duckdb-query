@@ -93,6 +93,26 @@ def contains_keyword(sql_text: str, keyword: str) -> bool:
     return re.search(pattern, sql_text) is not None
 
 
+_DANGEROUS_KEYWORDS = ("DROP", "DELETE", "TRUNCATE", "ALTER", "CREATE", "INSERT", "UPDATE")
+
+
+def _strip_sql_literals_upper(sql: str) -> str:
+    """大写化并把单/双引号字面量内容抹平(避免把字面量里的关键字误判为写操作)。"""
+    return re.sub(r"'(?:''|[^'])*'|\"(?:\"\"|[^\"])*\"", " ", (sql or "").upper())
+
+
+def assert_no_dangerous_write(sql_upper_cleaned: str, save_as_table: Optional[str]) -> None:
+    """拒绝写操作;save_as_table 时放行 CREATE(其 CTAS 由服务端包装)。
+    入参须为已剥离字面量的大写 SQL。execute 与 federated 端点共用,避免任一路径漏拦。"""
+    if save_as_table:
+        return
+    for keyword in _DANGEROUS_KEYWORDS:
+        if keyword != "CREATE" and contains_keyword(sql_upper_cleaned, keyword):
+            raise APIValidationError(
+                f"{keyword} operation is not allowed. Only query operations are supported."
+            )
+
+
 def fix_table_names_in_sql(sql: str, available_tables: List[str]) -> str:
     """
     修复SQL中的表名，为包含特殊字符的表名添加引号
@@ -365,24 +385,8 @@ def execute_duckdb_query(
                 "No tables available in DuckDB. Please upload a file or connect to a database first."
             )
 
-        # 检查SQL中是否包含危险操作（已在上面检查过）
-        dangerous_keywords = [
-            "DROP",
-            "DELETE",
-            "TRUNCATE",
-            "ALTER",
-            "CREATE",
-            "INSERT",
-            "UPDATE",
-        ]
-
-        # 如果要保存为表，允许CREATE操作
-        if not request.save_as_table:
-            for keyword in dangerous_keywords:
-                if keyword != "CREATE" and contains_keyword(sql_upper_clean, keyword):
-                    raise APIValidationError(
-                        f"{keyword} operation is not allowed. Only query operations are supported."
-                    )
+        # 拒绝写操作(save_as_table 时放行 CREATE);与 federated 端点共用同一 helper
+        assert_no_dangerous_write(sql_upper_clean, request.save_as_table)
 
         # 自动添加LIMIT限制（如果SQL中没有LIMIT且是预览模式；INSTALL/LOAD/ATTACH 等语句不接 LIMIT）
         limit = None
@@ -782,6 +786,12 @@ def execute_federated_query(
     attached_aliases = []
     warnings = []
     query_id = f"sync:{x_request_id}" if x_request_id else None
+
+    # 写拦截:此端点独立于 /execute,历史上漏了这道门,MCP federated_query
+    # 可借多语句/CTE 绕过只读判定送达写操作(Codex P0-4)。与 /execute 同 helper。
+    assert_no_dangerous_write(
+        _strip_sql_literals_upper(request.sql), request.save_as_table
+    )
 
     # 预先准备 ATTACH 配置（在连接外验证，避免占用连接时间）
     attach_configs = []

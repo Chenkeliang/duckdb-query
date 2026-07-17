@@ -28,7 +28,8 @@ async def test_export_results_passes_attach_databases(cfg):
         return_value=httpx.Response(200, json={"success": True, "data": {"file_id": "f1"}}))
     out = await export_results(
         DuckQueryClient(cfg), cfg, sql="SELECT * FROM m.t", format="csv",
-        attach_databases=[{"alias": "m", "connection_id": "SORDER"}])
+        attach_databases=[{"alias": "m", "connection_id": "SORDER"}],
+        confirm=True)  # 写文件的确认门
     assert out["file_id"] == "f1"
     sent = json.loads(route.calls.last.request.content)
     assert sent["attach_databases"] == [{"alias": "m", "connection_id": "SORDER"}]
