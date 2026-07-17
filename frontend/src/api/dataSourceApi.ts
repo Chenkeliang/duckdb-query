@@ -16,7 +16,7 @@ import type {
 
 // ==================== Types ====================
 
-export type DatabaseType = 'mysql' | 'postgresql' | 'sqlite' | 'sqlserver' | 'duckdb';
+export type DatabaseType = 'mysql' | 'postgresql' | 'sqlite' | 'duckdb';
 
 export interface CreateConnectionRequest {
     id?: string;

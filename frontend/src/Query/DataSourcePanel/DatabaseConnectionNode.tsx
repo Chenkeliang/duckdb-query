@@ -39,7 +39,6 @@ const getDatabaseIconColor = (type: string): string => {
     postgresql: 'text-primary',
     mysql: 'text-foreground',
     sqlite: 'text-muted-foreground',
-    sqlserver: 'text-destructive',
     duckdb: 'text-primary',
   };
   return colorMap[type] || 'text-muted-foreground';

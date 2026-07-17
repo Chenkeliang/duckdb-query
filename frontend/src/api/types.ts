@@ -126,7 +126,7 @@ export interface DataSource {
   name?: string;
 }
 
-export type DatabaseType = "mysql" | "postgresql" | "sqlite" | "sqlserver" | "duckdb";
+export type DatabaseType = "mysql" | "postgresql" | "sqlite" | "duckdb";
 
 export interface DatabaseConnection {
   id: string;
@@ -207,6 +207,7 @@ export type TaskStatus =
   | "running"
   | "completed"
   | "failed"
+  | "cancelling"  // 后端 task_manager 会返回此中间态,勿漏
   | "cancelled";
 
 export interface AsyncTask {

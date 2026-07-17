@@ -10,7 +10,6 @@ import { Bird, Database, Feather, type LucideIcon } from 'lucide-react';
 export const DATABASE_TYPE_ICONS: Record<string, LucideIcon> = {
   mysql: Database,
   postgresql: Database,
-  sqlserver: Database,
   sqlite: Feather,
   duckdb: Bird,
 };
