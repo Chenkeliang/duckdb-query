@@ -85,8 +85,9 @@ def _build_column_expression(source_alias: str, column_name: str, column_type: s
         return f"COALESCE(TRY_CAST({trimmed} AS BIGINT), 0) AS {safe_alias}"
     if normalized_type == "DOUBLE":
         return f"COALESCE(TRY_CAST({trimmed} AS DOUBLE), 0.0) AS {safe_alias}"
-    if normalized_type == "DATE":
-        return f"TRY_CAST({trimmed} AS TIMESTAMP) AS {safe_alias}"
+    if normalized_type in ("DATE", "TIMESTAMP"):
+        # 由 _resolve_inferred_columns 按列内容定型:纯日期→DATE,含时间→TIMESTAMP
+        return f"TRY_CAST({trimmed} AS {normalized_type}) AS {safe_alias}"
     if normalized_type == "BOOLEAN":
         normalized = f"LOWER({trimmed})"
         true_values = ", ".join(f"'{value}'" for value in sorted(BOOL_TRUE_VALUES))
@@ -104,24 +105,46 @@ def _build_column_expression(source_alias: str, column_name: str, column_type: s
     return f"COALESCE(TRIM({source_text}), '') AS {safe_alias}"
 
 
-def _resolve_decimal_columns(
+def _column_has_content(connection, quoted_temp: str, column_name: str) -> bool:
+    quoted_col = _quote_identifier(column_name)
+    row = connection.execute(
+        f"SELECT count(*) FROM {quoted_temp} "
+        f"WHERE {quoted_col} IS NOT NULL AND trim(CAST({quoted_col} AS VARCHAR)) <> ''"
+    ).fetchone()
+    return bool(row and row[0])
+
+
+def _resolve_inferred_columns(
     connection, quoted_temp: str, column_definitions: List[Tuple[str, str]]
 ) -> List[Tuple[str, str]]:
-    """把用户选的泛型 DECIMAL 解析成按列内数据推断的精确类型。
+    """把用户选的泛型 DECIMAL / DATE 解析成按列内数据推断的精确类型。
 
-    标度取列内最大小数位(数学上不可能舍入),与 CSV 导入促升同一套推断;
-    全整数列推断为 BIGINT(同样无损)。推断失败(混杂文本/零前导/超出
-    DECIMAL(38) 容量)则保持 VARCHAR 忠实文本——宁可不转,绝不静默变值。
+    与 CSV 导入促升同一套推断,共同铁律:宁可不转,绝不静默变值。
+    - DECIMAL:标度取列内最大小数位(数学上不可能舍入);全整数列推断为
+      BIGINT(同样无损)。混杂文本/零前导/超出 DECIMAL(38) 容量 → VARCHAR。
+    - DATE:纯日期列 → DATE,含时间 → TIMESTAMP(与文件导入一致;UI 标签
+      为"日期/时间(自动)")。有内容但非日期 → VARCHAR 忠实文本;全空列
+    保持历史契约(TIMESTAMP 列 + NULL 值)。
     """
     resolved: List[Tuple[str, str]] = []
     for name, col_type in column_definitions:
-        if (col_type or "").strip().upper() == "DECIMAL":
+        requested = (col_type or "").strip().upper()
+        if requested == "DECIMAL":
             promoted = _infer_varchar_column_promotion(connection, quoted_temp, name)
             # 推断器还会认日期/时间戳——但用户点的是"小数",只接受数值类结果
             if promoted and (promoted.startswith("DECIMAL(") or promoted == "BIGINT"):
                 resolved.append((name, promoted))
             else:
                 resolved.append((name, "VARCHAR"))
+        elif requested == "DATE":
+            promoted = _infer_varchar_column_promotion(connection, quoted_temp, name)
+            if promoted in ("DATE", "TIMESTAMP"):
+                resolved.append((name, promoted))
+            elif _column_has_content(connection, quoted_temp, name):
+                resolved.append((name, "VARCHAR"))
+            else:
+                # 全空列:沿用历史契约(TIMESTAMP 列 + NULL 值)
+                resolved.append((name, "TIMESTAMP"))
         else:
             resolved.append((name, col_type))
     return resolved
@@ -138,7 +161,7 @@ def _persist_pasted_rows(
     temp_table, cleanup = load_rows_as_varchar_table(connection, header, rows)
 
     quoted_temp = _quote_identifier(temp_table)
-    column_definitions = _resolve_decimal_columns(
+    column_definitions = _resolve_inferred_columns(
         connection, quoted_temp, column_definitions
     )
     select_list = [

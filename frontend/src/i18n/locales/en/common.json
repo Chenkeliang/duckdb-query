@@ -950,10 +950,10 @@
         "formatJson": "JSON",
         "types": {
           "text": "Text",
-          "int": "Integer",
+          "int": "Integer (64-bit)",
           "decimal": "Decimal (exact)",
           "float": "Float (double)",
-          "date": "Date",
+          "date": "Date & time (auto)",
           "bool": "Boolean"
         },
         "tableName": "Table name",

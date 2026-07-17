@@ -219,3 +219,36 @@ def test_paste_decimal_integer_column_and_empty_cells():
     finally:
         _cleanup_table(table_name)
         file_datasource_manager.delete_file_datasource(table_name)
+
+
+def test_paste_date_infers_pure_date_vs_timestamp():
+    """DATE 泛型按列内容定型(与 CSV 导入一致):纯日期列→DATE,
+    含时间→TIMESTAMP;有内容但非日期→VARCHAR 忠实文本。"""
+    cases = [
+        ([["2026-01-01"], ["2026-03-15"]], "DATE"),
+        ([["2026-01-01 10:30:00"], ["2026-03-15 08:00:00"]], "TIMESTAMP"),
+        ([["abc"], ["2026-01-01"]], "VARCHAR"),  # 混杂:保文本,不造 NULL
+    ]
+    for rows, expected_type in cases:
+        table_name = f"paste_date_{uuid4().hex[:8]}"
+        payload = {
+            "table_name": table_name,
+            "column_names": ["d"],
+            "column_types": ["DATE"],
+            "data_rows": rows,
+            "delimiter": ",",
+            "has_header": False,
+        }
+        response = client.post("/api/paste-data", json=payload)
+        try:
+            assert response.json()["success"] is True, (rows, response.text)
+            with with_duckdb_connection() as con:
+                col_type = {r[1]: r[2] for r in con.execute(
+                    f'PRAGMA table_info("{table_name}")').fetchall()}["d"]
+                assert col_type == expected_type, (rows, col_type)
+                n = con.execute(
+                    f'SELECT count(*) FROM "{table_name}"').fetchone()[0]
+                assert n == len(rows)
+        finally:
+            _cleanup_table(table_name)
+            file_datasource_manager.delete_file_datasource(table_name)

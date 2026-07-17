@@ -951,10 +951,10 @@
         "formatJson": "JSON",
         "types": {
           "text": "文本",
-          "int": "整数",
+          "int": "整数（64 位）",
           "decimal": "小数（精确）",
           "float": "浮点数",
-          "date": "日期",
+          "date": "日期/时间（自动）",
           "bool": "布尔值"
         },
         "tableName": "表名",

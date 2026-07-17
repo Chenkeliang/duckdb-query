@@ -251,6 +251,12 @@ BY NAME、LIMIT、预览 vs 执行语义见 [QUERY_BEHAVIOR_ZH.md](QUERY_BEHAVIO
 | `preview_limit_applied` | 预览且服务端自动追加 LIMIT 时为整数，否则 `null` |
 | `header`（URL 导入请求体） | 是否有表头；**不是** `has_header` |
 
+## 11.1 类型与 cast 契约（v1.2.1 起）
+
+- **cast 目标白名单**：`left_cast`/`right_cast`（JOIN 条件）、`typeConversion`（pivot value，`'auto'` 哨兵除外）、`resolved_casts[].cast`（pivot）最终原样拼进 `TRY_CAST(... AS X)`，统一经 `core.common.duckdb_types.validate_cast_type` 校验——只接受 **DuckDB 规范标量类型**（别名如 `text`/`int8` 会归一到 `VARCHAR`/`BIGINT` 规范拼写返回）或完整 `DECIMAL(p,s)`（`p≤38`、`s≤p`）；**裸 `DECIMAL` 拒绝**（隐性 `DECIMAL(18,3)` 有损），非法值 400/422。
+- **粘贴板 `column_types`**：`VARCHAR`/`INTEGER`(实落 BIGINT)/`DECIMAL`(标度按列内数据推断，全整数列落 BIGINT，混杂列保 VARCHAR)/`DOUBLE`/`DATE`(按内容定型：纯日期→DATE、含时间→TIMESTAMP、非日期内容→VARCHAR、全空列→TIMESTAMP+NULL)/`BOOLEAN`。
+- **类型名归一**：前端 `utils/duckdbTypes.ts` 与后端 `core.common.duckdb_types` 为镜像模块，MySQL `datetime`/`bigint unsigned`、PG `timestamp without time zone` 等源库原生名在判定前归一为 DuckDB 规范名；两侧词表改动必须同步。
+
 ## 12. Git / 发布注意
 
 同一契约字段变更：优先 **同一 PR** 内后端返回 + 前端消费；若分开发布，在本表增加「最低前端/后端版本」备注。
