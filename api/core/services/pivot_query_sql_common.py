@@ -24,9 +24,8 @@ def _strip_trailing_semicolon(sql: str) -> str:
     return sql.rstrip().rstrip(";")
 
 
-def _quote_identifier(identifier: str) -> str:
-    safe = identifier.replace('"', '""')
-    return f'"{safe}"'
+# 标识符转义统一走 core.common.sql_identifiers(消灭历史 8 份副本)
+from core.common.sql_identifiers import quote_identifier as _quote_identifier  # noqa: E402
 
 
 def _build_from_clause(config: PivotQueryConfig) -> str:

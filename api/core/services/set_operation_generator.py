@@ -4,6 +4,7 @@
 import logging
 from typing import List, Optional, Set
 
+from core.common.sql_identifiers import quote_identifier
 from models.set_operation_models import (
     SetOperationConfig,
     SetOperationType,
@@ -111,8 +112,7 @@ class SetOperationQueryGenerator:
 
         table_ref = format_set_table_reference(table_name, attach_aliases)
         if alias:
-            safe_alias = alias.replace('"', '""')
-            table_ref += f' AS "{safe_alias}"'
+            table_ref += f' AS {quote_identifier(alias)}'
 
         if use_by_name:
             # BY NAME 模式：DuckDB 会自动按列名匹配，使用 SELECT * 即可
@@ -122,9 +122,10 @@ class SetOperationQueryGenerator:
             if not selected_columns:
                 columns_sql = "*"
             else:
-                # 转义列名
-                escaped_columns = [f'"{col}"' for col in selected_columns]
-                columns_sql = ", ".join(escaped_columns)
+                # 转义列名(旧实现漏了双引号转义,是注入面——统一走共享函数)
+                columns_sql = ", ".join(
+                    quote_identifier(col) for col in selected_columns
+                )
 
         subquery = f"SELECT {columns_sql} FROM {table_ref}"
 

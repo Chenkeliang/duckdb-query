@@ -33,8 +33,8 @@ def is_identifier_column_name(name: str) -> bool:
     return bool(_IDENTIFIER_NAME_RE.search(str(name).strip().lower()))
 
 
-def _quote_identifier(name: str) -> str:
-    return '"' + str(name).replace('"', '""') + '"'
+# 标识符转义统一走 core.common.sql_identifiers(消灭历史 8 份副本)
+from core.common.sql_identifiers import quote_identifier as _quote_identifier  # noqa: E402
 
 
 def _parse_sniff_columns(columns_value: Any) -> List[Tuple[str, str]]:

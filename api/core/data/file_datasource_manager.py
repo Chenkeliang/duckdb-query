@@ -62,9 +62,8 @@ class ColumnProfile:
         }
 
 
-def _quote_identifier(identifier: str) -> str:
-    escaped = identifier.replace('"', '""')
-    return f'"{escaped}"'
+# 标识符转义统一走 core.common.sql_identifiers(消灭历史 8 份副本)
+from core.common.sql_identifiers import quote_identifier as _quote_identifier  # noqa: E402
 
 
 def _parse_decimal_precision_scale(type_str: str) -> Tuple[Optional[int], Optional[int]]:

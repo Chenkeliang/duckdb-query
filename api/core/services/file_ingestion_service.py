@@ -15,6 +15,7 @@ from uuid import uuid4
 
 import duckdb
 
+from core.common.sql_identifiers import escape_string_literal
 from core.common.timezone_utils import get_current_time_iso
 from core.data.rows_ingest import load_rows_as_varchar_table
 from core.data.excel_import_manager import (
@@ -455,10 +456,13 @@ def import_excel_sheets(
                         ", all_varchar = true" if use_all_varchar_on_load(import_mode) else ""
                     )
                     quoted = _quote_identifier(target_table)
+                    # sheet 名/路径拼进单引号字符串,必须转义单引号——
+                    # 别处 read_* 都转了,唯独这里漏过(Q1's Data 就会破坏 SQL)
                     con.execute(
                         f"CREATE OR REPLACE TABLE {quoted} AS "
-                        f"SELECT * FROM read_xlsx('{file_path}', "
-                        f"sheet='{sheet_config.name}', header=true{all_varchar_clause})"
+                        f"SELECT * FROM read_xlsx('{escape_string_literal(file_path)}', "
+                        f"sheet='{escape_string_literal(sheet_config.name)}', "
+                        f"header=true{all_varchar_clause})"
                     )
                     if should_promote_column_types(import_mode):
                         promote_table_column_types_from_varchar(con, target_table)

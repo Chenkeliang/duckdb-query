@@ -64,9 +64,8 @@ def _sanitize_table_name(table_name: str) -> str:
     return f"pasted_table_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
 
 
-def _quote_identifier(identifier: str) -> str:
-    escaped = identifier.replace('"', '""')
-    return f'"{escaped}"'
+# 标识符转义统一走 core.common.sql_identifiers(消灭历史 8 份副本)
+from core.common.sql_identifiers import quote_identifier as _quote_identifier  # noqa: E402
 
 
 def _build_column_expression(source_alias: str, column_name: str, column_type: str) -> str:
@@ -82,9 +81,11 @@ def _build_column_expression(source_alias: str, column_name: str, column_type: s
         return f"TRY_CAST({trimmed} AS {normalized_type}) AS {safe_alias}"
 
     if normalized_type == "INTEGER":
-        return f"COALESCE(TRY_CAST({trimmed} AS BIGINT), 0) AS {safe_alias}"
+        # 转换失败/空值→NULL,与 DECIMAL/BIGINT/DATE 分支一致(旧行为造 0,
+        # 会把"非数字/缺失"伪装成真实值 0,两种语义不可区分)
+        return f"TRY_CAST({trimmed} AS BIGINT) AS {safe_alias}"
     if normalized_type == "DOUBLE":
-        return f"COALESCE(TRY_CAST({trimmed} AS DOUBLE), 0.0) AS {safe_alias}"
+        return f"TRY_CAST({trimmed} AS DOUBLE) AS {safe_alias}"
     if normalized_type in ("DATE", "TIMESTAMP"):
         # 由 _resolve_inferred_columns 按列内容定型:纯日期→DATE,含时间→TIMESTAMP
         return f"TRY_CAST({trimmed} AS {normalized_type}) AS {safe_alias}"

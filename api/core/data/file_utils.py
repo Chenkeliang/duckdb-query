@@ -225,8 +225,8 @@ def _get_duckdb_file_preview(
     }
 
 
-def _quote_identifier(name: str) -> str:
-    return '"' + name.replace('"', '""') + '"'
+# 标识符转义统一走 core.common.sql_identifiers(消灭历史 8 份副本)
+from core.common.sql_identifiers import quote_identifier as _quote_identifier  # noqa: E402
 
 
 def _swap_staging_table(

@@ -687,3 +687,40 @@ class TestSetOperationErrorHandling:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+class TestSetOperationColumnEscaping:
+    """回归:selected_columns 曾直接 f'"{col}"' 拼进 SQL,漏了双引号转义,
+    构成注入面(注释写'转义列名'却没转)。现走共享 quote_identifier。"""
+
+    def test_quotes_in_column_names_are_escaped(self):
+        from models.set_operation_models import (
+            SetOperationConfig, SetOperationType, TableConfig,
+        )
+        cfg = SetOperationConfig(
+            operation_type=SetOperationType.UNION,
+            tables=[
+                TableConfig(table_name="t1", selected_columns=['a"b', 'c']),
+                TableConfig(table_name="t2", selected_columns=['a"b', 'c']),
+            ],
+        )
+        sql = generate_set_operation_sql(cfg)
+        # 内嵌双引号必须翻倍成 ""——不得出现未转义的裸 "a"b"
+        assert '"a""b"' in sql, sql
+        assert '"a"b"' not in sql.replace('"a""b"', ''), sql
+
+    def test_injection_shaped_column_is_neutralized(self):
+        from models.set_operation_models import (
+            SetOperationConfig, SetOperationType, TableConfig,
+        )
+        evil = 'x" ; DROP TABLE users; --'
+        cfg = SetOperationConfig(
+            operation_type=SetOperationType.UNION,
+            tables=[
+                TableConfig(table_name="t1", selected_columns=[evil]),
+                TableConfig(table_name="t2", selected_columns=[evil]),
+            ],
+        )
+        sql = generate_set_operation_sql(cfg)
+        # 整个恶意串被包成单个转义标识符,分号/DROP 不再是可执行 SQL
+        assert '"x"" ; DROP TABLE users; --"' in sql, sql

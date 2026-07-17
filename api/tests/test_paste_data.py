@@ -103,11 +103,13 @@ def test_paste_data_defaults_for_empty_cells():
 
         with with_duckdb_connection() as con:
             stored_row = con.execute(f'SELECT * FROM "{table_name}"').fetchone()
-            assert stored_row[0] == 0  # INTEGER 默认值
-            assert stored_row[1] == 0.0  # DOUBLE 默认值
-            assert stored_row[2] is False  # BOOLEAN 默认值
-            assert stored_row[3] is None  # DATE 无法解析为 NULL
-            assert stored_row[4] == ""  # VARCHAR 默认为空串
+            # 空数值格→NULL(不再造 0):INTEGER/DOUBLE 现与 DECIMAL/DATE 同语义,
+            # "缺失"不再被伪装成真实值 0
+            assert stored_row[0] is None  # INTEGER 空→NULL
+            assert stored_row[1] is None  # DOUBLE 空→NULL
+            assert stored_row[2] is False  # BOOLEAN 默认值(保持既有语义)
+            assert stored_row[3] is None  # DATE 空→NULL
+            assert stored_row[4] == ""  # VARCHAR 默认为空串(粘贴 VARCHAR 契约)
     finally:
         _cleanup_table(table_name)
 

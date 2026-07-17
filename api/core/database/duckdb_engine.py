@@ -117,10 +117,8 @@ def _resolve_duckdb_extensions(app_config, override_extensions: Optional[List[st
     return resolved
 
 
-def _quote_identifier(identifier: str) -> str:
-    """转义内嵌双引号并加引号包裹单个 SQL 标识符（保留非 ASCII，如中文别名）。"""
-    escaped = str(identifier).replace('"', '""')
-    return f'"{escaped}"'
+# 标识符转义统一走 core.common.sql_identifiers(消灭历史 8 份副本)
+from core.common.sql_identifiers import quote_identifier as _quote_identifier  # noqa: E402
 
 
 def build_attach_sql(alias: str, db_config: Dict[str, Any]) -> str:
