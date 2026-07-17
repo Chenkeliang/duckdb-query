@@ -12,6 +12,12 @@
 
 import { nanoid } from 'nanoid';
 import { sqlStringLiteral } from '@/utils/sqlLiteral';
+import {
+    isDateOrTimestampType,
+    isIntegerType,
+    isNumericType,
+    normalizeTypeName,
+} from '@/utils/duckdbTypes';
 import type {
     FilterNode,
     FilterCondition,
@@ -576,29 +582,32 @@ export function validateValueType(value: FilterValue, columnType: string): Valid
         return { valid: true };
     }
 
-    const type = columnType.toUpperCase();
+    // 分类判定统一走 utils/duckdbTypes:MySQL datetime/PG timestamp without
+    // time zone 等源库原生名先归一;也修掉了旧 includes('INT') 把 INTERVAL
+    // 误当整数校验的问题。
+    const normalized = normalizeTypeName(columnType);
     const strValue = String(value);
 
     // 整数类型
-    if (type.includes('INT') || type.includes('BIGINT') || type.includes('SMALLINT') || type.includes('TINYINT')) {
+    if (isIntegerType(columnType)) {
         if (!/^-?\d+$/.test(strValue)) {
             return { valid: false, error: 'filter.error.invalidInteger', details: strValue };
         }
     }
-    // 浮点类型
-    else if (type.includes('DOUBLE') || type.includes('DECIMAL') || type.includes('FLOAT') || type.includes('REAL')) {
+    // 小数类型(DECIMAL/DOUBLE/FLOAT)
+    else if (isNumericType(columnType)) {
         if (isNaN(Number(strValue))) {
             return { valid: false, error: 'filter.error.invalidNumber', details: strValue };
         }
     }
-    // 日期时间类型 (DATETIME, TIMESTAMP) - 需要放在 DATE 检查之前
-    else if (type.includes('DATETIME') || type.includes('TIMESTAMP')) {
+    // 时间戳类型(含 MySQL DATETIME 归一后的 TIMESTAMP 族)
+    else if (isDateOrTimestampType(columnType) && normalized !== 'DATE') {
         if (isNaN(Date.parse(strValue))) {
             return { valid: false, error: 'filter.error.invalidTimestamp', details: strValue };
         }
     }
     // 日期类型 (纯 DATE，不包含时间)
-    else if (type.includes('DATE')) {
+    else if (normalized === 'DATE') {
         // 严格要求 ISO 格式：YYYY-MM-DD 或 YYYY-MM-DD HH:MM(:SS)
         // 不使用 Date.parse() 因为它接受太多格式（如 2024/12/23）
         if (!/^\d{4}-\d{2}-\d{2}(\s+\d{2}:\d{2}(:\d{2})?)?$/.test(strValue)) {
@@ -606,7 +615,7 @@ export function validateValueType(value: FilterValue, columnType: string): Valid
         }
     }
     // 布尔类型
-    else if (type.includes('BOOL')) {
+    else if (normalized === 'BOOLEAN') {
         const lower = strValue.toLowerCase();
         if (!['true', 'false', '1', '0'].includes(lower)) {
             return { valid: false, error: 'filter.error.invalidBoolean', details: strValue };

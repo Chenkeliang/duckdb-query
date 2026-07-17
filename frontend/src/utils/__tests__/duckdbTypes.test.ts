@@ -38,7 +38,8 @@ describe('duckdbTypes', () => {
     it('should strip length from VARCHAR type', () => {
       expect(normalizeTypeName('VARCHAR(255)')).toBe('VARCHAR');
       expect(normalizeTypeName('varchar(100)')).toBe('VARCHAR');
-      expect(normalizeTypeName('CHAR(10)')).toBe('CHAR');
+      // CHAR 是 DuckDB 的 VARCHAR 别名(实测 typeof('a'::CHAR) = VARCHAR)
+      expect(normalizeTypeName('CHAR(10)')).toBe('VARCHAR');
     });
 
     it('should handle types without parameters', () => {
@@ -208,22 +209,25 @@ describe('duckdbTypes', () => {
       });
     });
 
-    describe('numeric + numeric → DOUBLE', () => {
-      it('should recommend DOUBLE for integer + float', () => {
-        expect(getRecommendedCastType('INTEGER', 'DOUBLE')).toBe('DOUBLE');
-        expect(getRecommendedCastType('BIGINT', 'FLOAT')).toBe('DOUBLE');
+    describe('numeric + numeric → VARCHAR(无损)', () => {
+      // 回归:曾推荐 DOUBLE——大整数(>2^53)/高精度 DECIMAL 经 DOUBLE
+      // 比较会静默丢值;统一推荐 VARCHAR 文本精确比较
+      it('should recommend VARCHAR for integer + float', () => {
+        expect(getRecommendedCastType('INTEGER', 'DOUBLE')).toBe('VARCHAR');
+        expect(getRecommendedCastType('BIGINT', 'FLOAT')).toBe('VARCHAR');
       });
 
-      it('should recommend DOUBLE for integer + decimal', () => {
-        expect(getRecommendedCastType('INTEGER', 'DECIMAL')).toBe('DOUBLE');
-        expect(getRecommendedCastType('DECIMAL(18,4)', 'BIGINT')).toBe('DOUBLE');
+      it('should recommend VARCHAR for integer + decimal', () => {
+        expect(getRecommendedCastType('INTEGER', 'DECIMAL')).toBe('VARCHAR');
+        expect(getRecommendedCastType('DECIMAL(18,4)', 'BIGINT')).toBe('VARCHAR');
       });
     });
 
-    describe('datetime types → TIMESTAMP', () => {
-      it('should recommend TIMESTAMP for datetime + numeric', () => {
-        expect(getRecommendedCastType('DATE', 'INTEGER')).toBe('TIMESTAMP');
-        expect(getRecommendedCastType('BIGINT', 'TIMESTAMP')).toBe('TIMESTAMP');
+    describe('datetime 组合', () => {
+      it('should recommend VARCHAR for datetime + numeric', () => {
+        // 把 INTEGER 硬转 TIMESTAMP 是纪元误读陷阱,改荐无损 VARCHAR
+        expect(getRecommendedCastType('DATE', 'INTEGER')).toBe('VARCHAR');
+        expect(getRecommendedCastType('BIGINT', 'TIMESTAMP')).toBe('VARCHAR');
       });
 
       it('should recommend TIMESTAMP for different datetime types', () => {
@@ -358,14 +362,17 @@ describe('duckdbTypes', () => {
   });
 
   describe('DUCKDB_CAST_TYPES', () => {
-    it('should contain common cast types', () => {
-      expect(DUCKDB_CAST_TYPES).toContain('VARCHAR');
+    it('should contain safe cast types with VARCHAR first', () => {
+      expect(DUCKDB_CAST_TYPES[0]).toBe('VARCHAR');
       expect(DUCKDB_CAST_TYPES).toContain('BIGINT');
-      expect(DUCKDB_CAST_TYPES).toContain('INTEGER');
       expect(DUCKDB_CAST_TYPES).toContain('DOUBLE');
+      expect(DUCKDB_CAST_TYPES).toContain('DECIMAL(38,6)');
       expect(DUCKDB_CAST_TYPES).toContain('TIMESTAMP');
       expect(DUCKDB_CAST_TYPES).toContain('DATE');
       expect(DUCKDB_CAST_TYPES).toContain('BOOLEAN');
+      // 回归:INTEGER(32 位溢出→NULL→JOIN 漏配)与 DECIMAL(18,4)(静默截断)已移除
+      expect(DUCKDB_CAST_TYPES).not.toContain('INTEGER');
+      expect(DUCKDB_CAST_TYPES).not.toContain('DECIMAL(18,4)');
     });
   });
 });

@@ -103,7 +103,8 @@ function mapType(arrow: string): string {
   if (s.includes('bool')) return 'BOOLEAN';
   if (s.includes('timestamp')) return 'TIMESTAMP';
   if (s.includes('date')) return 'DATE';
-  if (s.includes('decimal') || s.includes('float') || s.includes('double')) return 'DOUBLE';
+  if (s.includes('decimal')) return 'DECIMAL'; // 值已按 scale 还原,类型标签如实报 DECIMAL
+  if (s.includes('float') || s.includes('double')) return 'DOUBLE';
   if (s.includes('int')) return s.includes('64') ? 'BIGINT' : 'INTEGER';
   return 'VARCHAR';
 }

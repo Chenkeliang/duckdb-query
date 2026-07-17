@@ -483,7 +483,9 @@ describe('useTypeConflict', () => {
       expect(result.current.conflicts[0].recommendedType).toBe('VARCHAR');
     });
 
-    it('should recommend TIMESTAMP for datetime + numeric', () => {
+    it('should recommend lossless VARCHAR for datetime + numeric', () => {
+      // 回归:曾推荐 TIMESTAMP——把 BIGINT 毫秒数硬转 TIMESTAMP 是纪元
+      // 误读陷阱,统一推荐无损 VARCHAR,由用户显式决定语义转换
       const columnPairs: ColumnPair[] = [
         {
           leftLabel: 'orders',
@@ -497,7 +499,7 @@ describe('useTypeConflict', () => {
 
       const { result } = renderHook(() => useTypeConflict(columnPairs));
 
-      expect(result.current.conflicts[0].recommendedType).toBe('TIMESTAMP');
+      expect(result.current.conflicts[0].recommendedType).toBe('VARCHAR');
     });
   });
 });

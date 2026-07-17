@@ -1,6 +1,10 @@
 /** 查询结果图表 —— 纯函数:列分类 / 默认 spec / 校验 / 生成聚合 SQL / 客户端聚合。 */
 
 import { sqlStringLiteral } from '@/utils/sqlLiteral';
+import {
+  isNumericType as isDuckDBNumericType,
+  isDateOrTimestampType,
+} from '@/utils/duckdbTypes';
 
 export type ChartType = 'bar' | 'line' | 'area' | 'pie' | 'donut' | 'kpi';
 export type AggFn = 'sum' | 'count' | 'avg' | 'min' | 'max';
@@ -19,24 +23,19 @@ export interface ColumnInfo {
   type: string;
 }
 
-const NUMERIC_RE = /^(u?int(eger)?|u?bigint|u?smallint|mediumint|u?tinyint|u?hugeint|int[248]|decimal|numeric|double|float|real)\b/i;
-
 /** DuckDB 标识符转义:内部双引号翻倍,避免列名注入。 */
 function q(id: string): string {
   return `"${String(id).replace(/"/g, '""')}"`;
 }
 
+// 类型判定统一走 utils/duckdbTypes(别名/源库原生名在那里归一),
+// 本文件仅保留导出名以稳住既有调用方。
 export function isNumericType(type: string): boolean {
-  const t = (type || '').trim().toLowerCase();
-  if (t.startsWith('bool')) return false;
-  return NUMERIC_RE.test(t);
+  return isDuckDBNumericType(type);
 }
 
 export function isDateType(type: string): boolean {
-  const t = (type || '').toUpperCase().replace(/\(.*\)/g, '').trim();
-  if (t === 'DATE' || t === 'DATETIME') return true;
-  if (t.startsWith('TIMESTAMP')) return true;
-  return false; // 排除 TIME
+  return isDateOrTimestampType(type); // 排除 TIME/INTERVAL
 }
 
 export function classifyColumns(columns: ColumnInfo[]): {

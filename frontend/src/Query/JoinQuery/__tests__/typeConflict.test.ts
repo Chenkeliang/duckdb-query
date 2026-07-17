@@ -11,6 +11,8 @@ import {
   areTypesCompatible,
   getRecommendedCastType,
   generateConflictKey,
+  normalizeTypeName,
+  DUCKDB_CAST_TYPES,
 } from '@/utils/duckdbTypes';
 
 describe('JoinQueryPanel Type Conflict Integration', () => {
@@ -42,9 +44,10 @@ describe('JoinQueryPanel Type Conflict Integration', () => {
       expect(recommended).toBe('VARCHAR');
     });
 
-    it('should recommend DOUBLE for numeric conflicts', () => {
+    it('should recommend lossless VARCHAR for numeric conflicts', () => {
+      // 回归:曾推荐 DOUBLE——大整数/高精度小数经 DOUBLE 比较会静默丢值
       const recommended = getRecommendedCastType('INTEGER', 'DECIMAL(18,4)');
-      expect(recommended).toBe('DOUBLE');
+      expect(recommended).toBe('VARCHAR');
     });
   });
 
@@ -113,13 +116,13 @@ describe('JoinQueryPanel Type Conflict Integration', () => {
       { left: 'TEXT', right: 'BIGINT', expected: 'VARCHAR' },
       { left: 'DATE', right: 'VARCHAR', expected: 'VARCHAR' },
       
-      // Numeric + numeric → DOUBLE
-      { left: 'INTEGER', right: 'DECIMAL(18,4)', expected: 'DOUBLE' },
-      
-      // DateTime + any → TIMESTAMP
-      { left: 'DATE', right: 'INTEGER', expected: 'TIMESTAMP' },
-      { left: 'TIMESTAMP', right: 'BIGINT', expected: 'TIMESTAMP' },
-      
+      // Numeric + numeric → VARCHAR(无损文本比较;DOUBLE 会丢大整数/高精度小数)
+      { left: 'INTEGER', right: 'DECIMAL(18,4)', expected: 'VARCHAR' },
+
+      // DateTime + 非时间类型 → VARCHAR(把 INTEGER 硬转 TIMESTAMP 是纪元误读陷阱)
+      { left: 'DATE', right: 'INTEGER', expected: 'VARCHAR' },
+      { left: 'TIMESTAMP', right: 'BIGINT', expected: 'VARCHAR' },
+
       // Complex types → VARCHAR
       { left: 'JSON', right: 'INTEGER', expected: 'VARCHAR' },
       { left: 'UUID', right: 'BIGINT', expected: 'VARCHAR' },
@@ -129,6 +132,51 @@ describe('JoinQueryPanel Type Conflict Integration', () => {
       it(`should recommend ${expected} for ${left} + ${right}`, () => {
         expect(getRecommendedCastType(left, right)).toBe(expected);
       });
+    });
+  });
+
+  describe('federated source-native type names (regression)', () => {
+    // 回归:联邦表详情返回源库原生类型名,旧词表不认,DuckDB TIMESTAMP ×
+    // MySQL datetime / PG timestamp without time zone 被误判冲突,
+    // 强迫用户走无谓的类型转换对话框。
+    const compatiblePairs = [
+      ['TIMESTAMP', 'datetime'],                        // MySQL
+      ['TIMESTAMP', 'timestamp without time zone'],     // PostgreSQL
+      ['TIMESTAMP', 'timestamp(0) without time zone'],  // PG 带精度参数
+      ['DATE', 'datetime'],
+      ['BIGINT', 'bigint unsigned'],                    // MySQL 无符号
+      ['BIGINT', 'int8'],                               // INT8 = 8 字节 = BIGINT
+      ['VARCHAR', 'character varying'],                 // PG
+      ['VARCHAR', 'mediumtext'],                        // MySQL
+      ['DOUBLE', 'double precision'],                   // PG
+    ] as const;
+
+    compatiblePairs.forEach(([left, right]) => {
+      it(`should treat ${left} × ${right} as compatible`, () => {
+        expect(areTypesCompatible(left, right)).toBe(true);
+      });
+    });
+
+    it('normalizes source-native and alias spellings to canonical names', () => {
+      expect(normalizeTypeName('datetime')).toBe('TIMESTAMP');
+      expect(normalizeTypeName('timestamp(3) without time zone')).toBe('TIMESTAMP');
+      expect(normalizeTypeName('bigint unsigned')).toBe('UBIGINT');
+      expect(normalizeTypeName('INT8')).toBe('BIGINT');
+      expect(normalizeTypeName('NUMERIC(10,2)')).toBe('DECIMAL');
+      expect(normalizeTypeName('character varying')).toBe('VARCHAR');
+      expect(normalizeTypeName('INTEGER[]')).toBe('ARRAY');
+    });
+  });
+
+  describe('cast target safety (regression)', () => {
+    it('offers only lossless-or-explicit targets, VARCHAR first', () => {
+      // 回归:曾提供 INTEGER(32 位,>2^31 溢出成 NULL → JOIN 漏匹配)
+      // 与 DECIMAL(18,4)(超限静默截断)
+      expect(DUCKDB_CAST_TYPES[0]).toBe('VARCHAR');
+      expect(DUCKDB_CAST_TYPES).not.toContain('INTEGER');
+      expect(DUCKDB_CAST_TYPES).not.toContain('DECIMAL(18,4)');
+      expect(DUCKDB_CAST_TYPES).toContain('BIGINT');
+      expect(DUCKDB_CAST_TYPES).toContain('DECIMAL(38,6)');
     });
   });
 });

@@ -42,6 +42,7 @@ import {
     validateValueType,
     getDefaultPlacement,
 } from './filterUtils';
+import { isNumericType, normalizeTypeName } from '@/utils/duckdbTypes';
 
 export interface FilterPopoverProps {
     /** 模式：添加或编辑 */
@@ -482,16 +483,13 @@ function formatInitialValue(value: any): string {
 function parseInputValue(input: string, columnType?: string): FilterValue {
     if (input === '') return '';
 
-    const type = columnType?.toUpperCase() || '';
-
-    // 数字类型
-    if (type.includes('INT') || type.includes('DOUBLE') || type.includes('FLOAT') || type.includes('DECIMAL')) {
+    // 类型判定统一走 utils/duckdbTypes(别名/源库原生名先归一)
+    if (columnType && isNumericType(columnType)) {
         const num = Number(input);
         if (!isNaN(num)) return num;
     }
 
-    // 布尔类型
-    if (type.includes('BOOL')) {
+    if (columnType && normalizeTypeName(columnType) === 'BOOLEAN') {
         const lower = input.toLowerCase();
         if (lower === 'true' || lower === '1') return true;
         if (lower === 'false' || lower === '0') return false;
