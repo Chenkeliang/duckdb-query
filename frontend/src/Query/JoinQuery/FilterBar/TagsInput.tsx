@@ -10,6 +10,7 @@ import { useTranslation } from 'react-i18next';
 import { X } from 'lucide-react';
 import { Badge } from '@/components/ui/badge';
 import { Input } from '@/components/ui/input';
+import { parseNumericPreservingPrecision } from './filterUtils';
 
 export interface TagsInputProps {
     /** 当前值列表 */
@@ -48,16 +49,11 @@ export const TagsInput: React.FC<TagsInputProps> = ({
         // 按逗号、换行、分号分割
         const parts = raw.split(/[,\n;]+/).map(s => s.trim()).filter(Boolean);
 
+        // 仅精确往返才转 number,否则保留字符串(避免 IN 列表里的大整数 ID
+        // 被 Number() 静默舍入而匹配错行)
         return parts.map(part => {
-            if (valueType === 'number') {
-                const num = Number(part);
-                return isNaN(num) ? part : num;
-            }
-            if (valueType === 'auto') {
-                const num = Number(part);
-                if (!isNaN(num) && part !== '') {
-                    return num;
-                }
+            if (valueType === 'number' || valueType === 'auto') {
+                return parseNumericPreservingPrecision(part);
             }
             return part;
         });

@@ -41,6 +41,7 @@ import {
     createCondition,
     validateValueType,
     getDefaultPlacement,
+    parseNumericPreservingPrecision,
 } from './filterUtils';
 import { isNumericType, normalizeTypeName } from '@/utils/duckdbTypes';
 
@@ -483,10 +484,10 @@ function formatInitialValue(value: any): string {
 function parseInputValue(input: string, columnType?: string): FilterValue {
     if (input === '') return '';
 
-    // 类型判定统一走 utils/duckdbTypes(别名/源库原生名先归一)
+    // 类型判定统一走 utils/duckdbTypes(别名/源库原生名先归一);
+    // 数值仅在精确往返时转 number,否则保留字符串以免丢大整数/高精度小数
     if (columnType && isNumericType(columnType)) {
-        const num = Number(input);
-        if (!isNaN(num)) return num;
+        return parseNumericPreservingPrecision(input);
     }
 
     if (columnType && normalizeTypeName(columnType) === 'BOOLEAN') {

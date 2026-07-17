@@ -254,17 +254,23 @@ const ExcelSheetSelector: React.FC<ExcelSheetSelectorProps> = ({
         };
       });
 
+      // variant 是给 JSON/JSONL 的"嵌套 JSON 列"模式,Excel 单元格无此概念,
+      // 后端 Excel 端点只接受 auto/literal(否则 422)。全局选择器可能停在
+      // variant,这里归一到 auto,避免用户导 Excel 时莫名报错。
+      const excelImportMode: FileImportMode =
+        importMode === 'variant' ? 'auto' : importMode;
+
       let result: any;
       if (sourceType === 'server' && serverPath) {
         result = await importServerExcelSheets(
           serverPath,
           sheetsPayload,
-          importMode
+          excelImportMode
         );
       } else {
         result = await importExcelSheets({
           file_id: fileId!,
-          import_mode: importMode,
+          import_mode: excelImportMode,
           sheets: sheetsPayload,
         });
       }

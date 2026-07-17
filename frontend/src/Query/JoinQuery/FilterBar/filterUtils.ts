@@ -535,6 +535,23 @@ function parseInValues(valuesStr: string): (string | number)[] {
 }
 
 /**
+ * 把筛选输入解析成数值,但仅当能**精确往返**时才返回 number,否则保留原字符串。
+ *
+ * 背景:直接 `Number('9007199254740993')` 会静默舍入到相邻 float64,BIGINT/ID
+ * 列的大整数筛选就会匹配错行;高精度 DECIMAL 同理被截断。字符串形态在 SQL 里
+ * 被单引号包裹、DuckDB 隐式转换比较,精确无损。
+ * 规则:`String(Number(x)) === x` 才认为可安全用 number(过滤掉大整数、
+ * 高精度小数、前导零、科学计数法等一切会变形的输入)。
+ */
+export function parseNumericPreservingPrecision(input: string): string | number {
+    const n = Number(input);
+    if (!Number.isNaN(n) && String(n) === input) {
+        return n;
+    }
+    return input;
+}
+
+/**
  * 解析单个值
  */
 function parseValue(str: string): FilterValue {
@@ -557,14 +574,8 @@ function parseValue(str: string): FilterValue {
         return inner.replace(/''/g, "'").replace(/""/g, '"');
     }
 
-    // 数字
-    const num = Number(trimmed);
-    if (!isNaN(num)) {
-        return num;
-    }
-
-    // 默认作为字符串
-    return trimmed;
+    // 数字(仅精确往返才转 number,否则保留字符串以免丢大整数/高精度)
+    return parseNumericPreservingPrecision(trimmed);
 }
 
 // ============================================

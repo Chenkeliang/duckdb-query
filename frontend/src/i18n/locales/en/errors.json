@@ -4,7 +4,6 @@
   "ITEM_CREATED": "Item created successfully",
   "ITEM_UPDATED": "Item updated successfully",
   "ITEM_DELETED": "Item deleted successfully",
-
   "CONNECTION_TEST_SUCCESS": "Connection test successful",
   "CONNECTION_TEST_FAILED": "Connection test failed",
   "CONNECTION_CREATED": "Database connection created successfully",
@@ -13,21 +12,18 @@
   "CONNECTION_REFRESHED": "Connection refreshed successfully",
   "CONNECTION_FAILED": "Connection failed",
   "CONNECTION_TIMEOUT": "Connection timeout",
-
   "MYSQL_CONNECTION_SUCCESS": "MySQL connection successful",
   "MYSQL_CONNECTION_FAILED": "MySQL connection failed",
   "POSTGRESQL_CONNECTION_SUCCESS": "PostgreSQL connection successful",
   "POSTGRESQL_CONNECTION_FAILED": "PostgreSQL connection failed",
   "SQLITE_CONNECTION_SUCCESS": "SQLite connection successful",
   "SQLITE_CONNECTION_FAILED": "SQLite connection failed",
-
   "DATASOURCES_RETRIEVED": "Data sources retrieved successfully",
   "DATASOURCE_RETRIEVED": "Data source retrieved successfully",
   "DATASOURCE_CREATED": "Data source created successfully",
   "DATASOURCE_UPDATED": "Data source updated successfully",
   "DATASOURCE_DELETED": "Data source deleted",
   "DATASOURCE_NOT_FOUND": "Data source not found",
-
   "TABLES_RETRIEVED": "Tables retrieved successfully",
   "TABLE_RETRIEVED": "Table details retrieved successfully",
   "TABLE_CREATED": "Table created successfully",
@@ -35,7 +31,6 @@
   "TABLE_REFRESHED": "Table metadata refreshed successfully",
   "TABLE_NOT_FOUND": "Table not found",
   "SCHEMAS_RETRIEVED": "Schemas retrieved successfully",
-
   "QUERY_SUCCESS": "Query successful",
   "QUERY_EXECUTED": "Query executed successfully",
   "QUERY_CANCELLED": "Query cancelled",
@@ -46,23 +41,18 @@
   "EXPORT_SUCCESS": "Export successful",
   "EXPORT_FAILED": "Export failed",
   "EXPORT_NO_DATA": "No data to export",
-
   "COPY_SUCCESS": "Copy successful",
   "COPY_FAILED": "Copy failed",
-
   "ASYNC_TASK_COMPLETED": "Async task completed",
   "DATASOURCES_REFRESHED": "Data sources refreshed",
-
   "PIVOT_QUERY_GENERATED": "Pivot query generated successfully",
   "PIVOT_QUERY_PREVIEWED": "Pivot query preview successful",
   "PIVOT_QUERY_INVALID": "Pivot query configuration invalid",
-
   "SET_OPERATION_GENERATED": "Set operation generated successfully",
   "SET_OPERATION_PREVIEWED": "Set operation preview successful",
   "SET_OPERATION_VALIDATED": "Set operation validation passed",
   "SET_OPERATION_EXECUTED": "Set operation executed successfully",
   "SET_OPERATION_EXPORTED": "Set operation exported successfully",
-
   "TASK_SUBMITTED": "Task submitted",
   "TASK_RETRIEVED": "Task details retrieved successfully",
   "TASKS_RETRIEVED": "Tasks retrieved successfully",
@@ -74,7 +64,6 @@
   "TASK_RETRY_SUCCESS": "Task retry successful",
   "TASK_DOWNLOAD_SUCCESS": "Task result download successful",
   "TASK_CANCEL_NOT_ALLOWED": "Task cannot be cancelled",
-
   "FILE_UPLOADED": "File uploaded successfully",
   "FILE_IMPORTED": "File imported successfully",
   "FILE_DOWNLOADED": "File downloaded successfully",
@@ -83,25 +72,20 @@
   "FILE_TOO_LARGE": "File too large",
   "FILE_TYPE_NOT_SUPPORTED": "File type not supported",
   "SECURITY_ERROR": "File security validation failed",
-
   "CHUNKED_UPLOAD_INIT": "Chunked upload initialized successfully",
   "CHUNKED_UPLOAD_CHUNK": "Chunk uploaded successfully",
   "CHUNKED_UPLOAD_COMPLETE": "Chunked upload completed",
   "CHUNKED_UPLOAD_CANCELLED": "Chunked upload cancelled",
   "CHUNKED_UPLOAD_FAILED": "Chunked upload failed",
-
   "URL_READ_SUCCESS": "URL read successfully",
   "URL_INFO_RETRIEVED": "URL info retrieved successfully",
   "URL_READ_FAILED": "URL read failed",
   "URL_INVALID": "Invalid URL format",
-
   "EXCEL_SHEETS_INSPECTED": "Excel sheets inspected successfully",
   "EXCEL_SHEETS_IMPORTED": "Excel sheets imported successfully",
   "EXCEL_IMPORT_FAILED": "Excel import failed",
-
   "PASTE_DATA_SUCCESS": "Paste data successful",
   "PASTE_DATA_FAILED": "Paste data failed",
-
   "FAVORITES_RETRIEVED": "Favorites retrieved successfully",
   "FAVORITE_RETRIEVED": "Favorite retrieved successfully",
   "FAVORITE_CREATED": "Favorite created successfully",
@@ -110,17 +94,14 @@
   "FAVORITE_USAGE_INCREMENTED": "Favorite usage count updated",
   "FAVORITE_NOT_FOUND": "Favorite not found",
   "FAVORITE_NAME_EXISTS": "Favorite name already exists",
-
   "SERVER_MOUNTS_RETRIEVED": "Server mounts retrieved successfully",
   "SERVER_DIRECTORY_BROWSED": "Directory browsed successfully",
   "SERVER_FILE_IMPORTED": "Server file imported successfully",
   "SERVER_FILE_NOT_FOUND": "Server file not found",
-
   "POOL_STATUS_RETRIEVED": "Pool status retrieved successfully",
   "POOL_RESET_SUCCESS": "Pool reset successful",
   "ERROR_STATS_RETRIEVED": "Error statistics retrieved successfully",
   "ERRORS_CLEARED": "Error records cleared",
-
   "SETTINGS_RETRIEVED": "Settings retrieved successfully",
   "SETTINGS_UPDATED": "Settings updated successfully",
   "SETTINGS_RESET": "Settings reset",
@@ -139,13 +120,10 @@
   "SHORTCUT_RESET_FAILED": "Failed to reset shortcut",
   "SHORTCUTS_RESET_ALL": "All shortcuts reset to defaults",
   "SHORTCUTS_RESET_ALL_FAILED": "Failed to reset shortcuts",
-
   "APP_FEATURES_RETRIEVED": "App features retrieved successfully",
-
   "BATCH_DELETE_SUCCESS": "Batch delete successful",
   "BATCH_TEST_SUCCESS": "Batch test successful",
   "BATCH_OPERATION_FAILED": "Batch operation failed",
-
   "VALIDATION_ERROR": "Validation failed",
   "INVALID_REQUEST": "Invalid request parameters",
   "RESOURCE_NOT_FOUND": "Resource not found",
@@ -158,5 +136,14 @@
   "FORBIDDEN": "Forbidden",
   "BAD_REQUEST": "Bad request",
   "BAD_GATEWAY": "Bad gateway",
-  "SERVICE_UNAVAILABLE": "Service unavailable"
+  "SERVICE_UNAVAILABLE": "Service unavailable",
+  "UNKNOWN_ERROR": "An unknown error occurred",
+  "COLUMN_NOT_FOUND": "Column not found",
+  "SQL_SYNTAX_ERROR": "SQL syntax error",
+  "TYPE_CONVERSION_ERROR": "Type conversion failed",
+  "DUPLICATE_KEY_ERROR": "Duplicate key",
+  "CONSTRAINT_VIOLATION": "Constraint violation",
+  "GROUP_BY_ERROR": "GROUP BY error",
+  "CONNECTION_ERROR": "Connection error",
+  "DATABASE_CONNECTION_ERROR": "Database connection failed"
 }
