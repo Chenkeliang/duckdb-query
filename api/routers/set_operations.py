@@ -9,6 +9,7 @@ from typing import Any, Iterator, Optional, Set
 
 import duckdb
 from core.common.config_manager import config_manager
+from core.common.sql_identifiers import quote_identifier
 from core.common.utils import describe_query_column_types
 from core.database.duckdb_engine import (
     timed_fetch_query_records,
@@ -378,8 +379,8 @@ def execute_set_operation(
                 if table_name in existing_table_names:
                     logger.warning(f"Table {table_name} already exists，will be replaced")
 
-                # 直接创建表，不使用fetchdf
-                create_sql = f'CREATE OR REPLACE TABLE "{table_name}" AS ({sql})'
+                # 直接创建表，不使用fetchdf(表名走 quote_identifier 转义防注入)
+                create_sql = f'CREATE OR REPLACE TABLE {quote_identifier(table_name)} AS ({sql})'
                 logger.info(f"Executing create table SQL: {create_sql}")
                 con.execute(create_sql)
 

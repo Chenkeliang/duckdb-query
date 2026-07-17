@@ -117,8 +117,11 @@ def _resolve_duckdb_extensions(app_config, override_extensions: Optional[List[st
     return resolved
 
 
-# 标识符转义统一走 core.common.sql_identifiers(消灭历史 8 份副本)
-from core.common.sql_identifiers import quote_identifier as _quote_identifier  # noqa: E402
+# 标识符/字符串转义统一走 core.common.sql_identifiers(消灭历史 8 份副本)
+from core.common.sql_identifiers import (  # noqa: E402
+    escape_string_literal,
+    quote_identifier as _quote_identifier,
+)
 
 
 def build_attach_sql(alias: str, db_config: Dict[str, Any]) -> str:
@@ -157,7 +160,9 @@ def build_attach_sql(alias: str, db_config: Dict[str, Any]) -> str:
         conn_str = f"host={db_config['host']} user={username} password={db_config.get('password', '')} database={db_config['database']}"
         if db_config.get('port'):
             conn_str += f" port={db_config['port']}"
-        return f"ATTACH '{conn_str}' AS {quoted_alias} (TYPE mysql)"
+        # 整个连接串是单引号 SQL 字面量,必须转义单引号——否则含 ' 的密码/主机
+        # 名可突破字面量注入(DuckDB 解析层还原 '' 后驱动仍拿到正确值)
+        return f"ATTACH '{escape_string_literal(conn_str)}' AS {quoted_alias} (TYPE mysql)"
 
     elif db_type in ('postgresql', 'postgres'):
         if not username:
@@ -166,21 +171,21 @@ def build_attach_sql(alias: str, db_config: Dict[str, Any]) -> str:
         conn_str = f"host={db_config['host']} dbname={db_config['database']} user={username} password={db_config.get('password', '')}"
         if db_config.get('port'):
             conn_str += f" port={db_config['port']}"
-        return f"ATTACH '{conn_str}' AS {quoted_alias} (TYPE postgres)"
+        return f"ATTACH '{escape_string_literal(conn_str)}' AS {quoted_alias} (TYPE postgres)"
 
     elif db_type == 'sqlite':
         # SQLite 使用文件路径（兼容 path、database 两种参数键）
         path = db_config.get('path') or db_config.get('database')
         if not path:
             raise ValueError("SQLite connection missing file path (path or database)")
-        return f"ATTACH '{path}' AS {quoted_alias} (TYPE sqlite)"
+        return f"ATTACH '{escape_string_literal(path)}' AS {quoted_alias} (TYPE sqlite)"
 
     elif db_type == 'duckdb':
         # DuckDB 文件：原生只读挂载，零拷贝、与本地表同速（无 scanner 开销）
         path = db_config.get('path') or db_config.get('database')
         if not path:
             raise ValueError("DuckDB connection missing file path (path or database)")
-        return f"ATTACH '{path}' AS {quoted_alias} (READ_ONLY)"
+        return f"ATTACH '{escape_string_literal(path)}' AS {quoted_alias} (READ_ONLY)"
 
     else:
         raise ValueError(f"Unsupported database type: {db_type}")

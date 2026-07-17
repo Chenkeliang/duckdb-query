@@ -18,6 +18,7 @@ from uuid import uuid4
 import duckdb
 from core.common.enhanced_error_handler import get_error_handler
 from core.common.config_manager import config_manager
+from core.common.sql_identifiers import quote_identifier
 from core.common.timezone_utils import (
     format_storage_time_for_response,
     get_current_time_iso,
@@ -419,7 +420,7 @@ def execute_duckdb_query(
                             save_sql = sql_query.rstrip(";")
                             if limit:
                                 save_sql = save_sql.replace(f" LIMIT {limit}", "")
-                            create_sql = f'CREATE OR REPLACE TABLE "{table_name}" AS ({save_sql})'
+                            create_sql = f'CREATE OR REPLACE TABLE {quote_identifier(table_name)} AS ({save_sql})'
                             conn.execute(create_sql)
                             saved_table = table_name
                             logger.info(f"Query result saved as table: {table_name}")
@@ -474,7 +475,7 @@ def execute_duckdb_query(
                             if limit:
                                 save_sql = save_sql.replace(f" LIMIT {limit}", "")
                             create_sql = (
-                                f'CREATE OR REPLACE TABLE "{table_name}" AS ({save_sql})'
+                                f'CREATE OR REPLACE TABLE {quote_identifier(table_name)} AS ({save_sql})'
                             )
                             con.execute(create_sql)
                             saved_table = table_name
@@ -577,7 +578,7 @@ def delete_duckdb_table(table_name: str):
                 raise ResourceNotFoundError("Table", table_name)
 
             # 删除表
-            drop_sql = f'DROP TABLE IF EXISTS "{table_name}"'
+            drop_sql = f'DROP TABLE IF EXISTS {quote_identifier(table_name)}'
             con.execute(drop_sql)
 
             logger.info(f"Successfully deleted DuckDB table: {table_name}")
@@ -852,7 +853,7 @@ def execute_federated_query(
                 try:
                     save_sql = request.sql.strip().rstrip(";")
                     create_sql = (
-                        f'CREATE OR REPLACE TABLE "{table_name}" AS ({save_sql})'
+                        f'CREATE OR REPLACE TABLE {quote_identifier(table_name)} AS ({save_sql})'
                     )
                     conn.execute(create_sql)
                     logger.info(f"Query result saved as table: {table_name}")
