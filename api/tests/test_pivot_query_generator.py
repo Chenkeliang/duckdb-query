@@ -504,9 +504,10 @@ class TestColumnStatistics:
             [("test_column", "INTEGER")],  # DESCRIBE result
             [(1,), (2,), (3,), (4,), (5,)],  # Sample values
         ]
+        # 数值列的 count 统计 + min/max/avg 现合并为一次查询(7 列):
+        # COUNT(*), COUNT(col), null_count, distinct, MIN, MAX, AVG
         mock_con.execute.return_value.fetchone.side_effect = [
-            (1000, 950, 50, 100),  # Statistics result
-            (1, 100, 50.5),  # Min/Max result
+            (1000, 950, 50, 100, 1, 100, 50.5),
         ]
 
         result = get_column_statistics("test_table", "test_column", mock_con)

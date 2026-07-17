@@ -8,6 +8,7 @@ from typing import List, Optional
 
 from models.pivot_query_models import ColumnStatistics, TableMetadata
 from core.common.duckdb_types import is_numeric_type
+from core.common.sql_identifiers import quote_identifier
 from core.database.table_metadata_cache import table_metadata_cache
 
 logger = logging.getLogger(__name__)
@@ -39,7 +40,9 @@ def _normalize_json_like_string(raw: str) -> Optional[str]:
         return None
 
 
-def get_column_statistics(table_name: str, column_name: str, con) -> ColumnStatistics:
+def get_column_statistics(
+    table_name: str, column_name: str, con, data_type: str = None
+) -> ColumnStatistics:
     """
     Get statistics for a specific column
 
@@ -47,57 +50,52 @@ def get_column_statistics(table_name: str, column_name: str, con) -> ColumnStati
         table_name: Name of the table
         column_name: Name of the column
         con: DuckDB connection
+        data_type: 列类型;调用方(如 get_table_metadata)已有 DESCRIBE 结果时传入,
+            避免逐列重复 DESCRIBE(Codex S-16 的 N+1 之一)。缺省时本函数自行 DESCRIBE。
 
     Returns:
         ColumnStatistics object with column metadata
     """
     try:
-        # Get basic column info
-        column_info_sql = f'DESCRIBE "{table_name}"'
-        describe_rows = con.execute(column_info_sql).fetchall()
-
-        # DESCRIBE 行首两列固定为 column_name / column_type
-        data_type = next(
-            (row[1] for row in describe_rows if str(row[0]) == column_name), None
-        )
         if data_type is None:
-            raise ValueError(f"Column '{column_name}' does not exist in table '{table_name}'")
+            describe_rows = con.execute(
+                f"DESCRIBE {quote_identifier(table_name)}"
+            ).fetchall()
+            # DESCRIBE 行首两列固定为 column_name / column_type
+            data_type = next(
+                (row[1] for row in describe_rows if str(row[0]) == column_name), None
+            )
+            if data_type is None:
+                raise ValueError(
+                    f"Column '{column_name}' does not exist in table '{table_name}'"
+                )
 
-        # Get statistics
-        stats_sql = f"""
-        SELECT 
-            COUNT(*) as total_count,
-            COUNT("{column_name}") as non_null_count,
-            COUNT(*) - COUNT("{column_name}") as null_count,
-            COUNT(DISTINCT "{column_name}") as distinct_count
-        FROM "{table_name}"
-        """
+        qt = quote_identifier(table_name)
+        qc = quote_identifier(column_name)
 
-        stats_row_values = con.execute(stats_sql).fetchone()
-        total_count, non_null_count, null_count, distinct_count = stats_row_values
-
-        # Get min/max for numeric columns
-        min_value = None
-        max_value = None
-        avg_value = None
-
-        # 数值判定统一走 core.common.duckdb_types(DECIMAL(38,2) 等带参
-        # 类型名与别名在那里归一)
-        if is_numeric_type(str(data_type)):
-            minmax_sql = f"""
-            SELECT
-                MIN("{column_name}") as min_val,
-                MAX("{column_name}") as max_val,
-                AVG(CAST("{column_name}" AS DOUBLE)) as avg_val
-            FROM "{table_name}"
-            WHERE "{column_name}" IS NOT NULL
-            """
-            minmax_row = con.execute(minmax_sql).fetchone()
-            if minmax_row is not None:
-                min_value, max_value, avg_value = minmax_row
+        # count 类统计 + (数值列)min/max/avg 合并为一次全表扫描(原来是两条)
+        numeric = is_numeric_type(str(data_type))
+        min_value = max_value = avg_value = None
+        if numeric:
+            stats_sql = (
+                f"SELECT COUNT(*), COUNT({qc}), COUNT(*) - COUNT({qc}), "
+                f"COUNT(DISTINCT {qc}), MIN({qc}), MAX({qc}), "
+                f"AVG(CAST({qc} AS DOUBLE)) FROM {qt}"
+            )
+            row = con.execute(stats_sql).fetchone()
+            (total_count, non_null_count, null_count, distinct_count,
+             min_value, max_value, avg_value) = row
+        else:
+            stats_sql = (
+                f"SELECT COUNT(*), COUNT({qc}), COUNT(*) - COUNT({qc}), "
+                f"COUNT(DISTINCT {qc}) FROM {qt}"
+            )
+            total_count, non_null_count, null_count, distinct_count = con.execute(
+                stats_sql
+            ).fetchone()
 
         # Get sample values
-        column_ref = f'"{column_name}"'
+        column_ref = qc
         is_complex_type = any(
             marker in str(data_type).upper()
             for marker in ["STRUCT", "MAP", "LIST", "ARRAY", "JSON"]
@@ -105,8 +103,8 @@ def get_column_statistics(table_name: str, column_name: str, con) -> ColumnStati
         sample_expr = f"to_json({column_ref})" if is_complex_type else column_ref
         sample_sql = f"""
         SELECT DISTINCT {sample_expr} AS sample_value
-        FROM "{table_name}"
-        WHERE "{column_name}" IS NOT NULL
+        FROM {qt}
+        WHERE {qc} IS NOT NULL
         LIMIT 10
         """
         sample_rows = con.execute(sample_sql).fetchall()
@@ -186,7 +184,10 @@ def get_table_metadata(table_name: str, con, use_cache: bool = True) -> TableMet
         for column_row in describe_rows:
             column_name = str(column_row[0])
             try:
-                stats = get_column_statistics(table_name, column_name, con)
+                # 复用外层 DESCRIBE 得到的列类型,避免逐列再 DESCRIBE(S-16)
+                stats = get_column_statistics(
+                    table_name, column_name, con, data_type=str(column_row[1])
+                )
                 column_stats.append(stats)
             except Exception as e:
                 logger.warning(

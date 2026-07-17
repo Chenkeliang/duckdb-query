@@ -88,11 +88,25 @@ const FLOAT_TYPES = new Set(['FLOAT', 'DOUBLE']);
 /** 字符串家族:归一后只剩 VARCHAR(TEXT/CHAR/STRING 等都是它的别名)。 */
 const STRING_TYPES = new Set(['VARCHAR']);
 
-/** 日期时间家族(规范名,含精度变体)。 */
+/** 日期时间家族(规范名,含精度变体)。isDateTimeType 的广义"是否时间类"用。 */
 const DATETIME_TYPES = new Set([
   'DATE', 'TIME', 'TIMESTAMP', 'TIMESTAMP WITH TIME ZONE',
   'TIME WITH TIME ZONE', 'TIMESTAMP_S', 'TIMESTAMP_MS', 'TIMESTAMP_NS',
   'INTERVAL',
+]);
+
+/** date/timestamp 家族(可相互比较);与 time 家族互斥。 */
+const DATE_LIKE_TYPES = new Set([
+  'DATE', 'TIMESTAMP', 'TIMESTAMP WITH TIME ZONE',
+  'TIMESTAMP_S', 'TIMESTAMP_MS', 'TIMESTAMP_NS',
+]);
+
+/** time 家族(只与自身可比,不与 date/timestamp 可比)。 */
+const TIME_LIKE_TYPES = new Set(['TIME', 'TIME WITH TIME ZONE']);
+
+/** 可能超出 double 安全整数(2^53)的大整数——与浮点比较会静默塌缩,判不兼容。 */
+const LARGE_INT_TYPES = new Set([
+  'BIGINT', 'HUGEINT', 'UBIGINT', 'UHUGEINT', 'BIGNUM',
 ]);
 
 /** 复杂类型(需要精确匹配,不参与家族兼容)。 */
@@ -167,12 +181,24 @@ export function areTypesCompatible(leftType: string, rightType: string): boolean
   if (INTEGER_TYPES.has(left) && INTEGER_TYPES.has(right)) return true;
   if (FLOAT_TYPES.has(left) && FLOAT_TYPES.has(right)) return true;
   if (STRING_TYPES.has(left) && STRING_TYPES.has(right)) return true;
-  if (DATETIME_TYPES.has(left) && DATETIME_TYPES.has(right)) return true;
 
-  // 数值跨族兼容(整数/浮点/DECIMAL,DuckDB 自动提升)
+  // 日期时间不是铁板一块(Codex S-18):date/timestamp 家族内互兼容、time 家族内
+  // 互兼容,但 date/timestamp × time 在 DuckDB 里根本不可比(JOIN 直接报错),
+  // 不能判为兼容而跳过 cast 对话框。INTERVAL 只与自身兼容(已由 left===right 覆盖)。
+  if (DATE_LIKE_TYPES.has(left) && DATE_LIKE_TYPES.has(right)) return true;
+  if (TIME_LIKE_TYPES.has(left) && TIME_LIKE_TYPES.has(right)) return true;
+
+  // 数值跨族:一般兼容(DuckDB 自动提升),但大整数(可能 >2^53)× 浮点会把
+  // 相邻大整数塌缩到同一 double(Codex S-18),属静默错配 → 判不兼容,强制用户
+  // 显式选择转换方式,而非默默跑出错误匹配。
   const numeric = (t: string) =>
     INTEGER_TYPES.has(t) || FLOAT_TYPES.has(t) || t === 'DECIMAL';
-  if (numeric(left) && numeric(right)) return true;
+  if (numeric(left) && numeric(right)) {
+    const lossyBigIntFloat =
+      (LARGE_INT_TYPES.has(left) && FLOAT_TYPES.has(right)) ||
+      (LARGE_INT_TYPES.has(right) && FLOAT_TYPES.has(left));
+    return !lossyBigIntFloat;
+  }
 
   return false;
 }
@@ -181,8 +207,8 @@ export function areTypesCompatible(leftType: string, rightType: string): boolean
  * 获取推荐的 TRY_CAST 目标类型。
  *
  * 一律推荐无损方向:任何含字符串/复杂类型/未知组合 → VARCHAR;
- * 数值×数值 → VARCHAR(文本精确比较;DOUBLE 会丢大整数/高精度小数——
- * 该分支因 areTypesCompatible 已放行数值跨族,现实中不可达,防御性保留);
+ * 数值×数值 → VARCHAR(文本精确比较;DOUBLE 会丢大整数/高精度小数)。此分支现
+ * 对"大整数 × 浮点"这类被判不兼容的组合可达(见 areTypesCompatible 的 S-18 收紧);
  * 日期时间组合 → TIMESTAMP。
  */
 export function getRecommendedCastType(leftType: string, rightType: string): string {

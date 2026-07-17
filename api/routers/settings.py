@@ -43,14 +43,19 @@ class ShortcutRecord(BaseModel):
 # 默认快捷键配置
 # ============================================================================
 
+# 必须与前端 frontend/src/Settings/shortcuts/defaultShortcuts.ts 的 DEFAULT_SHORTCUTS
+# 保持一致(action_id 与默认键)。历史上后端缺 rerunQuery/refreshDataSources,且
+# toggleTheme/Language 默认键与前端不符(Codex S-19),已按前端(用户实际所见)对齐。
 DEFAULT_SHORTCUTS = {
     "openCommandPalette": "Cmd+K",
     "navigateDataSource": "Cmd+D",
     "navigateQueryWorkbench": "Cmd+J",
     "refreshData": "Cmd+Shift+F",
+    "rerunQuery": "Cmd+R",
+    "refreshDataSources": "Cmd+I",
     "uploadFile": "Cmd+U",
-    "toggleTheme": "Cmd+Shift+T",
-    "toggleLanguage": "Cmd+Shift+L",
+    "toggleTheme": "Cmd+Shift+X",
+    "toggleLanguage": "Cmd+Shift+Z",
 }
 
 # ============================================================================

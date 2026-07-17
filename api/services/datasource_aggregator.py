@@ -188,7 +188,6 @@ class DataSourceAggregator:
                 tables_query = """
                     SELECT
                         table_name,
-                        estimated_size as size_bytes,
                         column_count
                     FROM duckdb_tables()
                     WHERE schema_name = 'main'
@@ -197,15 +196,15 @@ class DataSourceAggregator:
 
                 for row in result:
                     table_name = row[0]
-                    size_bytes = row[1] if len(row) > 1 else None
-                    column_count = row[2] if len(row) > 2 else None
+                    column_count = row[1] if len(row) > 1 else None
+                    # duckdb_tables().estimated_size 是**行数估计**而非字节数,
+                    # 不可当 size_bytes;真实字节大小 DuckDB 不便宜地暴露,置 None
+                    size_bytes = None
 
-                    # 获取行数（表名必须双引号定界并转义内嵌引号，否则含空格/关键字
-                    # /特殊字符的表名会让 COUNT(*) 语法出错）
+                    # 获取行数(表名走共享 quote_identifier 转义)
                     try:
-                        quoted = '"' + str(table_name).replace('"', '""') + '"'
                         count_result = conn.execute(
-                            f"SELECT COUNT(*) FROM {quoted}"
+                            f"SELECT COUNT(*) FROM {quote_identifier(table_name)}"
                         ).fetchone()
                         row_count = count_result[0] if count_result else None
                     except Exception:  # pylint: disable=broad-exception-caught
@@ -293,7 +292,6 @@ class DataSourceAggregator:
                 check_query = """
                     SELECT
                         table_name,
-                        estimated_size as size_bytes,
                         column_count
                     FROM duckdb_tables()
                     WHERE schema_name = 'main' AND table_name = ?
@@ -303,8 +301,9 @@ class DataSourceAggregator:
                 if not result:
                     return None
 
-                size_bytes = result[1] if len(result) > 1 else None
-                column_count = result[2] if len(result) > 2 else None
+                column_count = result[1] if len(result) > 1 else None
+                # estimated_size 是行数估计而非字节;真实字节大小不便宜暴露,置 None
+                size_bytes = None
 
                 # 获取行数:表名是标识符,走 quote_identifier 转义
                 try:

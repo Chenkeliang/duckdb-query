@@ -96,9 +96,17 @@ def contains_keyword(sql_text: str, keyword: str) -> bool:
 _DANGEROUS_KEYWORDS = ("DROP", "DELETE", "TRUNCATE", "ALTER", "CREATE", "INSERT", "UPDATE")
 
 
+_SQL_CLEAN_RE = re.compile(
+    r"--[^\n]*|/\*.*?\*/|'(?:''|[^'])*'|\"(?:\"\"|[^\"])*\"", re.S
+)
+
+
 def _strip_sql_literals_upper(sql: str) -> str:
-    """大写化并把单/双引号字面量内容抹平(避免把字面量里的关键字误判为写操作)。"""
-    return re.sub(r"'(?:''|[^'])*'|\"(?:\"\"|[^\"])*\"", " ", (sql or "").upper())
+    """大写化并抹平注释与单/双引号字面量内容。用于危险关键字判定与 LIMIT 判定:
+    - 抹字面量:避免把字符串里的关键字误判为写操作;
+    - 抹注释:避免 `-- LIMIT 5` / `/* LIMIT */` 里的 LIMIT 让 auto-LIMIT 失效
+      导致预览无上限(Codex P1-10)。"""
+    return _SQL_CLEAN_RE.sub(" ", (sql or "").upper())
 
 
 def assert_no_dangerous_write(sql_upper_cleaned: str, save_as_table: Optional[str]) -> None:
@@ -239,6 +247,7 @@ def list_duckdb_tables_summary():
                 SELECT table_name AS name, estimated_size, column_count
                 FROM duckdb_tables()
                 WHERE NOT internal AND database_name = current_database()
+                  AND schema_name = 'main'
                 ORDER BY table_name
                 """
             ).fetchall()
@@ -411,9 +420,10 @@ def execute_duckdb_query(
                 row[0] for row in con.execute("SHOW TABLES").fetchall()
             ]
 
-        # 检查是否是简单的SELECT查询（不需要表）
+        # 检查是否是简单的SELECT查询（不需要表）。sql_upper_clean 同时抹掉注释
+        # 与字面量,供 is_simple_select / 危险关键字 / LIMIT 三处判定共用
         sql_upper = sql_query.upper().strip()
-        sql_upper_clean = re.sub(r"'(?:''|[^'])*'|\"(?:\"\"|[^\"])*\"", " ", sql_upper)
+        sql_upper_clean = _strip_sql_literals_upper(sql_query).strip()
         is_simple_select = (
             sql_upper_clean.startswith("SELECT")
             and "FROM" not in sql_upper_clean
@@ -783,7 +793,8 @@ def execute_federated_query(
     sql_query = normalize_mysql_double_quoted_strings_for_duckdb(
         request.sql.strip()
     )
-    sql_upper = sql_query.upper()
+    # 抹掉注释与字面量再判 LIMIT,避免 `-- LIMIT 5` 之类让预览失去上限(Codex P1-10)
+    sql_upper = _strip_sql_literals_upper(sql_query)
 
     limit = None
     if request.is_preview and "LIMIT" not in sql_upper and statement_accepts_limit(sql_query):
@@ -805,39 +816,42 @@ def execute_federated_query(
             attached_aliases = attach_databases_on_connection(conn, attach_configs)
             logger.info(f"Attached databases: {attached_aliases}")
 
-        # 2. 智能下推：半连接键下推(保持结果) + 时间界建议(不改 SQL)
-        attach_aliases = {alias for (alias, _cfg) in attach_configs}
-        opt_sql, suggestions, opt_warnings = optimize_federated_sql(
-            conn, _opt["sql"], attach_aliases, config_manager.get_app_config()
-        )
-        _opt["sql"] = opt_sql
-        _opt["suggestions"] = suggestions or None
-        if opt_warnings:
-            warnings.extend(str(w) for w in opt_warnings)
+        # DETACH 必须放 finally:查询/保存中途抛错时,若不清理,连接会带着
+        # ATTACH 回到池里被后续请求复用(Codex S-13)
+        try:
+            # 2. 智能下推：半连接键下推(保持结果) + 时间界建议(不改 SQL)
+            attach_aliases = {alias for (alias, _cfg) in attach_configs}
+            opt_sql, suggestions, opt_warnings = optimize_federated_sql(
+                conn, _opt["sql"], attach_aliases, config_manager.get_app_config()
+            )
+            _opt["sql"] = opt_sql
+            _opt["suggestions"] = suggestions or None
+            if opt_warnings:
+                warnings.extend(str(w) for w in opt_warnings)
 
-        # 3. 执行用户 SQL（使用优化后的语句）
-        result_triplet = fetch_query_records(conn, opt_sql)
+            # 3. 执行用户 SQL（使用优化后的语句）
+            result_triplet = fetch_query_records(conn, opt_sql)
 
-        # 4. 可选：保存查询结果为新表（使用原始 SQL，确保语义不变）
-        if request.save_as_table:
-            table_name = request.save_as_table.strip()
-            if table_name:
-                try:
-                    save_sql = request.sql.strip().rstrip(";")
-                    create_sql = (
-                        f'CREATE OR REPLACE TABLE {quote_identifier(table_name)} AS ({save_sql})'
-                    )
-                    conn.execute(create_sql)
-                    logger.info(f"Query result saved as table: {table_name}")
-                except Exception as save_error:
-                    logger.warning(f"Failed to save query result as table: {str(save_error)}")
-                    warnings.append(f"Failed to save result as table: {str(save_error)}")
+            # 4. 可选：保存查询结果为新表（使用原始 SQL，确保语义不变）
+            if request.save_as_table:
+                table_name = request.save_as_table.strip()
+                if table_name:
+                    try:
+                        save_sql = request.sql.strip().rstrip(";")
+                        create_sql = (
+                            f'CREATE OR REPLACE TABLE {quote_identifier(table_name)} AS ({save_sql})'
+                        )
+                        conn.execute(create_sql)
+                        logger.info(f"Query result saved as table: {table_name}")
+                    except Exception as save_error:
+                        logger.warning(f"Failed to save query result as table: {str(save_error)}")
+                        warnings.append(f"Failed to save result as table: {str(save_error)}")
 
-        # 5. DETACH 清理
-        if attached_aliases:
-            detach_databases_on_connection(conn, attached_aliases)
-
-        return result_triplet
+            return result_triplet
+        finally:
+            # 5. DETACH 清理(无论成功失败)
+            if attached_aliases:
+                detach_databases_on_connection(conn, attached_aliases)
 
     timeout_s = int(config_manager.get_app_config().federated_query_timeout or 300)
     query_id = query_id or f"fed:{uuid4().hex}"

@@ -125,9 +125,16 @@ describe('duckdbTypes', () => {
     });
 
     describe('numeric cross-family compatibility', () => {
-      it('should return true for integer and float', () => {
+      it('should return true for small integer and float (lossless)', () => {
         expect(areTypesCompatible('INTEGER', 'DOUBLE')).toBe(true);
-        expect(areTypesCompatible('BIGINT', 'FLOAT')).toBe(true);
+        expect(areTypesCompatible('SMALLINT', 'FLOAT')).toBe(true);
+      });
+
+      it('should return false for large integer and float (lossy — S-18)', () => {
+        // BIGINT/HUGEINT 可超 2^53,与 double 比较会塌缩相邻整数 → 强制 cast 对话框
+        expect(areTypesCompatible('BIGINT', 'FLOAT')).toBe(false);
+        expect(areTypesCompatible('BIGINT', 'DOUBLE')).toBe(false);
+        expect(areTypesCompatible('HUGEINT', 'DOUBLE')).toBe(false);
       });
 
       it('should return true for integer and decimal', () => {
@@ -151,10 +158,18 @@ describe('duckdbTypes', () => {
     });
 
     describe('datetime family compatibility', () => {
-      it('should return true for datetime types', () => {
+      it('should return true within the date/timestamp family', () => {
         expect(areTypesCompatible('DATE', 'TIMESTAMP')).toBe(true);
-        expect(areTypesCompatible('TIME', 'TIMESTAMP')).toBe(true);
         expect(areTypesCompatible('TIMESTAMPTZ', 'TIMESTAMP')).toBe(true);
+        expect(areTypesCompatible('TIMESTAMP_NS', 'TIMESTAMP')).toBe(true);
+      });
+
+      it('should return false for time vs date/timestamp (not comparable — S-18)', () => {
+        // DuckDB 里 TIME 与 TIMESTAMP 直接比较会报错,不能判兼容跳过 cast 对话框
+        expect(areTypesCompatible('TIME', 'TIMESTAMP')).toBe(false);
+        expect(areTypesCompatible('TIME', 'DATE')).toBe(false);
+        // time 家族内部仍可比
+        expect(areTypesCompatible('TIME', 'TIME WITH TIME ZONE')).toBe(true);
       });
     });
 
