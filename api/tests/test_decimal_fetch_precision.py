@@ -208,3 +208,20 @@ def test_cursor_types_fallback_for_pragma(con):
     columns, _, cursor_types = fetch_query_records(con, "PRAGMA database_list")
     assert columns == [name for name, _ in cursor_types]
     assert dict(cursor_types)["name"] == "VARCHAR"
+
+
+def test_timestamp_ns_query_executes_body_once():
+    """回归(Codex P1-8):含 TIMESTAMP_NS 列的查询曾被执行两次(先取类型再为
+    纳秒重执行),序列/UDF 等副作用重复。现用 DESCRIBE 探类型,查询体只执行一次。"""
+    import duckdb
+    from core.database.duckdb_engine import fetch_query_records
+
+    con = duckdb.connect(":memory:")
+    con.execute("CREATE SEQUENCE s START 1")
+    q = ("SELECT nextval('s') AS n, "
+         "TIMESTAMP_NS '2026-01-01 00:00:00.123456789' AS t")
+    _cols, recs, _ctypes = fetch_query_records(con, q)
+    # 纳秒完整保真
+    assert recs[0]["t"] == "2026-01-01 00:00:00.123456789", recs
+    # 序列只推进一次(旧双执行会得到 currval=2)
+    assert con.execute("SELECT currval('s')").fetchone()[0] == 1

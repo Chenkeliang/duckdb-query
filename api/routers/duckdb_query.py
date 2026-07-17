@@ -113,6 +113,58 @@ def assert_no_dangerous_write(sql_upper_cleaned: str, save_as_table: Optional[st
             )
 
 
+def _run_query_maybe_save(conn, sql_query, save_as_table, limit):
+    """执行查询;若指定 save_as_table 则先 CTAS 物化(原查询只执行这一次),
+    预览行改从已建的表读取——既避免为预览重跑昂贵/有副作用的查询,也保证预览行
+    与落库数据一致(非确定性查询如 random()/now() 不再"预览≠落库",Codex P1-11)。
+    保存失败不再静默:save_error 带回,由调用方放进响应,前端据 saved_table 决定提示。
+    返回 (columns, records, cursor_types, column_types, saved_table, save_error)。
+    execute 与其两条连接路径共用,消除历史两处重复块。
+    """
+    def _types(cur_types, describe_sql):
+        return describe_query_column_types(conn, describe_sql) or [
+            {"name": n, "duckdb_type": t} for n, t in cur_types
+        ]
+
+    table_name = (save_as_table or "").strip()
+    if table_name:
+        save_sql = sql_query.rstrip(";")
+        if limit:
+            save_sql = save_sql.replace(f" LIMIT {limit}", "")
+        try:
+            conn.execute(
+                f"CREATE OR REPLACE TABLE {quote_identifier(table_name)} AS ({save_sql})"
+            )
+            logger.info("Query result saved as table: %s", table_name)
+            try:
+                snapshot = build_table_metadata_snapshot(conn, table_name)
+                file_datasource_manager.save_file_datasource({
+                    "source_id": table_name,
+                    "filename": "sql_query_result",
+                    "file_path": f"duckdb://{table_name}",
+                    "file_type": "duckdb_sql_query",
+                    "created_at": get_current_time_iso(),
+                    "source_sql": save_sql,
+                    "schema_version": 2,
+                    **snapshot,
+                })
+            except Exception as meta_error:  # pylint: disable=broad-except
+                logger.warning("Failed to save table metadata (non-fatal): %s", meta_error)
+            preview_sql = f"SELECT * FROM {quote_identifier(table_name)}"
+            if limit:
+                preview_sql = f"{preview_sql} LIMIT {limit}"
+            cols, recs, cur_types = fetch_query_records(conn, preview_sql)
+            return cols, recs, cur_types, _types(cur_types, preview_sql), table_name, None
+        except Exception as save_error:  # pylint: disable=broad-except
+            logger.warning("Failed to save query result as table: %s", save_error)
+            # 保存失败 → 退回直接执行原查询,至少把数据返回,并将错误带回响应
+            cols, recs, cur_types = fetch_query_records(conn, sql_query)
+            return cols, recs, cur_types, _types(cur_types, sql_query), None, str(save_error)
+
+    cols, recs, cur_types = fetch_query_records(conn, sql_query)
+    return cols, recs, cur_types, _types(cur_types, sql_query), None, None
+
+
 def fix_table_names_in_sql(sql: str, available_tables: List[str]) -> str:
     """
     修复SQL中的表名，为包含特殊字符的表名添加引号
@@ -403,114 +455,21 @@ def execute_duckdb_query(
         execution_time = 0.0
         query_column_types = []
         saved_table = None
+        save_error = None
         # 使用可中断连接执行查询（如果有 query_id）
         if query_id:
             with interruptible_connection(query_id, sql_query) as conn:
-                result_columns, result_records, cursor_types = fetch_query_records(
-                    conn, sql_query
-                )
-                query_column_types = describe_query_column_types(
-                    conn, sql_query
-                ) or [
-                    {"name": name, "duckdb_type": dtype}
-                    for name, dtype in cursor_types
-                ]
-
-                # 可选：保存查询结果为新表（在同一连接上下文内）
-                if request.save_as_table:
-                    table_name = request.save_as_table.strip()
-                    if table_name:
-                        try:
-                            save_sql = sql_query.rstrip(";")
-                            if limit:
-                                save_sql = save_sql.replace(f" LIMIT {limit}", "")
-                            create_sql = f'CREATE OR REPLACE TABLE {quote_identifier(table_name)} AS ({save_sql})'
-                            conn.execute(create_sql)
-                            saved_table = table_name
-                            logger.info(f"Query result saved as table: {table_name}")
-
-                            # 保存表元数据（含创建时间）
-                            try:
-                                metadata_snapshot = build_table_metadata_snapshot(
-                                    conn, table_name
-                                )
-                                table_metadata = {
-                                    "source_id": table_name,
-                                    "filename": f"sql_query_result",
-                                    "file_path": f"duckdb://{table_name}",
-                                    "file_type": "duckdb_sql_query",
-                                    "created_at": get_current_time_iso(),
-                                    "source_sql": save_sql,
-                                    "schema_version": 2,
-                                    **metadata_snapshot,
-                                }
-                                file_datasource_manager.save_file_datasource(
-                                    table_metadata
-                                )
-                                logger.info(
-                                    f"SQL save_as_table metadata saved: {table_name}"
-                                )
-                            except Exception as meta_error:
-                                logger.warning(
-                                    f"Failed to save table metadata (non-fatal): {str(meta_error)}"
-                                )
-                        except Exception as save_error:
-                            logger.warning(f"Failed to save query result as table: {str(save_error)}")
+                (result_columns, result_records, _cursor_types, query_column_types,
+                 saved_table, save_error) = _run_query_maybe_save(
+                    conn, sql_query, request.save_as_table, limit)
                 execution_time = _log_query_metrics_in_conn(
                     conn, sql_query, start_time, len(result_records)
                 )
         else:
             with with_duckdb_connection() as con:
-                result_columns, result_records, cursor_types = fetch_query_records(
-                    con, sql_query
-                )
-                query_column_types = describe_query_column_types(
-                    con, sql_query
-                ) or [
-                    {"name": name, "duckdb_type": dtype}
-                    for name, dtype in cursor_types
-                ]
-
-                if request.save_as_table:
-                    table_name = request.save_as_table.strip()
-                    if table_name:
-                        try:
-                            save_sql = sql_query.rstrip(";")
-                            if limit:
-                                save_sql = save_sql.replace(f" LIMIT {limit}", "")
-                            create_sql = (
-                                f'CREATE OR REPLACE TABLE {quote_identifier(table_name)} AS ({save_sql})'
-                            )
-                            con.execute(create_sql)
-                            saved_table = table_name
-                            logger.info(f"Query result saved as table: {table_name}")
-
-                            try:
-                                metadata_snapshot = build_table_metadata_snapshot(
-                                    con, table_name
-                                )
-                                table_metadata = {
-                                    "source_id": table_name,
-                                    "filename": f"sql_query_result",
-                                    "file_path": f"duckdb://{table_name}",
-                                    "file_type": "duckdb_sql_query",
-                                    "created_at": get_current_time_iso(),
-                                    "source_sql": save_sql,
-                                    "schema_version": 2,
-                                    **metadata_snapshot,
-                                }
-                                file_datasource_manager.save_file_datasource(table_metadata)
-                                logger.info(
-                                    f"SQL save_as_table metadata saved: {table_name}"
-                                )
-                            except Exception as meta_error:
-                                logger.warning(
-                                    f"Failed to save table metadata (non-fatal): {str(meta_error)}"
-                                )
-                        except Exception as save_error:
-                            logger.warning(
-                                f"Failed to save query result as table: {str(save_error)}"
-                            )
+                (result_columns, result_records, _cursor_types, query_column_types,
+                 saved_table, save_error) = _run_query_maybe_save(
+                    con, sql_query, request.save_as_table, limit)
                 execution_time = _log_query_metrics_in_conn(
                     con, sql_query, start_time, len(result_records)
                 )
@@ -525,6 +484,9 @@ def execute_duckdb_query(
             "sql_executed": sql_query,
             "available_tables": available_tables,
             "saved_table": saved_table,
+            # 请求了 save_as_table 但落库失败时,saved_table 为 None 且此处带错误原因;
+            # 前端据 saved_table 判断"是否真的建表成功",不再一律提示成功
+            "save_error": save_error,
             # 仅当预览模式且服务端自动追加了 LIMIT 时有值，供前端判断是否可能截断
             "preview_limit_applied": limit,
         }

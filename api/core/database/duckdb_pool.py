@@ -38,6 +38,22 @@ class PooledConnection:
     error_count: int
 
 
+# 连接级致命错误标记:只有这些才该把连接标坏并重置/丢弃。普通查询错误
+# (Binder/Catalog/Parser/类型转换)不损坏连接,不应累计错误直至连接被丢弃。
+_CONNECTION_FATAL_MARKERS = (
+    "io error",
+    "connection error",
+    "fatal",
+    "database has been invalidated",
+    "connection is closed",
+)
+
+
+def _is_connection_fatal(error_msg: str) -> bool:
+    low = (error_msg or "").lower()
+    return any(m in low for m in _CONNECTION_FATAL_MARKERS)
+
+
 class DuckDBConnectionPool:
     def __init__(
         self,
@@ -178,17 +194,21 @@ class DuckDBConnectionPool:
             yield connection
 
         except Exception as e:
-            if conn_id:
+            # 注意 conn_id 可能为 0(首个连接),必须 is not None 判定,
+            # 否则 conn 0 的回滚/释放被跳过 → 连接泄漏(Codex P1-7)
+            if conn_id is not None:
                 logger.debug(f"[POOL_DEBUG] Connection exception, attempting rollback: conn_id={conn_id}, error={e}")
-                # 发生异常时，尝试回滚事务
+                # 失败后先回滚(清理可能的中断事务)
                 try:
                     self._connections[conn_id].connection.execute("ROLLBACK")
                 except Exception:
                     pass
-                self._mark_connection_error(conn_id, str(e))
+                # 仅连接级致命错误才标坏并重置;普通查询错误让健康连接照常归池
+                if _is_connection_fatal(str(e)):
+                    self._mark_connection_error(conn_id, str(e))
             raise
         finally:
-            if conn_id:
+            if conn_id is not None:
                 # 释放前确保事务已提交（DuckDB 在某些情况下可能有未提交的隐式事务）
                 try:
                     logger.debug(f"[POOL_DEBUG] COMMIT before releasing connection: conn_id={conn_id}")
@@ -219,7 +239,7 @@ class DuckDBConnectionPool:
                 # 如果没有空闲连接且未达到最大连接数，创建新连接
                 if len(self._connections) < self.max_connections:
                     conn_id = self._create_connection()
-                    if conn_id:
+                    if conn_id is not None:  # 0 是合法 id,不能用真值判定
                         self._connections[conn_id].state = ConnectionState.BUSY
                         self._connections[conn_id].last_used = time.time()
                         self._connections[conn_id].use_count += 1
@@ -267,6 +287,7 @@ class DuckDBConnectionPool:
             # 执行简单查询测试连接
             conn_info.connection.execute("SELECT 1")
             conn_info.state = ConnectionState.IDLE
+            conn_info.error_count = 0  # 重置成功即清零,避免历史错误跨查询累计到丢弃阈值
             logger.info(f"Connection reset successfully")
         except Exception as e:
             logger.error(f"Connection reset failed: {str(e)}")

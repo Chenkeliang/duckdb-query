@@ -504,43 +504,78 @@ def fetch_query_records(connection, query):
     """
     from core.common.utils import records_from_cursor  # pylint: disable=import-outside-toplevel
 
-    try:
-        res = connection.execute(query)
-    except Exception as err:
-        if not (_is_federated_connection_lost(err) and _is_read_only_query(query)):
-            raise
-        logger.warning(
-            "Federated MySQL connection lost (%s); clearing cache and retrying once",
-            err,
-        )
-        try:
-            connection.execute("CALL mysql_clear_cache()")
-        except Exception as clear_err:  # pylint: disable=broad-except
-            logger.warning("mysql_clear_cache failed: %s", clear_err)
-        res = connection.execute(query)
-
-    desc = res.description or []
-    cursor_types = [(str(col[0]), str(col[1])) for col in desc]
+    # 先用 DESCRIBE 探列类型——DESCRIBE 只做绑定/规划,不执行查询体、无副作用
+    # (实测:DESCRIBE (SELECT nextval('s')) 不推进序列)。据此决定是否需要
+    # TIMESTAMP_NS 文本化改写,从而只执行一次查询体。旧实现先执行拿类型、再
+    # 为纳秒重执行一次(改写失败还第三次),序列/UDF/远程读的副作用会重复(P1-8)。
+    describe_types = None
+    ns_cols = []
+    if _is_read_only_query(query):
+        describe_types = _describe_column_types(connection, query)
+        if describe_types:
+            ns_cols = [n for n, t in describe_types if t.upper() == "TIMESTAMP_NS"]
 
     # TIMESTAMP_NS:duckdb-python 的 fetchall 转成 stdlib datetime(微秒上限),
-    # 纳秒分量在取数层即截断。重包一次 CAST AS VARCHAR——DuckDB 的文本形态
-    # 保留完整纳秒且已是空格分隔契约格式,字符串原样直达前端(零损失)。
-    ns_cols = [name for name, dtype in cursor_types if dtype.upper() == "TIMESTAMP_NS"]
-    if ns_cols and _is_read_only_query(query):
+    # 纳秒分量在取数层即截断。CAST AS VARCHAR 保留完整纳秒且已是空格分隔契约
+    # 格式,字符串原样直达前端(零损失)。改写后只执行这一条(不双执行)。
+    final_sql = query
+    if ns_cols:
         quoted = ", ".join(
             f'CAST("{c.replace(chr(34), chr(34) * 2)}" AS VARCHAR) AS '
             f'"{c.replace(chr(34), chr(34) * 2)}"'
             for c in ns_cols
         )
-        wrapped = f"SELECT * REPLACE ({quoted}) FROM ({query.rstrip().rstrip(';')})"
-        try:
-            res = connection.execute(wrapped)
-        except Exception as wrap_err:  # pylint: disable=broad-except
-            # 包不动(如多语句)则按微秒精度返回,不让查询整体失败
-            logger.debug("TIMESTAMP_NS rewrap failed, keeping microseconds: %s", wrap_err)
-            res = connection.execute(query)
-    columns, records = records_from_cursor(res, res.description or [])
+        final_sql = f"SELECT * REPLACE ({quoted}) FROM ({query.rstrip().rstrip(';')})"
+
+    try:
+        res = _execute_with_federated_heal(connection, final_sql, query)
+    except Exception as wrap_err:  # pylint: disable=broad-except
+        if final_sql is query:
+            raise
+        # 改写型执行失败(极少数:重复列名/特殊构造)→ 退回原查询执行一次
+        logger.debug("TIMESTAMP_NS rewrap execution failed, falling back: %s", wrap_err)
+        res = _execute_with_federated_heal(connection, query, query)
+
+    desc = res.description or []
+    # cursor_types 优先用 DESCRIBE 的原始类型(NS 列仍报 TIMESTAMP_NS,与旧行为一致);
+    # DESCRIBE 失败/写查询时退回实际游标 description
+    cursor_types = describe_types if describe_types is not None else [
+        (str(col[0]), str(col[1])) for col in desc
+    ]
+    columns, records = records_from_cursor(res, desc)
     return columns, records, cursor_types
+
+
+def _describe_column_types(connection, query):
+    """用 DESCRIBE 探查询列类型(不执行查询体)。成功返回 [(name, type), ...];
+    失败(PRAGMA/多语句/特殊语句)返回 None——调用方据此退回微秒精度且不双执行。"""
+    cleaned = (query or "").rstrip().rstrip(";")
+    if not cleaned:
+        return None
+    try:
+        rows = connection.execute(f"DESCRIBE ({cleaned})").fetchall()
+    except Exception:  # pylint: disable=broad-except
+        return None
+    return [(str(r[0]), str(r[1])) for r in rows]
+
+
+def _execute_with_federated_heal(connection, sql, original_query):
+    """执行 sql;遇联邦 MySQL 连接失效(且原查询只读)清扩展连接缓存重试一次。
+    mysql 扩展按 DSN 进程级缓存连接,空闲后被中间设备/wait_timeout 静默掐断,
+    复用即「Server has gone away」,DETACH 清不掉,只有 mysql_clear_cache 能清。"""
+    try:
+        return connection.execute(sql)
+    except Exception as err:
+        if not (_is_federated_connection_lost(err) and _is_read_only_query(original_query)):
+            raise
+        logger.warning(
+            "Federated MySQL connection lost (%s); clearing cache and retrying once", err
+        )
+        try:
+            connection.execute("CALL mysql_clear_cache()")
+        except Exception as clear_err:  # pylint: disable=broad-except
+            logger.warning("mysql_clear_cache failed: %s", clear_err)
+        return connection.execute(sql)
 
 
 def timed_fetch_query_records(connection, query):

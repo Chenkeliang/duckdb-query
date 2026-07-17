@@ -102,3 +102,53 @@ class TestAggregatorInjection:
     def test_removeprefix_does_not_mangle_midname(self):
         # 回归:旧 .replace 会把名字中间的 table_/file_ 也删掉
         assert "table_atable_b".removeprefix("table_").removeprefix("file_") == "atable_b"
+
+
+class TestSaveAsTableResultSurfacing:
+    """P1-11:保存失败不再静默报成功;预览行来自已物化的表(SQL 只跑一次)。"""
+
+    def _call(self, con, sql, table):
+        from unittest.mock import patch
+        from routers.duckdb_query import _run_query_maybe_save
+        with patch(
+            "routers.duckdb_query.file_datasource_manager.save_file_datasource",
+            return_value=True,
+        ), patch(
+            "routers.duckdb_query.build_table_metadata_snapshot",
+            return_value={},
+        ):
+            return _run_query_maybe_save(con, sql, table, None)
+
+    def test_save_success_reports_saved_table(self):
+        con = duckdb.connect(":memory:")
+        _cols, recs, _ct, _types, saved, err = self._call(con, "SELECT 1 AS a", "t1")
+        assert saved == "t1" and err is None
+        assert con.execute("SELECT a FROM t1").fetchone()[0] == 1
+        assert recs == [{"a": 1}]
+
+    def test_save_failure_surfaces_error_not_silent_success(self):
+        # 用包装连接强制 CTAS 失败(确定性):CREATE 抛错,SELECT 照常
+        real = duckdb.connect(":memory:")
+
+        class _FailCreateConn:
+            def execute(self, sql, *a, **k):
+                if sql.strip().upper().startswith("CREATE OR REPLACE TABLE"):
+                    raise RuntimeError("simulated save failure")
+                return real.execute(sql, *a, **k)
+
+        _cols, recs, _ct, _types, saved, err = self._call(
+            _FailCreateConn(), "SELECT 1 AS a", "t2")
+        assert saved is None, "保存失败却报告了 saved_table"
+        assert err is not None and "simulated save failure" in err
+        assert recs == [{"a": 1}]  # 结果仍如实返回
+
+    def test_preview_comes_from_materialized_table_once(self):
+        con = duckdb.connect(":memory:")
+        con.execute("CREATE SEQUENCE s START 1")
+        _cols, recs, _ct, _types, saved, err = self._call(
+            con, "SELECT nextval('s') AS n", "t3")
+        assert saved == "t3" and err is None
+        # 序列只推进一次(旧 fetch+CTAS 双执行会得到 currval=2)
+        assert con.execute("SELECT currval('s')").fetchone()[0] == 1
+        # 预览行 == 落库行
+        assert recs[0]["n"] == con.execute("SELECT n FROM t3").fetchone()[0]

@@ -165,14 +165,24 @@ export const useSQLEditor = ({
         rowCount: data.data?.length || data.row_count
       });
 
-      // 如果保存为表，刷新数据缓存
+      // 请求了保存为表:据后端实际结果(saved_table)提示,不再一律报成功——
+      // 保存失败时 saved_table 为 null 且带 save_error,应如实提示失败(Codex P1-11)
       if (variables.saveAsTable) {
-        invalidateAllDataCaches(queryClient);
-        showSuccessToast(
-          t,
-          "TABLE_CREATED",
-          t("query.sql.savedToTable", { table: variables.saveAsTable })
-        );
+        if (data.saved_table) {
+          invalidateAllDataCaches(queryClient);
+          showSuccessToast(
+            t,
+            "TABLE_CREATED",
+            t("query.sql.savedToTable", { table: data.saved_table })
+          );
+        } else {
+          showErrorToast(
+            t,
+            "OPERATION_FAILED",
+            data.save_error ||
+              t("query.sql.saveTableFailed", { table: variables.saveAsTable })
+          );
+        }
       }
 
       onSuccess?.(data, variables.sqlToExecute);

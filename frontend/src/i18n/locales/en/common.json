@@ -443,7 +443,9 @@
       "federatedQuery": "Federated Query",
       "targetDatabase": "Target Database",
       "cancel": "Cancel",
-      "cancelTooltip": "Cancel the current query"
+      "cancelTooltip": "Cancel the current query",
+      "savedToTable": "Saved as table {{table}}",
+      "saveTableFailed": "Query succeeded but saving to table {{table}} failed"
     },
     "import": {
       "title": "Import to DuckDB",

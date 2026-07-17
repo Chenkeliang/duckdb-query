@@ -443,7 +443,9 @@
       "federatedQuery": "联邦查询",
       "targetDatabase": "目标数据库",
       "cancel": "取消",
-      "cancelTooltip": "取消当前查询"
+      "cancelTooltip": "取消当前查询",
+      "savedToTable": "已保存为表 {{table}}",
+      "saveTableFailed": "查询成功,但保存为表 {{table}} 失败"
     },
     "import": {
       "title": "导入到 DuckDB",

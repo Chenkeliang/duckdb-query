@@ -96,8 +96,10 @@ class AppConfig:
     duckdb_database_path: str = None
     """DuckDB 数据库文件路径，为空时在数据目录下创建 main.db"""
 
-    duckdb_enable_profiling: str = "query_tree"
-    """DuckDB 查询性能分析格式：json, query_tree, query_tree_optimizer, no_output"""
+    duckdb_enable_profiling: str = "no_output"
+    """DuckDB 查询性能分析格式：json, query_tree, query_tree_optimizer, no_output。
+    默认 no_output:不向 stderr 吐执行树(否则连 SELECT 42 都刷满桌面 4MB 日志、
+    徒增开销)。诊断时可显式改为 query_tree/json;慢查询另有 auto-EXPLAIN 兜底。"""
 
     duckdb_profiling_output: str = None
     """性能分析输出文件路径，None 时使用系统默认"""

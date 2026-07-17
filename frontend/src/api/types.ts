@@ -102,6 +102,10 @@ export interface QueryResponse {
   row_count?: number;
   /** 预览模式下服务端自动追加的 LIMIT 数值；未追加时为 null */
   preview_limit_applied?: number | null;
+  /** 实际落库成功的表名；请求了 save_as_table 但失败时为 null */
+  saved_table?: string | null;
+  /** 请求了 save_as_table 但落库失败时的错误原因 */
+  save_error?: string | null;
   execution_time_ms?: number;
   error?: QueryError;
 }
