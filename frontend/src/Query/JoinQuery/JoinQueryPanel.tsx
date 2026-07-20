@@ -25,7 +25,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { cancelSyncQuery, parseFederatedQueryError, performJoinQuery } from '@/api';
+import { cancelSyncQuery, parseFederatedQueryError, performJoinQuery, inferColumnCast, toAttachDatabasesPayload } from '@/api';
 import type { TableSource, UseQueryWorkspaceReturn } from '@/hooks/useQueryWorkspace';
 import {
   buildJoinQueryPayload,
@@ -47,7 +47,7 @@ import {
 import type { JoinRestoreRequest } from '@/hooks/useQueryWorkspace';
 import { useMultipleTableColumns } from '@/hooks/useTableColumns';
 import { useAppConfig } from '@/hooks/useAppConfig';
-import { useTypeConflict, type ColumnPair } from '@/hooks/useTypeConflict';
+import { useTypeConflict, type ColumnPair, type TypeConflict } from '@/hooks/useTypeConflict';
 import { TypeConflictDialog } from '@/Query/components/TypeConflictDialog';
 import { SQLHighlight } from '@/components/SQLHighlight';
 import { generateConflictKey } from '@/utils/duckdbTypes';
@@ -1581,6 +1581,35 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
     return extractAttachDatabases(activeTables);
   }, [activeTables]);
 
+  // JOIN 冲突的数据感知 cast 推断:采样浮点侧列(它决定 DECIMAL 标度),在真实数据上算安全推荐。
+  // 浮点侧才需要精确 scale——整数侧 scale=0,采样它会得 BIGINT 从而截断浮点小数。
+  const inferConflictCast = React.useCallback(
+    async (conflict: TypeConflict): Promise<string | null> => {
+      const floatish = (raw: string) =>
+        ['DOUBLE', 'FLOAT', 'REAL', 'FLOAT4', 'FLOAT8'].includes(
+          String(raw || '').toUpperCase().replace(/\(.*$/, '').trim()
+        );
+      const leftIsFloat = floatish(conflict.leftType);
+      const label = leftIsFloat ? conflict.leftLabel : conflict.rightLabel;
+      const column = leftIsFloat ? conflict.leftColumn : conflict.rightColumn;
+      const table = activeTables.find((tb) => getTableName(tb) === label);
+      if (!table) return null;
+      try {
+        const ref = createTableReference(table, attachDatabases);
+        const qualified = ref.isExternal && ref.alias ? `${ref.alias}.${ref.name}` : ref.name;
+        const res = await inferColumnCast({
+          table_name: qualified,
+          column,
+          attach_databases: toAttachDatabasesPayload(attachDatabases),
+        });
+        return res.recommended;
+      } catch {
+        return null;
+      }
+    },
+    [activeTables, attachDatabases]
+  );
+
   // 检查是否所有 JOIN 配置都有有效的关联列
   const hasValidJoinConditions = React.useMemo(() => {
     if (activeTables.length < 2) return false;
@@ -2155,6 +2184,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
         conflicts={conflicts}
         onResolve={resolveConflict}
         onResolveAll={resolveAllWithRecommendations}
+        onInferCast={inferConflictCast}
         onClose={() => setShowTypeConflictDialog(false)}
         onConfirm={() => {
           setShowTypeConflictDialog(false);

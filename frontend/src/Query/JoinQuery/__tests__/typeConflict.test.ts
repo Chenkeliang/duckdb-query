@@ -44,11 +44,11 @@ describe('JoinQueryPanel Type Conflict Integration', () => {
       expect(recommended).toBe('VARCHAR');
     });
 
-    it('should recommend DECIMAL for numeric conflicts', () => {
-      // 复审修正:VARCHAR 会把 1 与 1.0 比成不等而丢 JOIN 匹配;DECIMAL(38,6) 让
-      // 整数-值浮点与整数相等且保住大整数精度
+    it('should return empty (no safe type-only recommendation) for numeric conflicts', () => {
+      // 复审二次修正:固定 scale DECIMAL 会舍入假匹配、VARCHAR 又丢匹配——类型层面无安全默认,
+      // 返回 '' 交由数据感知推断 / 用户手填
       const recommended = getRecommendedCastType('INTEGER', 'DECIMAL(18,4)');
-      expect(recommended).toBe('DECIMAL(38,6)');
+      expect(recommended).toBe('');
     });
   });
 
@@ -117,8 +117,8 @@ describe('JoinQueryPanel Type Conflict Integration', () => {
       { left: 'TEXT', right: 'BIGINT', expected: 'VARCHAR' },
       { left: 'DATE', right: 'VARCHAR', expected: 'VARCHAR' },
       
-      // Numeric + numeric → DECIMAL(38,6)(VARCHAR 会把 1 与 1.0 比成不等而丢匹配)
-      { left: 'INTEGER', right: 'DECIMAL(18,4)', expected: 'DECIMAL(38,6)' },
+      // Numeric + numeric → ''(类型层面无安全默认,交由数据感知推断 / 手填)
+      { left: 'INTEGER', right: 'DECIMAL(18,4)', expected: '' },
 
       // DateTime + 非时间类型 → VARCHAR(把 INTEGER 硬转 TIMESTAMP 是纪元误读陷阱)
       { left: 'DATE', right: 'INTEGER', expected: 'VARCHAR' },

@@ -199,7 +199,11 @@ export function useTypeConflict(columnPairs: ColumnPair[]): UseTypeConflictRetur
     setResolutions(prev => {
       const updated = { ...prev };
       for (const conflict of conflicts) {
-        updated[conflict.key] = conflict.recommendedType;
+        // 跳过无安全类型推荐的冲突(如大整数×浮点,recommendedType 为 '');
+        // 它们要靠数据感知"推断"或用户手填,不能被一键套一个不安全的默认
+        if (conflict.recommendedType) {
+          updated[conflict.key] = conflict.recommendedType;
+        }
       }
       return updated;
     });

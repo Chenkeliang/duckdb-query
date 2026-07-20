@@ -206,13 +206,14 @@ export function areTypesCompatible(leftType: string, rightType: string): boolean
 }
 
 /**
- * 获取推荐的 TRY_CAST 目标类型。
+ * 获取推荐的 TRY_CAST 目标类型。仅在能靠【类型】安全判定时给推荐,否则返回 ''
+ * (无安全推荐,交由数据感知推断 / 用户手填决定)。
  *
- * 含字符串/复杂类型/未知组合 → VARCHAR;双方都是 date/timestamp 家族 → TIMESTAMP;
- * 数值×数值(被 areTypesCompatible 判冲突的只有大整数×浮点)→ DECIMAL(38,6):
- * 推荐 VARCHAR 会把 1 与 1.0 的字符串形式比成不等而丢掉本可匹配的 JOIN 行
- * (native 1::BIGINT = 1.0::DOUBLE 为真),DECIMAL 则让整数-值浮点与整数相等、
- * 且保住大整数精度。含 TIME 或 date×time 等无法互转的组合落到 VARCHAR。
+ * 含字符串/复杂类型/未知组合 → VARCHAR(无损文本比较);双方 date/timestamp 家族 → TIMESTAMP。
+ * 数值×数值(被 areTypesCompatible 判冲突的只有大整数×浮点)→ '':任何固定 scale 的
+ * DECIMAL 都可能因舍入制造假匹配(如 DOUBLE 1.0000004 舍成 1.000000 = 整数 1),VARCHAR 又
+ * 把 1 与 1.0 比成不等丢匹配——类型层面没有安全默认,应由数据感知推断(scale 取自实际数据)
+ * 或用户显式选择。含 TIME / date×time 等无法互转的组合落到 VARCHAR。
  */
 export function getRecommendedCastType(leftType: string, rightType: string): string {
   const left = normalizeTypeName(leftType);
@@ -227,7 +228,7 @@ export function getRecommendedCastType(leftType: string, rightType: string): str
   }
 
   if (isNumericType(left) && isNumericType(right)) {
-    return 'DECIMAL(38,6)';
+    return '';
   }
 
   return 'VARCHAR';

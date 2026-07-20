@@ -47,6 +47,8 @@ export interface TypeConflictDialogProps {
   onResolve: (key: string, targetType: string) => void;
   /** 一键应用所有推荐 */
   onResolveAll: () => void;
+  /** 数据感知推断:在真实数据上为该冲突推断安全 cast(BIGINT/DECIMAL(38,s)/null),可选 */
+  onInferCast?: (conflict: TypeConflict) => Promise<string | null>;
   /** 关闭对话框 */
   onClose: () => void;
   /** 确认并继续 */
@@ -67,6 +69,7 @@ export const TypeConflictDialog: React.FC<TypeConflictDialogProps> = ({
   conflicts,
   onResolve,
   onResolveAll,
+  onInferCast,
   onClose,
   onConfirm,
   sqlPreview,
@@ -191,6 +194,7 @@ export const TypeConflictDialog: React.FC<TypeConflictDialogProps> = ({
                     key={conflict.key}
                     conflict={conflict}
                     onResolve={onResolve}
+                    onInferCast={onInferCast}
                   />
                 ))}
               </tbody>
@@ -255,11 +259,29 @@ export const TypeConflictDialog: React.FC<TypeConflictDialogProps> = ({
 interface ConflictRowProps {
   conflict: TypeConflict;
   onResolve: (key: string, targetType: string) => void;
+  onInferCast?: (conflict: TypeConflict) => Promise<string | null>;
 }
 
-const ConflictRow: React.FC<ConflictRowProps> = ({ conflict, onResolve }) => {
+const ConflictRow: React.FC<ConflictRowProps> = ({ conflict, onResolve, onInferCast }) => {
   const { t } = useTranslation('common');
   const isResolved = !!conflict.resolvedType;
+  const [inferring, setInferring] = React.useState(false);
+
+  const handleInfer = async () => {
+    if (!onInferCast) return;
+    setInferring(true);
+    try {
+      const rec = await onInferCast(conflict);
+      if (rec) onResolve(conflict.key, rec);
+    } finally {
+      setInferring(false);
+    }
+  };
+
+  // resolvedType 若是非标准值(手填/推断出的 DECIMAL(38,s)),下拉不选中它,由手填框显示
+  const selectValue = conflict.resolvedType && (DUCKDB_CAST_TYPES as readonly string[]).includes(conflict.resolvedType)
+    ? conflict.resolvedType
+    : undefined;
 
   return (
     <tr className={cn(
@@ -297,30 +319,52 @@ const ConflictRow: React.FC<ConflictRowProps> = ({ conflict, onResolve }) => {
         </code>
       </td>
 
-      {/* 类型选择器 */}
+      {/* 类型选择器:快速下拉 + 可手填 DECIMAL(x,x) + 数据感知推断 */}
       <td className="px-3 py-2">
-        <Select
-          value={conflict.resolvedType}
-          onValueChange={(value) => onResolve(conflict.key, value)}
-        >
-          <SelectTrigger className="w-36 h-8 text-xs">
-            <SelectValue placeholder={t('query.typeConflict.selectType', '选择类型')} />
-          </SelectTrigger>
-          <SelectContent position="popper" sideOffset={4}>
-            {DUCKDB_CAST_TYPES.map((type) => (
-              <SelectItem key={type} value={type} className="text-xs">
-                <span className="flex items-center gap-2">
-                  {type}
-                  {type === conflict.recommendedType && (
-                    <Badge variant="outline" className="text-xs px-1 py-0 bg-primary/10 text-primary">
-                      {t('query.typeConflict.recommended', '推荐')}
-                    </Badge>
-                  )}
-                </span>
-              </SelectItem>
-            ))}
-          </SelectContent>
-        </Select>
+        <div className="flex items-center gap-1">
+          <Select
+            value={selectValue}
+            onValueChange={(value) => onResolve(conflict.key, value)}
+          >
+            <SelectTrigger className="w-28 h-8 text-xs">
+              <SelectValue placeholder={t('query.typeConflict.selectType', '选择类型')} />
+            </SelectTrigger>
+            <SelectContent position="popper" sideOffset={4}>
+              {DUCKDB_CAST_TYPES.map((type) => (
+                <SelectItem key={type} value={type} className="text-xs">
+                  <span className="flex items-center gap-2">
+                    {type}
+                    {conflict.recommendedType && type === conflict.recommendedType && (
+                      <Badge variant="outline" className="text-xs px-1 py-0 bg-primary/10 text-primary">
+                        {t('query.typeConflict.recommended', '推荐')}
+                      </Badge>
+                    )}
+                  </span>
+                </SelectItem>
+              ))}
+            </SelectContent>
+          </Select>
+          {/* 手填(如 DECIMAL(38,2));key 随 resolvedType 变,推断/下拉结果会回填 */}
+          <input
+            key={`cast-${conflict.key}-${conflict.resolvedType ?? ''}`}
+            className="w-28 h-8 text-xs px-1.5 rounded border border-border bg-background text-foreground"
+            defaultValue={conflict.resolvedType ?? ''}
+            placeholder={t('query.typeConflict.customPlaceholder', '手填 DECIMAL(x,x)')}
+            onBlur={(e) => { const v = e.target.value.trim(); if (v) onResolve(conflict.key, v); }}
+            onKeyDown={(e) => { if (e.key === 'Enter') (e.target as HTMLInputElement).blur(); }}
+          />
+          {onInferCast && (
+            <button
+              type="button"
+              disabled={inferring}
+              onClick={handleInfer}
+              className="h-8 px-2 text-xs rounded border border-border hover:bg-muted whitespace-nowrap disabled:opacity-50"
+              title={t('query.typeConflict.inferSafeHint', '在真实数据上推断安全类型(精度取自数据)')}
+            >
+              {inferring ? '…' : t('query.typeConflict.inferSafe', '推断')}
+            </button>
+          )}
+        </div>
       </td>
     </tr>
   );

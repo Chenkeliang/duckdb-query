@@ -224,17 +224,18 @@ describe('duckdbTypes', () => {
       });
     });
 
-    describe('numeric + numeric → DECIMAL(38,6)', () => {
-      // 复审修正:曾推荐 VARCHAR,但 '1' != '1.0' 会丢掉 native 1::BIGINT=1.0::DOUBLE
-      // 本可匹配的 JOIN 行;DECIMAL(38,6) 让整数-值浮点与整数相等且保住大整数精度
-      it('should recommend DECIMAL for integer + float', () => {
-        expect(getRecommendedCastType('INTEGER', 'DOUBLE')).toBe('DECIMAL(38,6)');
-        expect(getRecommendedCastType('BIGINT', 'FLOAT')).toBe('DECIMAL(38,6)');
+    describe('numeric + numeric → no type-only recommendation', () => {
+      // 复审二次修正:固定 scale 的 DECIMAL 会因舍入制造假匹配(1.0000004→1.000000=1),
+      // VARCHAR 又把 1 与 1.0 比成不等丢匹配——类型层面没有安全默认,返回 '' 交由
+      // 数据感知推断(scale 取自实际数据)/ 用户手填
+      it('should return empty (no safe recommendation) for integer + float', () => {
+        expect(getRecommendedCastType('INTEGER', 'DOUBLE')).toBe('');
+        expect(getRecommendedCastType('BIGINT', 'FLOAT')).toBe('');
       });
 
-      it('should recommend DECIMAL for integer + decimal', () => {
-        expect(getRecommendedCastType('INTEGER', 'DECIMAL')).toBe('DECIMAL(38,6)');
-        expect(getRecommendedCastType('DECIMAL(18,4)', 'BIGINT')).toBe('DECIMAL(38,6)');
+      it('should return empty for integer + decimal', () => {
+        expect(getRecommendedCastType('INTEGER', 'DECIMAL')).toBe('');
+        expect(getRecommendedCastType('DECIMAL(18,4)', 'BIGINT')).toBe('');
       });
     });
 
