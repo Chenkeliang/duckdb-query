@@ -120,7 +120,8 @@ export function getPivotQueryKey(
     columns: string[],
     values: PivotPanelValueConfig[],
     filters: FilterConfig[] = [],
-    maxQueryRows?: number
+    maxQueryRows?: number,
+    pivotMaxColumns?: number
 ): (string | number | undefined)[] {
     // 用限定名(含 schema/连接前缀)而非裸表名,避免不同连接下同名表(如各自的 orders)
     // 生成同一缓存键、在 staleTime 内互相返回对方的 SQL
@@ -142,5 +143,7 @@ export function getPivotQueryKey(
         values.map((v) => `${v.column}:${v.aggregation}:${v.typeConversion ?? ''}`).join('|'),
         filterKey,
         maxQueryRows ?? '',
+        // column_value_limit(=pivotMaxColumns)进入请求体、影响生成 SQL,须进键
+        pivotMaxColumns ?? '',
     ];
 }

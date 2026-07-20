@@ -204,10 +204,13 @@ export {
     deleteSqlFavorite,
     incrementFavoriteUsage,
     getAppConfig,
-    inferColumnCast,
     type AppConfigResponse,
-    type InferCastResult,
 } from './pivotQueryApi';
+export {
+    inferColumnCast,
+    type InferCastResult,
+    type InferColumnCastPayload,
+} from './columnAnalysisApi';
 
 // ==================== AI API ====================
 export {

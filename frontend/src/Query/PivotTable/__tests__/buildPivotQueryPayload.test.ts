@@ -139,5 +139,8 @@ describe('buildPivotQueryPayload', () => {
         // maxQueryRows 不同 → 键不同(LIMIT 变了,SQL 不同)
         expect(getPivotQueryKey(duckdbTable, base, cols, plainVals, [], 500))
             .not.toEqual(getPivotQueryKey(duckdbTable, base, cols, plainVals, [], 1000));
+        // pivotMaxColumns(=column_value_limit)不同 → 键不同(影响请求体/生成 SQL)
+        expect(getPivotQueryKey(duckdbTable, base, cols, plainVals, [], 500, 300))
+            .not.toEqual(getPivotQueryKey(duckdbTable, base, cols, plainVals, [], 500, 500));
     });
 });

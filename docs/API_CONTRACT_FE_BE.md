@@ -157,7 +157,7 @@
 
 | 方法 | 路径 | 成功体 | 前端入口 |
 |------|------|--------|----------|
-| POST | `/api/pivot-query/generate` | 对象 | `generatePivotQuery`（`pivot_config` 必填）；400 `PIVOT_QUERY_INVALID`；500 `OPERATION_FAILED` |
+| POST | `/api/pivot-query/generate` | 对象 | `generatePivotQuery`（`pivot_config` 必填；可选 `attach_databases`；`pivot_config.values[].typeConversion`=聚合前 TRY_CAST 目标，走白名单校验）；列维度去重值超过 app `pivot_max_columns` 时 `OPERATION_FAILED`，消息以 `PIVOT_COLUMN_LIMIT_EXCEEDED` 开头；400 `PIVOT_QUERY_INVALID` |
 | POST | `/api/pivot-query/preview` | 对象 | `previewPivotQuery`（`pivot_config` 必填；可选 `attach_databases`；可选顶层 `limit`=预览行数上限，缺省回退 app `max_query_rows`，响应 `row_count`=透视后总行数、`returned_rows`=实际返回行数；MCP 工具 `pivot` 预览默认传 `limit=100`）；400 `PIVOT_QUERY_INVALID`；499 `QUERY_CANCELLED`；500 `OPERATION_FAILED` |
 | GET | `/api/sql-favorites` | **列表** | `listSqlFavorites` |
 | GET | `/api/sql-favorites/{id}` | 对象 | `getSqlFavorite`（`data.favorite`）；404 `FAVORITE_NOT_FOUND` |
@@ -165,7 +165,8 @@
 | PUT | `/api/sql-favorites/{id}` | 对象 | `updateSqlFavorite`；404 `FAVORITE_NOT_FOUND` |
 | DELETE | `/api/sql-favorites/{id}` | 对象 | `deleteSqlFavorite`；404 `FAVORITE_NOT_FOUND` |
 | POST | `/api/sql-favorites/{id}/use` | 对象 | `incrementFavoriteUsage`；404 `FAVORITE_NOT_FOUND` |
-| GET | `/api/app-config/features` | 对象 | `getAppConfig`；含 `json_import_column_type`, `remote_storage_configured`（是否配置 `duckdb_remote_settings`） |
+| GET | `/api/app-config/features` | 对象 | `getAppConfig`；含 `json_import_column_type`, `remote_storage_configured`（是否配置 `duckdb_remote_settings`）, `pivot_max_columns`（透视结果列数上限，默认 300；前端据此发 `column_value_limit`） |
+| POST | `/api/columns/infer-cast` | 对象 | `inferColumnCast`（`columnAnalysisApi.ts`）；入参 `{table_name, column, filters?, attach_databases?}`；在筛选后真实数据上刻画一列作为数值 cast 目标：`{recommended: 'BIGINT'\|'DECIMAL(38,s)'\|null, total, numeric, non_numeric, max_int_digits, max_frac_digits, fits_decimal38}`；DECIMAL scale 取自实际数据;有非数字行/超容量时 `recommended=null`。供透视文本聚合与 JOIN 类型冲突的数据感知安全推荐 |
 
 ## 8. 设置（`settingsShortcutsApi.ts`）
 
