@@ -37,6 +37,7 @@ import {
     canUseServerPivotPath,
     hasPendingValueCast,
     getPivotQueryKey,
+    getInferenceContextKey,
     shouldUseLocalPivotSql,
     type PivotPanelValueConfig,
 } from "./buildPivotQueryPayload";
@@ -85,13 +86,28 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
         setFilterRows([]);
     }, []);
 
+    // 表身份(限定名 + attach/连接,不含筛选):切换到不同连接的【同名表】时裸表名相同、不会重置,
+    // 用完整身份才能触发 resetConfig 清掉旧表配置(含带旧 cast 的 values)。
+    const tableIdentity = React.useMemo(
+        () => getInferenceContextKey(selectedTable, []),
+        [selectedTable]
+    );
+
     React.useEffect(() => {
         resetConfig();
-    }, [tableName, resetConfig]);
+    }, [tableIdentity, resetConfig]);
 
     const apiFilters = React.useMemo(
         () => pivotFiltersToApi(filterRows),
         [filterRows]
+    );
+
+    // cast 推断上下文键:表身份 + 归一筛选。任一变化 → 设计器对"系统推断"的值重推(手填不覆盖)。
+    // 含表身份可防"切到同名异连接表沿用旧 cast";含筛选可防"小范围推 DECIMAL(38,2),扩大筛选后
+    // 仍用旧标度静默舍入"。与 getPivotQueryKey/getInferenceContextKey 同口径。
+    const inferenceContextKey = React.useMemo(
+        () => getInferenceContextKey(selectedTable, apiFilters),
+        [selectedTable, apiFilters]
     );
 
     // 文本列选 SUM/AVG 时,在当前筛选后的数据上做数据感知 cast 推断(供设计器预填安全推荐)
@@ -336,6 +352,7 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
                     onValuesChange={setValues}
                     isLoading={columnsLoading}
                     onInferCast={handleInferCast}
+                    inferenceContextKey={inferenceContextKey}
                 />
 
                 <PivotFilters

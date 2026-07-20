@@ -19,6 +19,33 @@ export interface PivotPanelValueConfig {
     typeConversion?: string;
     /** UI-only:'pending'=推断中,'unsafe'=需用户显式选类型。有此状态则阻断生成/执行(不透传后端)。 */
     castStatus?: 'pending' | 'unsafe';
+    /** UI-only:cast 来源。'inferred'=系统数据感知推断(上下文变化会重推);'manual'=用户手填(不覆盖)。 */
+    castSource?: 'inferred' | 'manual';
+    /** UI-only:该推断结果所依据的推断上下文键(表身份+筛选);与当前不同 → 结果已过期需重推。 */
+    castContextKey?: string;
+    /** UI-only:单调派发号,只应用最新一次推断派发的结果(区分同上下文的重复在途请求)。 */
+    castSeq?: number;
+}
+
+/** 归一化筛选为稳定字符串键:透视 SQL 缓存键 与 cast 推断上下文键共用同一口径,
+ *  确保"筛选范围扩大 → 推断上下文键变化 → 触发重推"与缓存失效对齐。
+ *  用 JSON 编码而非 `:`/`;` 手工拼接——否则值里含分隔符时会碰撞:单个筛选 a="x;b:=:y" 与
+ *  两个筛选 a="x" AND b="y" 旧口径同为 "a:=:x;b:=:y",会复用错筛选的缓存 SQL / 不重推 cast。 */
+export function normalizeFiltersKey(filters: FilterConfig[]): string {
+    return JSON.stringify(filters.map((f) => [f.column, f.operator, f.value ?? null]));
+}
+
+/** cast 推断上下文键:限定表名(含 schema/连接前缀)+ attach 别名/连接 id + 归一筛选。
+ *  任一变化(切表、换到同名异连接表、改筛选)→ 键变化 → 对系统推断的值重推,避免沿用旧上下文
+ *  推出的 scale(如连接 A 的 orders.amount 推为 DECIMAL(38,2),切到连接 B 同名表含三位小数仍按两位)。 */
+export function getInferenceContextKey(
+    table: SelectedTable | null,
+    filters: FilterConfig[]
+): string {
+    const ref = table ? buildPivotTableRef(table) : null;
+    const name = ref?.tableName ?? '';
+    const attachKey = (ref?.attachDatabases ?? []).map((d) => `${d.alias}=${d.connectionId}`);
+    return JSON.stringify([name, attachKey, normalizeFiltersKey(filters)]);
 }
 
 /** 是否存在待推断/无法安全推断的值(应阻断透视生成与执行,避免用有损默认静默出结果) */
@@ -130,9 +157,7 @@ export function getPivotQueryKey(
     const attachKey = (ref?.attachDatabases ?? [])
         .map((d) => `${d.alias}=${d.connectionId}`)
         .join(',');
-    const filterKey = filters
-        .map((f) => `${f.column}:${f.operator}:${String(f.value ?? "")}`)
-        .join(";");
+    const filterKey = normalizeFiltersKey(filters);
     return [
         'pivot-sql',
         name,

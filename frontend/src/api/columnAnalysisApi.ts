@@ -6,15 +6,29 @@
 
 import { apiClient, handleApiError, normalizeResponse } from './client';
 
+/** 不安全原因:null(安全)| empty | non_numeric | binary_float | scientific | overflow */
+export type InferCastReason =
+    | null
+    | 'empty'
+    | 'non_numeric'
+    | 'binary_float'
+    | 'scientific'
+    | 'overflow';
+
 export interface InferCastResult {
-    /** 安全推荐:'BIGINT' | 'DECIMAL(38,s)' | null(有不可转行/超容量时为 null) */
+    /** 安全推荐:'BIGINT' | 'DECIMAL(38,s)' | null(不安全时为 null) */
     recommended: string | null;
     total: number;
     numeric: number;
     non_numeric: number;
     max_int_digits: number;
     max_frac_digits: number;
-    fits_decimal38: boolean;
+    /** 是否可【安全自动推荐】DECIMAL/BIGINT(recommended 非 null 时恒 true)。
+     *  注意语义是"能否安全自动量化",非"数学上能否放进 DECIMAL(38)":二进制浮点源即便数值
+     *  能进 DECIMAL 也为 false(量化有损)。 */
+    safe_decimal_cast: boolean;
+    /** 为何不安全,供 UI 精准提示;安全时为 null */
+    reason: InferCastReason;
 }
 
 export interface InferColumnCastPayload {

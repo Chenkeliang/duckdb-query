@@ -3,10 +3,62 @@ import {
     buildPivotQueryPayload,
     canUseServerPivotPath,
     getPivotQueryKey,
+    getInferenceContextKey,
     hasPendingValueCast,
+    normalizeFiltersKey,
     shouldUseLocalPivotSql,
 } from '../buildPivotQueryPayload';
 import { AggregationFunction } from '@/types/pivotQuery';
+import type { FilterConfig } from '@/types/pivotQuery';
+
+describe('normalizeFiltersKey (cast 推断上下文键 / 缓存键共用口径)', () => {
+    const f = (over: Partial<FilterConfig>): FilterConfig => ({
+        column: 'grp', operator: '=', value: 'a', ...over,
+    });
+
+    it('值/算子不同 → 键不同(驱动重推 + 缓存失效;算子用后端真实支持的 = / >)', () => {
+        expect(normalizeFiltersKey([f({ value: 'a' })]))
+            .not.toEqual(normalizeFiltersKey([f({ value: 'b' })]));
+        expect(normalizeFiltersKey([f({ operator: '=' })]))
+            .not.toEqual(normalizeFiltersKey([f({ operator: '>' })]));
+    });
+
+    it('P1 回归:值含 ;:=: 分隔符时,单筛选 ≠ 两个筛选(旧 : / ; 拼接会碰撞)', () => {
+        // 旧口径:单筛选 a="x;b:=:y" 与 两筛选 a="x" AND b="y" 同为 "a:=:x;b:=:y" → 碰撞
+        const single = normalizeFiltersKey([{ column: 'a', operator: '=', value: 'x;b:=:y' }]);
+        const doubled = normalizeFiltersKey([
+            { column: 'a', operator: '=', value: 'x' },
+            { column: 'b', operator: '=', value: 'y' },
+        ]);
+        expect(single).not.toEqual(doubled);
+    });
+
+    it('值类型不同(数字 1 vs 字符串 "1")→ 键不同(JSON 保类型)', () => {
+        expect(normalizeFiltersKey([f({ value: 1 })]))
+            .not.toEqual(normalizeFiltersKey([f({ value: '1' })]));
+    });
+
+    it('相同筛选 → 键稳定(不会无谓重推)', () => {
+        expect(normalizeFiltersKey([f({})])).toEqual(normalizeFiltersKey([f({})]));
+    });
+});
+
+describe('getInferenceContextKey (含表身份,防切同名异连接表沿用旧 cast)', () => {
+    const duckdbTable = { name: 'orders', source: 'duckdb' as const };
+
+    it('同表:筛选不同 → 键不同;筛选相同 → 键稳定', () => {
+        const f1 = [{ column: 'region', operator: '=', value: 'A' }];
+        const f2 = [{ column: 'region', operator: '=', value: 'B' }];
+        expect(getInferenceContextKey(duckdbTable, f1))
+            .not.toEqual(getInferenceContextKey(duckdbTable, f2));
+        expect(getInferenceContextKey(duckdbTable, f1))
+            .toEqual(getInferenceContextKey(duckdbTable, f1));
+    });
+
+    it('无表 → 空身份键仍稳定可比', () => {
+        expect(getInferenceContextKey(null, [])).toEqual(getInferenceContextKey(null, []));
+    });
+});
 
 describe('pending value cast blocks generation', () => {
     const duckdbTable = { name: 'sales', source: 'duckdb' as const };
@@ -122,8 +174,8 @@ describe('buildPivotQueryPayload', () => {
             filters
         );
         expect(keyWith).not.toEqual(keyWithout);
-        // filterKey 现为倒数第二位(末位是 maxQueryRows)
-        expect(keyWith.some((seg) => String(seg).includes('region:=:APAC'))).toBe(true);
+        // filterKey 现为 JSON 编码(防分隔符碰撞),含结构化的 region/=/APAC
+        expect(keyWith.some((seg) => String(seg).includes('"region","=","APAC"'))).toBe(true);
     });
 
     it('query key covers typeConversion, connection and maxQueryRows', () => {

@@ -47,6 +47,12 @@ interface PivotValueConfig {
     typeConversion?: string;
     /** UI-only:'pending'=推断中,'unsafe'=无法安全推断需用户显式选择。二者都会挡住生成/执行。 */
     castStatus?: 'pending' | 'unsafe';
+    /** UI-only:cast 来源。'inferred'=系统数据感知推断(上下文变化会重推);'manual'=用户手填(不覆盖)。 */
+    castSource?: 'inferred' | 'manual';
+    /** UI-only:该推断结果依据的推断上下文键(表身份+筛选);与当前不同 → 结果过期需重推。 */
+    castContextKey?: string;
+    /** UI-only:单调派发号,只应用最新一次推断派发的结果(区分同上下文的重复在途请求)。 */
+    castSeq?: number;
 }
 
 interface PivotTableDesignerProps {
@@ -60,6 +66,9 @@ interface PivotTableDesignerProps {
     isLoading?: boolean;
     /** 文本列选 SUM/AVG 时,在筛选后数据上做数据感知 cast 推断(由 PivotPanel 提供,含表/筛选/attach) */
     onInferCast?: (column: string) => Promise<InferCastResult | null>;
+    /** 当前推断上下文键(表身份+筛选,由 PivotPanel 提供)。变化时对"系统推断"的值重新推断,并作为
+     *  异步结果的上下文标识:回来时若键已变则丢弃 stale 结果。手填(manual)的值不受其变化影响。 */
+    inferenceContextKey?: string;
 }
 
 // Draggable Field Badge (from palette)
@@ -217,6 +226,7 @@ export const PivotTableDesigner: React.FC<PivotTableDesignerProps> = ({
     onValuesChange,
     isLoading,
     onInferCast,
+    inferenceContextKey,
 }) => {
     const { t } = useTranslation("common");
     const [activeId, setActiveId] = React.useState<string | null>(null);
@@ -292,15 +302,81 @@ export const PivotTableDesigner: React.FC<PivotTableDesignerProps> = ({
     const handleRemoveColumn = (field: string) => onColumnsChange(columns.filter(c => c !== field));
     const handleRemoveValue = (idx: number) => onValuesChange(values.filter((_, i) => i !== idx));
 
-    // 用 ref 读最新 values,避免异步推断回来时用了旧闭包
+    // 用 ref 读最新 values,避免异步推断回来时用了旧闭包。updateValueAt 同步回写 ref:
+    // 筛选变化可能让【多个】推断值在同一 tick 内先后更新(重推 effect + 各自 async 回填),
+    // 若只依赖 onValuesChange(下次 render 才刷新 ref),后一次更新会读到旧 ref 覆盖掉前一次。
     const valuesRef = React.useRef(values);
     valuesRef.current = values;
+    const contextKeyRef = React.useRef(inferenceContextKey);
+    contextKeyRef.current = inferenceContextKey;
+    // 单调派发号:只应用【最新一次派发】的推断结果。forKey 内容寻址,A→B→A 时会出现两个同 forKey
+    // 的在途请求(d0 与 d2),仅靠 forKey/castSource 无法区分——谁后【到达】谁赢会让旧解覆盖新解。
+    // castSeq 随值同行(reorder 安全),迟到的旧派发因 seq 不再匹配被丢弃(对抗复审 flaw:inferred×inferred 竞态)。
+    const inferSeqRef = React.useRef(0);
+
     const updateValueAt = (idx: number, patch: Partial<PivotValueConfig>) => {
         const cur = valuesRef.current;
         if (idx < 0 || idx >= cur.length) return;
         const next = [...cur];
         next[idx] = { ...next[idx], ...patch };
+        valuesRef.current = next; // 同步回写,保证同 tick 内后续更新基于最新值合成
         onValuesChange(next);
+    };
+
+    const needsTextCast = (v: PivotValueConfig): boolean =>
+        !isFieldNumeric(v.column) &&
+        (v.aggregation === AggregationFunction.SUM || v.aggregation === AggregationFunction.AVG);
+
+    // 在推断上下文 forKey(表身份+筛选)下对 idx 列做数据感知推断:先落 pending 挡住生成/执行,再异步回填。
+    // forKey 兼作上下文标识:结果回来时若当前上下文键已变(切表/改筛选),丢弃这次 stale 结果。
+    const inferCastFor = (idx: number, col: string, forKey: string) => {
+        const seq = (inferSeqRef.current += 1);
+        updateValueAt(idx, {
+            typeConversion: undefined, castStatus: 'pending',
+            castSource: 'inferred', castContextKey: forKey, castSeq: seq,
+        });
+        if (!onInferCast) {
+            updateValueAt(idx, { castStatus: 'unsafe', castSource: 'inferred', castContextKey: forKey });
+            return;
+        }
+        void onInferCast(col).then((res) => {
+            // 丢弃 stale,任一条件不满足即丢:
+            //  - 有更晚的同值派发(castSeq 不再匹配)——防 A→B→A 同 forKey 的旧派发迟到覆盖新解;
+            //  - 值已增删/换列、上下文已变(forKey 过期)、已不再需要 cast(切回 COUNT/数值列);
+            //  - 已被用户手填覆盖(castSource!=='inferred')——防迟到推断覆盖用户手填。
+            const cur = valuesRef.current[idx];
+            if (!cur || cur.castSeq !== seq) return;
+            if (cur.column !== col) return;
+            if (forKey !== (contextKeyRef.current ?? '')) return;
+            if (cur.castSource !== 'inferred') return;
+            if (!needsTextCast(cur)) return;
+            if (res && res.recommended) {
+                updateValueAt(idx, {
+                    typeConversion: res.recommended, castStatus: undefined,
+                    castSource: 'inferred', castContextKey: forKey,
+                });
+                showSuccessToast(t, undefined, t("query.pivot.textCastRecommended", {
+                    column: col, cast: res.recommended,
+                }));
+            } else {
+                // 无法安全推断:要求显式选择。按后端 reason 给出【可操作】提示——
+                // 二进制浮点/科学计数法/超容量各有不同处置,通用文案(还带 count=0)会误导。
+                updateValueAt(idx, {
+                    typeConversion: undefined, castStatus: 'unsafe',
+                    castSource: 'inferred', castContextKey: forKey,
+                });
+                const reasonKey: Record<string, string> = {
+                    non_numeric: "query.pivot.textCastUnsafeNonNumeric",
+                    binary_float: "query.pivot.textCastUnsafeBinaryFloat",
+                    scientific: "query.pivot.textCastUnsafeScientific",
+                    overflow: "query.pivot.textCastUnsafeOverflow",
+                };
+                const key = (res?.reason && reasonKey[res.reason]) || "query.pivot.textCastUnsafe";
+                showErrorToast(t, undefined, t(key, {
+                    column: col, count: res?.non_numeric ?? 0,
+                }));
+            }
+        });
     };
 
     const handleUpdateValueAgg = (idx: number, agg: AggregationFunction) => {
@@ -309,51 +385,52 @@ export const PivotTableDesigner: React.FC<PivotTableDesignerProps> = ({
             !isFieldNumeric(col) &&
             (agg === AggregationFunction.SUM || agg === AggregationFunction.AVG);
         if (!needsNumericCast) {
-            // 数值列 / COUNT 等:无需转换,清掉 typeConversion 与状态
-            updateValueAt(idx, { aggregation: agg, typeConversion: undefined, castStatus: undefined });
+            // 数值列 / COUNT 等:无需转换,清掉 typeConversion 与所有 cast 状态/来源
+            updateValueAt(idx, {
+                aggregation: agg, typeConversion: undefined, castStatus: undefined,
+                castSource: undefined, castContextKey: undefined,
+            });
             return;
         }
-        // 文本列 SUM/AVG:不落任何固定默认(固定 scale 会舍入假匹配)。进入 pending 态挡住生成/执行,
-        // 在筛选后数据上做数据感知推断:能安全推断(scale 取自实际数据)才落 cast、放行;
-        // 否则进 unsafe 态,要求用户显式选择,绝不静默用一个可能有损的默认。
-        updateValueAt(idx, { aggregation: agg, typeConversion: undefined, castStatus: 'pending' });
-        if (!onInferCast) {
-            updateValueAt(idx, { castStatus: 'unsafe' });
-            return;
-        }
-        void onInferCast(col).then((res) => {
-            // 丢弃 stale 结果:目标值已增删/换列,或已不再需要 cast(如切回 COUNT)——
-            // 否则会把一个不再需要转换的值错误挂上 pending/unsafe 卡住执行
-            const cur = valuesRef.current[idx];
-            if (!cur || cur.column !== col) return;
-            const stillNeedsCast =
-                !isFieldNumeric(cur.column) &&
-                (cur.aggregation === AggregationFunction.SUM || cur.aggregation === AggregationFunction.AVG);
-            if (!stillNeedsCast) return;
-            if (res && res.recommended) {
-                updateValueAt(idx, { typeConversion: res.recommended, castStatus: undefined });
-                showSuccessToast(t, undefined, t("query.pivot.textCastRecommended", {
-                    column: col, cast: res.recommended,
-                }));
-            } else {
-                // 无法安全推断(有非数字行 / 超容量 / 推断失败):要求显式选择,不放行
-                updateValueAt(idx, { typeConversion: undefined, castStatus: 'unsafe' });
-                showErrorToast(t, undefined, t("query.pivot.textCastUnsafe", {
-                    column: col, count: res?.non_numeric ?? 0,
-                }));
-            }
-        });
+        // 文本列 SUM/AVG:不落任何固定默认(固定 scale 会舍入假匹配),在当前上下文数据上数据感知推断。
+        updateValueAt(idx, { aggregation: agg });
+        inferCastFor(idx, col, contextKeyRef.current ?? '');
     };
 
-    // 值 chip 上的可编辑 cast 输入(用户手填 DECIMAL(x,x) 即视为显式选择,清除 unsafe/pending 态;
-    // 空则清除转换但保留 unsafe 态,防止空手放行)
+    // 上下文变化(切表 / 换同名异连接表 / 改筛选):对【系统推断且上下文键已过期】的文本 SUM/AVG 值
+    // 重新推断(手填的 manual 值不动)。修复:先在小范围数据上推出 DECIMAL(38,2)、再扩大筛选到含
+    // 3 位小数的数据时,旧标度会把 1.234 静默舍成 1.23——须随上下文键变化重推。仅依赖 inferenceContextKey。
+    React.useEffect(() => {
+        const key = inferenceContextKey ?? '';
+        valuesRef.current.forEach((v, idx) => {
+            if (v.castSource !== 'inferred') return;
+            if (v.castContextKey === key) return;
+            if (!needsTextCast(v)) return;
+            inferCastFor(idx, v.column, key);
+        });
+        // inferCastFor/needsTextCast 依赖当前 render 闭包,仅在上下文键变化时触发即可
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [inferenceContextKey]);
+
+    // 值 chip 上的可编辑 cast 输入:用户手填即 manual 显式选择(清除 pending/unsafe,筛选变化不再覆盖)。
+    // 清空时:文本列仍是 SUM/AVG 则须保持 unsafe 挡住——否则后端收到没有 TRY_CAST 的文本 SUM/AVG,
+    // 生成 SUM(VARCHAR) 触发 Binder Error(Codex P2)。仅当聚合无需数值转换时才可真正清空放行。
     const handleUpdateValueCast = (idx: number, cast: string) => {
         const trimmed = cast.trim();
         if (trimmed) {
-            updateValueAt(idx, { typeConversion: trimmed, castStatus: undefined });
-        } else {
-            updateValueAt(idx, { typeConversion: undefined });
+            updateValueAt(idx, {
+                typeConversion: trimmed, castStatus: undefined,
+                castSource: 'manual', castContextKey: undefined,
+            });
+            return;
         }
+        const cur = valuesRef.current[idx];
+        const stillNeeds = !!cur && needsTextCast(cur);
+        updateValueAt(idx, {
+            typeConversion: undefined,
+            castStatus: stillNeeds ? 'unsafe' : undefined,
+            castSource: undefined, castContextKey: undefined,
+        });
     };
 
     const dropAnimation: DropAnimation = {

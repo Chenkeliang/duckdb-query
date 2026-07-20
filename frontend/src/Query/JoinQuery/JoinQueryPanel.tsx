@@ -1607,9 +1607,10 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
       if (!lp || !rp) return null;
       try {
         const [lr, rr] = await Promise.all([inferColumnCast(lp), inferColumnCast(rp)]);
-        // 任一侧存在无法转成数字的行,或超 DECIMAL(38) 容量 → 无安全公共数值类型
-        if (lr.non_numeric > 0 || rr.non_numeric > 0) return null;
-        if (!lr.fits_decimal38 || !rr.fits_decimal38) return null;
+        // 任一侧不可安全量化(有非数字行 / 二进制浮点源 / 科学计数法 / 超 DECIMAL(38) 容量)
+        // → 无安全公共数值类型,交用户显式选(如 VARCHAR 文本匹配)。二进制浮点走此分支正是
+        // "JOIN 分侧转换、别把浮点统一量化成 DECIMAL"的落地(safe_decimal_cast 已含该判定)。
+        if (!lr.safe_decimal_cast || !rr.safe_decimal_cast) return null;
         const scale = Math.max(lr.max_frac_digits, rr.max_frac_digits);
         const intDigits = Math.max(lr.max_int_digits, rr.max_int_digits);
         if (intDigits + scale > 38) return null;
