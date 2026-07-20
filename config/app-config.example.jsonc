@@ -53,8 +53,8 @@
   // 内存上限 / Memory limit（支持 KB/MB/GB）。默认 "8GB"。
   "duckdb_memory_limit": "8GB",
 
-  // 并行线程数 / Parallel threads. 建议 = CPU 核心数。默认 8。
-  "duckdb_threads": 8,
+  // 并行线程数 / Parallel threads. 省略则跟随 CPU 核心数（默认，推荐）。
+  // "duckdb_threads": 8,
 
   // 目录配置 / Directory paths. 全部 null = 用默认结构 data/duckdb/...
   "duckdb_data_dir": null,            // 数据根目录 / data root [ENV: DUCKDB_DATA_DIR]
@@ -63,19 +63,17 @@
   "duckdb_extension_directory": null, // 扩展安装目录 / extension dir [ENV: DUCKDB_EXTENSION_DIRECTORY]
   "duckdb_home_directory": null,      // home 目录 / home dir [ENV: DUCKDB_HOME_DIRECTORY]
 
-  // 查询性能分析格式 / Profiling format: "query_tree" | "json" | "query_tree_optimizer" | "no_output"。
-  "duckdb_enable_profiling": "query_tree",
+  // 查询性能分析格式 / Profiling format: "no_output" | "json" | "query_tree" | "query_tree_optimizer"。
+  // 默认 no_output（不向 stderr 刷执行树）；诊断时再改 query_tree/json。
+  "duckdb_enable_profiling": "no_output",
   // 性能分析输出文件 / Profiling output file. null = 不写文件。
   "duckdb_profiling_output": null,
 
   // 优化开关 / Optimizer flags
   "duckdb_prefer_range_joins": false,        // 优先范围 JOIN / prefer range joins. 默认 false。
-  "duckdb_enable_object_cache": true,        // 对象缓存（加速重复查询）/ object cache. 默认 true。
+  "duckdb_enable_object_cache": true,        // 对象缓存 / object cache. DuckDB 1.5.3 起为 no-op，仅兼容保留。
   "duckdb_preserve_insertion_order": false,  // 保持插入顺序（false 更快）/ preserve insertion order. 默认 false。
   "duckdb_enable_progress_bar": false,       // 查询进度条（生产关）/ progress bar. 默认 false。
-
-  // DuckDB 调试日志（打印 SHOW TABLES / EXPLAIN 等）/ engine debug logging. 默认 false。 [ENV: DUCKDB_DEBUG_LOGGING]
-  "duckdb_debug_logging": false,
 
   // 慢查询自动 EXPLAIN 阈值（毫秒）/ Auto-EXPLAIN threshold (ms). 0 = 关闭；生产可设 5000。
   // [ENV: DUCKDB_AUTO_EXPLAIN_THRESHOLD_MS]
