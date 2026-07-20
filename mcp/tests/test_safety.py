@@ -69,6 +69,24 @@ def test_write_keyword_in_string_literal_is_not_misclassified():
     assert is_write_sql("EXPLAIN ANALYZE SELECT * FROM t") is True  # 保守：连读查询也一并需要确认
 
 
+def test_write_pragmas_are_not_classified_read_only():
+    """P0-4 对抗复审:写/副作用型 PRAGMA 名字含下划线,躲过 \\bCOPY\\b 词边界,
+    旧逻辑"以 PRAGMA 开头即只读"会放行它们绕过只读模式。白名单挡住。"""
+    assert is_write_sql("PRAGMA copy_database('src', 'dst')") is True
+    assert is_write_sql("PRAGMA import_database('/tmp/exp')") is True
+    assert is_write_sql("PRAGMA export_database('/tmp/exp')") is True
+    assert is_write_sql("PRAGMA memory_limit='1GB'") is True  # =y 即 SET 状态变更
+    assert is_write_sql("pragma  Copy_Database(1)") is True  # 大小写/空格不影响
+
+
+def test_read_only_pragmas_still_pass():
+    """纯信息型 PRAGMA 仍判只读,不误伤正常内省查询。"""
+    assert is_write_sql("PRAGMA database_list") is False
+    assert is_write_sql("PRAGMA show_tables") is False
+    assert is_write_sql("PRAGMA table_info('mytable')") is False
+    assert is_write_sql("PRAGMA version") is False
+
+
 def test_tool_allowed_by_mode():
     assert tool_allowed("read", "read-only") is True
     assert tool_allowed("write", "read-only") is False

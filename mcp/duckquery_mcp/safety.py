@@ -18,6 +18,20 @@ _COMMENTS_AND_STRINGS = re.compile(
     re.S,
 )
 
+# 只读 PRAGMA 白名单。DuckDB 的 PRAGMA 名单里混着真正的写/副作用操作——
+# copy_database/import_database/export_database 会跨库拷数据、往磁盘导出,而
+# `PRAGMA x=y` 等价于 SET(会话状态变更)。且这些名字含下划线,躲过了
+# _WRITE_KEYWORDS 的 \bCOPY\b/\bIMPORT\b 词边界。故不能"以 PRAGMA 开头即只读",
+# 只放行纯信息型 pragma,其余一律当写(Codex P0-4 对抗复审 critical)。
+_READONLY_PRAGMAS = frozenset({
+    "database_list", "show_tables", "show_tables_expanded", "show_databases",
+    "table_info", "show", "database_size", "version", "platform", "user_agent",
+    "functions", "storage_info", "metadata_info", "collations",
+    "table_function_info",
+})
+
+_PRAGMA_NAME = re.compile(r"^\s*PRAGMA\s+([A-Za-z_][A-Za-z0-9_]*)", re.I)
+
 # 任意位置出现即视为写(整词)。覆盖 DuckDB 的写/DDL/副作用语句。
 # WITH ... DELETE、SELECT 1; DROP ... 这类只看开头会漏,靠这一层兜住。
 _WRITE_KEYWORDS = re.compile(
@@ -43,6 +57,11 @@ def is_write_sql(sql: str) -> bool:
     if ";" in stripped.rstrip().rstrip(";"):
         return True
     if _READ.match(stripped) is None:
+        return True
+    # PRAGMA:名字不在只读白名单即判写(挡住 copy_database/import_database/
+    # export_database 及 PRAGMA x=y 状态变更,它们躲过了下面的写关键字词边界)。
+    pragma = _PRAGMA_NAME.match(stripped)
+    if pragma and pragma.group(1).lower() not in _READONLY_PRAGMAS:
         return True
     if _WRITE_KEYWORDS.search(stripped):
         return True
