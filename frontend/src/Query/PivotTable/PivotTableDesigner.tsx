@@ -36,7 +36,8 @@ import {
 } from "@/components/ui/dropdown-menu";
 import { AggregationFunction } from "@/types/pivotQuery";
 import { isNumericType } from "@/utils/duckdbTypes";
-import { showSuccessToast } from "@/utils/toastHelpers";
+import { showSuccessToast, showErrorToast } from "@/utils/toastHelpers";
+import type { InferCastResult } from "@/api";
 
 // Types
 interface PivotValueConfig {
@@ -55,6 +56,8 @@ interface PivotTableDesignerProps {
     onColumnsChange: (columns: string[]) => void;
     onValuesChange: (values: PivotValueConfig[]) => void;
     isLoading?: boolean;
+    /** 文本列选 SUM/AVG 时,在筛选后数据上做数据感知 cast 推断(由 PivotPanel 提供,含表/筛选/attach) */
+    onInferCast?: (column: string) => Promise<InferCastResult | null>;
 }
 
 // Draggable Field Badge (from palette)
@@ -211,6 +214,7 @@ export const PivotTableDesigner: React.FC<PivotTableDesignerProps> = ({
     onColumnsChange,
     onValuesChange,
     isLoading,
+    onInferCast,
 }) => {
     const { t } = useTranslation("common");
     const [activeId, setActiveId] = React.useState<string | null>(null);
@@ -285,29 +289,54 @@ export const PivotTableDesigner: React.FC<PivotTableDesignerProps> = ({
     const handleRemoveRow = (field: string) => onRowsChange(rows.filter(r => r !== field));
     const handleRemoveColumn = (field: string) => onColumnsChange(columns.filter(c => c !== field));
     const handleRemoveValue = (idx: number) => onValuesChange(values.filter((_, i) => i !== idx));
+
+    // 用 ref 读最新 values,避免异步推断回来时用了旧闭包
+    const valuesRef = React.useRef(values);
+    valuesRef.current = values;
+    const updateValueAt = (idx: number, patch: Partial<PivotValueConfig>) => {
+        const cur = valuesRef.current;
+        if (idx < 0 || idx >= cur.length) return;
+        const next = [...cur];
+        next[idx] = { ...next[idx], ...patch };
+        onValuesChange(next);
+    };
+
     const handleUpdateValueAgg = (idx: number, agg: AggregationFunction) => {
-        const newValues = [...values];
-        const col = newValues[idx].column;
-        // 文本列显式选 SUM/AVG:自动 TRY_CAST 到 DECIMAL(38,6)(数字文本精确求和,非数字→
-        // NULL 被忽略),并提示;其余情况清掉 typeConversion(数值列/COUNT 等无需转换)。
-        // 用 DECIMAL 而非 DOUBLE:DOUBLE 对 >2^53 的大整数会丢精度(9007199254740992+1 仍得
-        // 原值);DECIMAL(38,6) 精确到 6 位小数、整数位可达 32 位,覆盖金额/计数/大 ID。
+        const col = values[idx].column;
         const needsNumericCast =
             !isFieldNumeric(col) &&
             (agg === AggregationFunction.SUM || agg === AggregationFunction.AVG);
-        newValues[idx] = {
-            ...newValues[idx],
-            aggregation: agg,
-            typeConversion: needsNumericCast ? "DECIMAL(38,6)" : undefined,
-        };
-        onValuesChange(newValues);
-        if (needsNumericCast) {
-            showSuccessToast(
-                t,
-                undefined,
-                t("query.pivot.textCastToNumber", { column: col })
-            );
+        if (!needsNumericCast) {
+            // 数值列 / COUNT 等:无需转换,清掉 typeConversion
+            updateValueAt(idx, { aggregation: agg, typeConversion: undefined });
+            return;
         }
+        // 文本列 SUM/AVG:先设聚合 + DECIMAL(38,6) 兜底,再在筛选后数据上做数据感知推断——
+        // scale 取自实际数据(而非固定常量),从根上避免舍入假匹配;不可转行给明确提示。
+        updateValueAt(idx, { aggregation: agg, typeConversion: "DECIMAL(38,6)" });
+        if (!onInferCast) return;
+        void onInferCast(col).then((res) => {
+            if (!res) return; // 推断失败:保留 DECIMAL(38,6) 兜底
+            // 目标值可能已被增删/换列——按列名核对后再落
+            if (valuesRef.current[idx]?.column !== col) return;
+            const cast = res.recommended ?? "DECIMAL(38,6)";
+            updateValueAt(idx, { typeConversion: cast });
+            if (res.non_numeric > 0) {
+                showErrorToast(t, undefined, t("query.pivot.textCastNonNumericRows", {
+                    column: col, count: res.non_numeric, cast,
+                }));
+            } else {
+                showSuccessToast(t, undefined, t("query.pivot.textCastRecommended", {
+                    column: col, cast,
+                }));
+            }
+        });
+    };
+
+    // 值 chip 上的可编辑 cast 输入(用户可手填 DECIMAL(x,x) 等;空则清除转换)
+    const handleUpdateValueCast = (idx: number, cast: string) => {
+        const trimmed = cast.trim();
+        updateValueAt(idx, { typeConversion: trimmed || undefined });
     };
 
     const dropAnimation: DropAnimation = {
@@ -399,10 +428,25 @@ export const PivotTableDesigner: React.FC<PivotTableDesignerProps> = ({
                                 type="value"
                                 onRemove={() => handleRemoveValue(i)}
                                 extra={
-                                    <AggDropdown
-                                        value={v.aggregation}
-                                        onChange={(agg) => handleUpdateValueAgg(i, agg)}
-                                    />
+                                    <div className="flex items-center gap-1">
+                                        <AggDropdown
+                                            value={v.aggregation}
+                                            onChange={(agg) => handleUpdateValueAgg(i, agg)}
+                                        />
+                                        {v.typeConversion !== undefined && (
+                                            <input
+                                                // key 随 typeConversion 变:异步推荐到达时重挂显示新值
+                                                key={`cast-${i}-${v.typeConversion}`}
+                                                className="w-28 text-[11px] px-1 py-0.5 rounded border border-border bg-background text-foreground"
+                                                defaultValue={v.typeConversion}
+                                                title={t("query.pivot.castTypeHint", "聚合前的类型转换(可手填,如 DECIMAL(38,2);留空取消)")}
+                                                onBlur={(e) => handleUpdateValueCast(i, e.target.value)}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                                                }}
+                                            />
+                                        )}
+                                    </div>
                                 }
                             />
                         ))}

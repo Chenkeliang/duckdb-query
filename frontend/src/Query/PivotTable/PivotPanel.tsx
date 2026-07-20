@@ -23,7 +23,7 @@ import { useTableColumns } from "@/hooks/useTableColumns";
 import { useAppConfig } from "@/hooks/useAppConfig";
 import type { SelectedTable } from "@/types/SelectedTable";
 import type { TableSource } from "@/hooks/useQueryWorkspace";
-import { generatePivotQuery, toAttachDatabasesPayload } from "@/api";
+import { generatePivotQuery, toAttachDatabasesPayload, inferColumnCast, type InferCastResult } from "@/api";
 import { getTableName, normalizeSelectedTable } from "@/utils/tableUtils";
 import {
     quoteIdent,
@@ -33,6 +33,7 @@ import {
 import { sqlStringLiteral } from "@/utils/sqlLiteral";
 import {
     buildPivotQueryPayload,
+    buildPivotTableRef,
     canUseServerPivotPath,
     getPivotQueryKey,
     shouldUseLocalPivotSql,
@@ -90,6 +91,25 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
     const apiFilters = React.useMemo(
         () => pivotFiltersToApi(filterRows),
         [filterRows]
+    );
+
+    // 文本列选 SUM/AVG 时,在当前筛选后的数据上做数据感知 cast 推断(供设计器预填安全推荐)
+    const handleInferCast = React.useCallback(
+        async (column: string): Promise<InferCastResult | null> => {
+            if (!selectedTable) return null;
+            try {
+                const ref = buildPivotTableRef(selectedTable);
+                return await inferColumnCast({
+                    table_name: ref.tableName,
+                    column,
+                    filters: apiFilters,
+                    attach_databases: toAttachDatabasesPayload(ref.attachDatabases),
+                });
+            } catch {
+                return null;
+            }
+        },
+        [selectedTable, apiFilters]
     );
 
     const useServerPivot = canUseServerPivotPath(selectedTable, rows, values)
@@ -303,6 +323,7 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
                     onColumnsChange={setColumns}
                     onValuesChange={setValues}
                     isLoading={columnsLoading}
+                    onInferCast={handleInferCast}
                 />
 
                 <PivotFilters

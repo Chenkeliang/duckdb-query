@@ -204,7 +204,9 @@ export {
     deleteSqlFavorite,
     incrementFavoriteUsage,
     getAppConfig,
+    inferColumnCast,
     type AppConfigResponse,
+    type InferCastResult,
 } from './pivotQueryApi';
 
 // ==================== AI API ====================
