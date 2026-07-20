@@ -493,12 +493,28 @@ def fetch_query_records(connection, query):
     # 格式,字符串原样直达前端(零损失)。改写后只执行这一条(不双执行)。
     final_sql = query
     if ns_cols:
-        quoted = ", ".join(
-            f'CAST("{c.replace(chr(34), chr(34) * 2)}" AS VARCHAR) AS '
-            f'"{c.replace(chr(34), chr(34) * 2)}"'
-            for c in ns_cols
-        )
-        final_sql = f"SELECT * REPLACE ({quoted}) FROM ({query.rstrip().rstrip(';')})"
+        names = [n for n, _ in describe_types]
+        if len(names) != len(set(names)):
+            # 重复列名:SELECT * REPLACE 按列名改写只命中首个同名列,后续同名
+            # TIMESTAMP_NS 列仍走 datetime 取数丢纳秒。改用位置别名重写——先把每列
+            # 重命名为唯一别名 c{i},按位置 CAST NS 列为 VARCHAR,再以原名(允许重复)
+            # 输出,零列漏改。
+            inner = ", ".join(f"c{i}" for i in range(len(describe_types)))
+            outer = ", ".join(
+                (f"CAST(c{i} AS VARCHAR) AS " if t.upper() == "TIMESTAMP_NS" else f"c{i} AS ")
+                + f'"{n.replace(chr(34), chr(34) * 2)}"'
+                for i, (n, t) in enumerate(describe_types)
+            )
+            final_sql = (
+                f"SELECT {outer} FROM ({query.rstrip().rstrip(';')}) AS _nswrap({inner})"
+            )
+        else:
+            quoted = ", ".join(
+                f'CAST("{c.replace(chr(34), chr(34) * 2)}" AS VARCHAR) AS '
+                f'"{c.replace(chr(34), chr(34) * 2)}"'
+                for c in ns_cols
+            )
+            final_sql = f"SELECT * REPLACE ({quoted}) FROM ({query.rstrip().rstrip(';')})"
 
     try:
         res = _execute_with_federated_heal(connection, final_sql, query)

@@ -165,6 +165,20 @@ def test_promote_clean_integers_to_bigint(ingestion_con):
     assert _column_type(ingestion_con, t, "val") == "BIGINT"
 
 
+def test_promote_mixed_integer_and_decimal_to_decimal(ingestion_con):
+    """混合整数/小数列(金额列里部分值写成整数)应提升为 DECIMAL,整数行按 0 位小数
+    并入;此前 int_like==n / dec_like==n 两分支都不满足,静默退回 VARCHAR。"""
+    from decimal import Decimal
+    from core.data.ingestion_precision import promote_table_column_types_from_varchar
+
+    t = _make_table_name("mixed_int_dec")
+    _create_varchar_table(ingestion_con, t, "val", ["1", "2.50", "3"])
+    promote_table_column_types_from_varchar(ingestion_con, t)
+    assert _column_type(ingestion_con, t, "val") == "DECIMAL(38,2)"
+    rows = [r[0] for r in ingestion_con.execute(f'SELECT val FROM "{t}" ORDER BY val').fetchall()]
+    assert rows == [Decimal("1.00"), Decimal("2.50"), Decimal("3.00")]
+
+
 def test_promote_decimal_uses_column_max_scale(ingestion_con):
     from decimal import Decimal
     from core.data.ingestion_precision import promote_table_column_types_from_varchar

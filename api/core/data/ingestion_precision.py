@@ -157,7 +157,10 @@ def _infer_varchar_column_promotion(
             return "BIGINT"
         return None
 
-    if dec_like == n:
+    # int_like + dec_like == n:整列全是纯整数或纯小数(至少一个带小数点,否则上面
+    # int_like==n 分支已返回)。整数行按 0 位小数并入,与小数行一起提升为 DECIMAL——
+    # ["1","2.50"] 这类"金额列里部分值写成整数"不再因两分支都不满足而退回 VARCHAR。
+    if int_like + dec_like == n:
         digits_row = connection.execute(
             f"""
             WITH src AS (

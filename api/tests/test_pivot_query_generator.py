@@ -110,8 +110,9 @@ class TestPivotQueryModeGeneration:
         assert result.metadata.get("uses_pivot_extension") is False
 
     def test_pivot_value_type_conversion_wraps_try_cast(self):
-        """文本列按数值聚合:typeConversion=DOUBLE → SUM(TRY_CAST(col AS DOUBLE)),
-        避免 sum(VARCHAR) Binder Error(前端对文本列显式选 SUM 时自动带此字段)。"""
+        """文本列按数值聚合:typeConversion=DECIMAL(38,6) → SUM(TRY_CAST(col AS DECIMAL(38,6))),
+        避免 sum(VARCHAR) Binder Error 且保精度(DOUBLE 会丢 >2^53 大整数)。DECIMAL(p,s)
+        须经 validate_cast_type 白名单原样通过。"""
         config = PivotQueryConfig(table_name="Qqq1", filters=[])
         pivot_config = PivotConfig(
             rows=["创建时间"],
@@ -120,7 +121,7 @@ class TestPivotQueryModeGeneration:
                 PivotValueConfig(
                     column="用友出库单",
                     aggregation=AggregationFunction.SUM,
-                    typeConversion="DOUBLE",
+                    typeConversion="DECIMAL(38,6)",
                 )
             ],
             manual_column_values=["SC0058"],
@@ -134,7 +135,7 @@ class TestPivotQueryModeGeneration:
             )
             result = generate_pivot_query_sql(config, pivot_config=pivot_config)
 
-        assert 'SUM(TRY_CAST("用友出库单" AS DOUBLE))' in result.final_sql
+        assert 'SUM(TRY_CAST("用友出库单" AS DECIMAL(38,6)))' in result.final_sql
 
     def test_generate_pivot_query_sql_pivot_native_with_totals(self):
         config = PivotQueryConfig(

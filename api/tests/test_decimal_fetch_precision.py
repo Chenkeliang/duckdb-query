@@ -202,6 +202,19 @@ def test_timestamp_ns_exact_alongside_decimal(con):
     assert records[0]["d"] == "1.50"
 
 
+def test_timestamp_ns_duplicate_column_names_keep_nanoseconds(con):
+    """复审:两个同名 TIMESTAMP_NS 列时,SELECT * REPLACE 按列名只命中首个,次列
+    仍丢纳秒。改用位置别名重写后,两列纳秒都逐位精确(输出列名 dedup 为 a/a_1)。"""
+    columns, records, _ = fetch_query_records(
+        con,
+        "SELECT TIMESTAMP_NS '2020-01-01 00:00:00.123456789' AS a, "
+        "TIMESTAMP_NS '2020-01-01 00:00:00.987654321' AS a",
+    )
+    vals = list(records[0].values())
+    assert "2020-01-01 00:00:00.123456789" in vals
+    assert "2020-01-01 00:00:00.987654321" in vals
+
+
 def test_cursor_types_fallback_for_pragma(con):
     """PRAGMA/EXPLAIN 等不可 DESCRIBE 的语句:column_types 由游标 description
     兜底(同一次执行取得,不重放语句),不再退化为空数组。"""
