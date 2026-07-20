@@ -3,6 +3,7 @@ import { describe, it, expect } from 'vitest';
 import { buildJoinPreviewSql, isJoinConditionValid } from '../JoinQueryPanel';
 import { createEmptyGroup } from '../FilterBar';
 import type { SelectedTable } from '@/types/SelectedTable';
+import type { ResolvedCast } from '@/hooks/useTypeConflict';
 
 const table = (name: string): SelectedTable =>
   ({ name, source: 'duckdb' }) as SelectedTable;
@@ -13,7 +14,7 @@ const baseParams = () => ({
   selectedColumns: {} as Record<string, string[]>,
   joinConfigs: [],
   tableColumnsMap: {} as Record<string, { name: string; type: string }[]>,
-  resolvedTypes: {} as Record<string, string>,
+  resolvedCasts: {} as Record<string, ResolvedCast>,
   filterTree: createEmptyGroup(),
   maxQueryRows: 1000,
   selectConditionComment: '请选择关联条件',

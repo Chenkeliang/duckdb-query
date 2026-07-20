@@ -47,7 +47,7 @@ import {
 import type { JoinRestoreRequest } from '@/hooks/useQueryWorkspace';
 import { useMultipleTableColumns } from '@/hooks/useTableColumns';
 import { useAppConfig } from '@/hooks/useAppConfig';
-import { useTypeConflict, type ColumnPair, type TypeConflict } from '@/hooks/useTypeConflict';
+import { useTypeConflict, type ColumnPair, type TypeConflict, type ResolvedCast } from '@/hooks/useTypeConflict';
 import { TypeConflictDialog } from '@/Query/components/TypeConflictDialog';
 import { SQLHighlight } from '@/components/SQLHighlight';
 import { generateConflictKey } from '@/utils/duckdbTypes';
@@ -219,7 +219,8 @@ export interface JoinPreviewSqlParams {
   selectedColumns: Record<string, string[]>;
   joinConfigs: JoinConfig[];
   tableColumnsMap: Record<string, TableColumn[]>;
-  resolvedTypes: Record<string, string>;
+  /** 分侧转换:{ key: { leftCast?, rightCast? } }(只转与目标不同的一侧) */
+  resolvedCasts: Record<string, ResolvedCast>;
   filterTree: FilterGroup;
   maxQueryRows: number;
   /** 已翻译的“请选择关联条件”注释文案 */
@@ -238,7 +239,7 @@ export function buildJoinPreviewSql(params: JoinPreviewSqlParams): string | null
     selectedColumns,
     joinConfigs,
     tableColumnsMap,
-    resolvedTypes,
+    resolvedCasts,
     filterTree,
     maxQueryRows,
     selectConditionComment,
@@ -454,9 +455,12 @@ export function buildJoinPreviewSql(params: JoinPreviewSqlParams): string | null
               rightTableName,
               c.rightColumn
             );
-            const castType = resolvedTypes[conflictKey];
-            if (castType) {
-              return `TRY_CAST(${leftRef} AS ${castType}) ${c.operator} TRY_CAST(${rightRef} AS ${castType})`;
+            const casts = resolvedCasts[conflictKey];
+            if (casts && (casts.leftCast || casts.rightCast)) {
+              // 分侧:只转与目标不同的一侧,已是目标类型的一侧不动
+              const l = casts.leftCast ? `TRY_CAST(${leftRef} AS ${casts.leftCast})` : leftRef;
+              const r = casts.rightCast ? `TRY_CAST(${rightRef} AS ${casts.rightCast})` : rightRef;
+              return `${l} ${c.operator} ${r}`;
             }
           }
 
@@ -1390,7 +1394,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
     unresolvedCount,
     resolveConflict,
     resolveAllWithRecommendations,
-    resolvedTypes,
+    resolvedCasts,
     getConflict: _getConflict,
   } = useTypeConflict(columnPairs);
 
@@ -1581,28 +1585,36 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
     return extractAttachDatabases(activeTables);
   }, [activeTables]);
 
-  // JOIN 冲突的数据感知 cast 推断:采样浮点侧列(它决定 DECIMAL 标度),在真实数据上算安全推荐。
-  // 浮点侧才需要精确 scale——整数侧 scale=0,采样它会得 BIGINT 从而截断浮点小数。
+  // JOIN 冲突的数据感知 cast 推断:采样【两侧】列,求两者都能无损转换的公共类型 T。
+  // scale 取两侧实际数据的最大值(不会舍掉更高精度那侧);任一侧有非数字行 / 超容量 →
+  // 返回 null(无安全推荐,交用户显式选,如 VARCHAR 文本匹配)。之后 useTypeConflict.resolvedCasts
+  // 会把 T 只套到与 T 不同的那一侧(后端 left_cast/right_cast)。
   const inferConflictCast = React.useCallback(
     async (conflict: TypeConflict): Promise<string | null> => {
-      const floatish = (raw: string) =>
-        ['DOUBLE', 'FLOAT', 'REAL', 'FLOAT4', 'FLOAT8'].includes(
-          String(raw || '').toUpperCase().replace(/\(.*$/, '').trim()
-        );
-      const leftIsFloat = floatish(conflict.leftType);
-      const label = leftIsFloat ? conflict.leftLabel : conflict.rightLabel;
-      const column = leftIsFloat ? conflict.leftColumn : conflict.rightColumn;
-      const table = activeTables.find((tb) => getTableName(tb) === label);
-      if (!table) return null;
-      try {
+      const payloadFor = (label: string, column: string) => {
+        const table = activeTables.find((tb) => getTableName(tb) === label);
+        if (!table) return null;
         const ref = createTableReference(table, attachDatabases);
         const qualified = ref.isExternal && ref.alias ? `${ref.alias}.${ref.name}` : ref.name;
-        const res = await inferColumnCast({
+        return {
           table_name: qualified,
           column,
           attach_databases: toAttachDatabasesPayload(attachDatabases),
-        });
-        return res.recommended;
+        };
+      };
+      const lp = payloadFor(conflict.leftLabel, conflict.leftColumn);
+      const rp = payloadFor(conflict.rightLabel, conflict.rightColumn);
+      if (!lp || !rp) return null;
+      try {
+        const [lr, rr] = await Promise.all([inferColumnCast(lp), inferColumnCast(rp)]);
+        // 任一侧存在无法转成数字的行,或超 DECIMAL(38) 容量 → 无安全公共数值类型
+        if (lr.non_numeric > 0 || rr.non_numeric > 0) return null;
+        if (!lr.fits_decimal38 || !rr.fits_decimal38) return null;
+        const scale = Math.max(lr.max_frac_digits, rr.max_frac_digits);
+        const intDigits = Math.max(lr.max_int_digits, rr.max_int_digits);
+        if (intDigits + scale > 38) return null;
+        if (scale === 0) return intDigits <= 18 ? 'BIGINT' : 'DECIMAL(38,0)';
+        return `DECIMAL(38,${scale})`;
       } catch {
         return null;
       }
@@ -1668,7 +1680,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
         activeTables,
         joinConfigs: normalizedJoinConfigs,
         filterTree,
-        resolvedTypes,
+        resolvedCasts,
         maxQueryRows,
         isPreview,
         attachDatabases,
@@ -1680,7 +1692,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
       activeTables,
       normalizedJoinConfigs,
       filterTree,
-      resolvedTypes,
+      resolvedCasts,
       maxQueryRows,
       attachDatabases,
       tableAliasOverrides,
@@ -1699,7 +1711,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
         selectedColumns,
         joinConfigs,
         tableColumnsMap,
-        resolvedTypes,
+        resolvedCasts,
         filterTree,
         maxQueryRows,
         selectConditionComment: t('query.join.selectConditionComment', '请选择关联条件'),
@@ -1711,7 +1723,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
       selectedColumns,
       joinConfigs,
       tableColumnsMap,
-      resolvedTypes,
+      resolvedCasts,
       filterTree,
       maxQueryRows,
       t,

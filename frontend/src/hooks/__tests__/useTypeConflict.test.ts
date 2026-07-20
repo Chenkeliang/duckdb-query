@@ -318,16 +318,56 @@ describe('useTypeConflict', () => {
         result.current.resolveAllWithRecommendations();
       });
 
-      expect(result.current.unresolvedCount).toBe(0);
-      expect(result.current.allResolved).toBe(true);
-
-      // Each conflict should have its recommended type
-      for (const conflict of result.current.conflicts) {
+      // 有类型层推荐的(DATE×VARCHAR→VARCHAR)被解决;无推荐的(VARCHAR×INTEGER,string×numeric)
+      // 被跳过,不会被套一个不安全的默认,仍未解决
+      const withRec = result.current.conflicts.filter((c) => c.recommendedType);
+      const withoutRec = result.current.conflicts.filter((c) => !c.recommendedType);
+      expect(withRec.length).toBeGreaterThan(0);
+      expect(withoutRec.length).toBeGreaterThan(0);
+      for (const conflict of withRec) {
         expect(conflict.resolvedType).toBe(conflict.recommendedType);
       }
+      for (const conflict of withoutRec) {
+        expect(conflict.resolvedType).toBeUndefined();
+      }
+      expect(result.current.unresolvedCount).toBe(withoutRec.length);
     });
 
-    it('should override existing resolutions', () => {
+    it('should override existing resolutions for conflicts that have a recommendation', () => {
+      // 用有推荐的冲突(DATE×VARCHAR→VARCHAR):apply-all 覆盖手动解析。string×numeric 无推荐,
+      // 会被跳过(不覆盖用户手选),另有专门测试覆盖。
+      const columnPairs: ColumnPair[] = [
+        {
+          leftLabel: 'orders',
+          leftColumn: 'created',
+          leftType: 'DATE',
+          rightLabel: 'logs',
+          rightColumn: 'ts',
+          rightType: 'VARCHAR',
+        },
+      ];
+
+      const { result } = renderHook(() => useTypeConflict(columnPairs));
+      const key = result.current.conflicts[0].key;
+
+      act(() => {
+        result.current.resolveConflict(key, 'BIGINT');
+      });
+      expect(result.current.conflicts[0].resolvedType).toBe('BIGINT');
+
+      act(() => {
+        result.current.resolveAllWithRecommendations();
+      });
+
+      // 被推荐类型(VARCHAR)覆盖
+      expect(result.current.conflicts[0].resolvedType).toBe(
+        result.current.conflicts[0].recommendedType
+      );
+      expect(result.current.conflicts[0].resolvedType).toBe('VARCHAR');
+    });
+
+    it('apply-all does not override a manual choice for a no-recommendation conflict', () => {
+      // string×numeric 无类型层推荐;用户手选 BIGINT 后 apply-all 应保留,不清空/不套默认
       const columnPairs: ColumnPair[] = [
         {
           leftLabel: 'orders',
@@ -338,25 +378,11 @@ describe('useTypeConflict', () => {
           rightType: 'INTEGER',
         },
       ];
-
       const { result } = renderHook(() => useTypeConflict(columnPairs));
-
-      // Manually resolve with a different type
-      act(() => {
-        result.current.resolveConflict('orders.id::users.order_id', 'BIGINT');
-      });
-
+      const key = result.current.conflicts[0].key;
+      act(() => result.current.resolveConflict(key, 'BIGINT'));
+      act(() => result.current.resolveAllWithRecommendations());
       expect(result.current.conflicts[0].resolvedType).toBe('BIGINT');
-
-      // Apply all recommendations
-      act(() => {
-        result.current.resolveAllWithRecommendations();
-      });
-
-      // Should be overridden with recommended type
-      expect(result.current.conflicts[0].resolvedType).toBe(
-        result.current.conflicts[0].recommendedType
-      );
     });
   });
 
@@ -465,8 +491,39 @@ describe('useTypeConflict', () => {
     });
   });
 
+  describe('resolvedCasts (分侧转换)', () => {
+    it('只转与目标类型不同的一侧,已是目标类型的一侧不转', () => {
+      const columnPairs: ColumnPair[] = [
+        {
+          leftLabel: 'orders', leftColumn: 'id', leftType: 'VARCHAR',
+          rightLabel: 'users', rightColumn: 'order_id', rightType: 'BIGINT',
+        },
+      ];
+      const { result } = renderHook(() => useTypeConflict(columnPairs));
+      const key = result.current.conflicts[0].key;
+      // 目标 BIGINT:VARCHAR 侧需转,BIGINT 侧已是目标→不转
+      act(() => result.current.resolveConflict(key, 'BIGINT'));
+      expect(result.current.resolvedCasts[key]).toEqual({ leftCast: 'BIGINT' });
+    });
+
+    it('两侧都与目标不同时都转(如公共 DECIMAL)', () => {
+      const columnPairs: ColumnPair[] = [
+        {
+          leftLabel: 't1', leftColumn: 'a', leftType: 'BIGINT',
+          rightLabel: 't2', rightColumn: 'b', rightType: 'DOUBLE',
+        },
+      ];
+      const { result } = renderHook(() => useTypeConflict(columnPairs));
+      const key = result.current.conflicts[0].key;
+      act(() => result.current.resolveConflict(key, 'DECIMAL(38,2)'));
+      expect(result.current.resolvedCasts[key]).toEqual({
+        leftCast: 'DECIMAL(38,2)', rightCast: 'DECIMAL(38,2)',
+      });
+    });
+  });
+
   describe('recommended types', () => {
-    it('should recommend VARCHAR for string + numeric', () => {
+    it('should return empty recommendedType for string + numeric (data-aware needed)', () => {
       const columnPairs: ColumnPair[] = [
         {
           leftLabel: 'orders',
@@ -480,7 +537,8 @@ describe('useTypeConflict', () => {
 
       const { result } = renderHook(() => useTypeConflict(columnPairs));
 
-      expect(result.current.conflicts[0].recommendedType).toBe('VARCHAR');
+      // 无类型层默认(VARCHAR 丢匹配),交数据感知推断 / 手填
+      expect(result.current.conflicts[0].recommendedType).toBe('');
     });
 
     it('should recommend lossless VARCHAR for datetime + numeric', () => {

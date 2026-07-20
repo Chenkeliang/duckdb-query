@@ -39,9 +39,10 @@ describe('JoinQueryPanel Type Conflict Integration', () => {
       expect(key).toBe('orders.id::users.order_id');
     });
 
-    it('should recommend VARCHAR for string + numeric conflict', () => {
+    it('should return empty for string + numeric conflict (data-aware needed)', () => {
+      // VARCHAR 丢 1 vs '1.0';文本转数值类型对 '1.0'→BIGINT 又变 NULL——交数据感知推断
       const recommended = getRecommendedCastType('VARCHAR', 'INTEGER');
-      expect(recommended).toBe('VARCHAR');
+      expect(recommended).toBe('');
     });
 
     it('should return empty (no safe type-only recommendation) for numeric conflicts', () => {
@@ -112,9 +113,9 @@ describe('JoinQueryPanel Type Conflict Integration', () => {
 
   describe('recommended type scenarios', () => {
     const testCases = [
-      // String + any → VARCHAR
-      { left: 'VARCHAR', right: 'INTEGER', expected: 'VARCHAR' },
-      { left: 'TEXT', right: 'BIGINT', expected: 'VARCHAR' },
+      // String × numeric → ''(无类型层安全默认,交数据感知);String × 非数值 → VARCHAR
+      { left: 'VARCHAR', right: 'INTEGER', expected: '' },
+      { left: 'TEXT', right: 'BIGINT', expected: '' },
       { left: 'DATE', right: 'VARCHAR', expected: 'VARCHAR' },
       
       // Numeric + numeric → ''(类型层面无安全默认,交由数据感知推断 / 手填)

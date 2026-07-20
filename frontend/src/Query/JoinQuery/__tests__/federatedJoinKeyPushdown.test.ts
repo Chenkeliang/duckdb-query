@@ -105,7 +105,7 @@ describe('buildJoinPreviewSql federated pushdown keeps join keys', () => {
         },
       ],
       tableColumnsMap: {},
-      resolvedTypes: {},
+      resolvedCasts: {},
       filterTree,
       maxQueryRows: 10000,
       selectConditionComment: '请选择关联条件',

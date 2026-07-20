@@ -219,7 +219,20 @@ export function getRecommendedCastType(leftType: string, rightType: string): str
   const left = normalizeTypeName(leftType);
   const right = normalizeTypeName(rightType);
 
-  if (STRING_TYPES.has(left) || STRING_TYPES.has(right)) {
+  const leftStr = STRING_TYPES.has(left);
+  const rightStr = STRING_TYPES.has(right);
+  const leftNum = isNumericType(left);
+  const rightNum = isNumericType(right);
+
+  // 字符串 × 数值:没有安全的类型层默认。VARCHAR 会把 1 与 '1.0' 比成不等而丢匹配,
+  // 而"文本转数值侧类型"对 '1.0'→BIGINT 又变 NULL——正确的公共类型取决于实际数据
+  // (文本能否无损转、需要多少 scale),交由数据感知推断 / 用户手填。
+  if ((leftStr && rightNum) || (rightStr && leftNum)) {
+    return '';
+  }
+
+  // 字符串 × 非数值(日期/复杂/字符串):VARCHAR 文本兜底是无损的
+  if (leftStr || rightStr) {
     return 'VARCHAR';
   }
 
@@ -227,7 +240,9 @@ export function getRecommendedCastType(leftType: string, rightType: string): str
     return 'TIMESTAMP';
   }
 
-  if (isNumericType(left) && isNumericType(right)) {
+  // 数值 × 数值(冲突的只有大整数×浮点):公共 DECIMAL 的 scale 必须取自两列实际数据,
+  // 类型层给不出安全默认,交数据感知推断。
+  if (leftNum && rightNum) {
     return '';
   }
 

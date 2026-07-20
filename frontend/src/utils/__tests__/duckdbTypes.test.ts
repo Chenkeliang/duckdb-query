@@ -212,10 +212,12 @@ describe('duckdbTypes', () => {
    */
   describe('getRecommendedCastType - Property 7', () => {
     describe('string + any type → VARCHAR', () => {
-      it('should recommend VARCHAR for string + numeric', () => {
-        expect(getRecommendedCastType('VARCHAR', 'INTEGER')).toBe('VARCHAR');
-        expect(getRecommendedCastType('INTEGER', 'VARCHAR')).toBe('VARCHAR');
-        expect(getRecommendedCastType('TEXT', 'BIGINT')).toBe('VARCHAR');
+      it('should return empty (no type-only rec) for string + numeric', () => {
+        // 复审:VARCHAR 会丢 1 vs '1.0' 匹配,而文本转数值类型对 '1.0'→BIGINT 又变 NULL——
+        // 安全的公共类型取决于实际数据,交数据感知推断
+        expect(getRecommendedCastType('VARCHAR', 'INTEGER')).toBe('');
+        expect(getRecommendedCastType('INTEGER', 'VARCHAR')).toBe('');
+        expect(getRecommendedCastType('TEXT', 'BIGINT')).toBe('');
       });
 
       it('should recommend VARCHAR for string + datetime', () => {
