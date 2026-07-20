@@ -15,8 +15,15 @@ import {
 export interface PivotPanelValueConfig {
     column: string;
     aggregation: AggregationFunction;
-    /** 文本列按数值聚合时的转换目标(如 DOUBLE);透传给后端 TRY_CAST */
+    /** 文本列按数值聚合时的转换目标(如 DECIMAL(38,2));透传给后端 TRY_CAST */
     typeConversion?: string;
+    /** UI-only:'pending'=推断中,'unsafe'=需用户显式选类型。有此状态则阻断生成/执行(不透传后端)。 */
+    castStatus?: 'pending' | 'unsafe';
+}
+
+/** 是否存在待推断/无法安全推断的值(应阻断透视生成与执行,避免用有损默认静默出结果) */
+export function hasPendingValueCast(values: PivotPanelValueConfig[]): boolean {
+    return values.some((v) => v.castStatus === 'pending' || v.castStatus === 'unsafe');
 }
 
 const AGG_TO_API: Record<AggregationFunction, string> = {
@@ -39,6 +46,10 @@ export function canUseServerPivotPath(
     values: PivotPanelValueConfig[]
 ): boolean {
     if (!table) {
+        return false;
+    }
+    // 有值的 cast 还在推断中 / 无法安全推断 → 不放行生成(避免用有损默认静默出结果)
+    if (hasPendingValueCast(values)) {
         return false;
     }
     return rows.length > 0 && values.length > 0;

@@ -35,6 +35,7 @@ import {
     buildPivotQueryPayload,
     buildPivotTableRef,
     canUseServerPivotPath,
+    hasPendingValueCast,
     getPivotQueryKey,
     shouldUseLocalPivotSql,
     type PivotPanelValueConfig,
@@ -224,10 +225,14 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
         return parts.join("\n");
     }, [selectedTable, rows, columns, values, maxQueryRows, buildLocalWhereClause]);
 
-    const sql =
-        (useServerPivot && serverGenerated?.final_sql?.trim()) ||
-        generateLocalSQL() ||
-        null;
+    // 有值的 cast 仍在推断中 / 无法安全推断 → 阻断服务端与本地两条路径(不静默用有损默认出结果)
+    const castPending = hasPendingValueCast(values);
+
+    const sql = castPending
+        ? null
+        : (useServerPivot && serverGenerated?.final_sql?.trim()) ||
+          generateLocalSQL() ||
+          null;
 
     const tableSource = selectedTable
         ? getSourceFromSelectedTable(selectedTable)
@@ -261,6 +266,12 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
                             <Play className="w-3.5 h-3.5 fill-current" />
                             {t("query.execute", "执行")}
                         </Button>
+
+                        {castPending && (
+                            <span className="text-xs text-destructive whitespace-nowrap">
+                                {t("query.pivot.castBlockedHint", "有聚合值的类型还在推断或需手动选择,已暂停执行")}
+                            </span>
+                        )}
 
                         <TooltipProvider>
                             <Tooltip>

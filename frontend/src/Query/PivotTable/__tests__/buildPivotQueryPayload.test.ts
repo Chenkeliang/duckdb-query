@@ -3,9 +3,37 @@ import {
     buildPivotQueryPayload,
     canUseServerPivotPath,
     getPivotQueryKey,
+    hasPendingValueCast,
     shouldUseLocalPivotSql,
 } from '../buildPivotQueryPayload';
 import { AggregationFunction } from '@/types/pivotQuery';
+
+describe('pending value cast blocks generation', () => {
+    const duckdbTable = { name: 'sales', source: 'duckdb' as const };
+
+    it('hasPendingValueCast flags pending/unsafe values', () => {
+        expect(hasPendingValueCast([{ column: 'a', aggregation: AggregationFunction.SUM }])).toBe(false);
+        expect(hasPendingValueCast([{ column: 'a', aggregation: AggregationFunction.SUM, castStatus: 'pending' }])).toBe(true);
+        expect(hasPendingValueCast([{ column: 'a', aggregation: AggregationFunction.SUM, castStatus: 'unsafe' }])).toBe(true);
+    });
+
+    it('canUseServerPivotPath is false while a value cast is pending/unsafe', () => {
+        expect(canUseServerPivotPath(duckdbTable, ['region'], [
+            { column: 'amt', aggregation: AggregationFunction.SUM, castStatus: 'pending' },
+        ])).toBe(false);
+    });
+
+    it('buildPivotQueryPayload returns null while a value cast is pending', () => {
+        expect(buildPivotQueryPayload({
+            table: duckdbTable,
+            rows: ['region'],
+            columns: ['year'],
+            values: [{ column: 'amt', aggregation: AggregationFunction.SUM, castStatus: 'unsafe' }],
+            maxQueryRows: 500,
+            pivotMaxColumns: 300,
+        })).toBeNull();
+    });
+});
 
 describe('buildPivotQueryPayload', () => {
     const duckdbTable = { name: 'sales', source: 'duckdb' as const };

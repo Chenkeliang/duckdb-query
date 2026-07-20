@@ -43,8 +43,10 @@ import type { InferCastResult } from "@/api";
 interface PivotValueConfig {
     column: string;
     aggregation: AggregationFunction;
-    /** 文本列按数值聚合时的转换目标(如 DOUBLE);后端渲染为 TRY_CAST */
+    /** 文本列按数值聚合时的转换目标(如 DECIMAL(38,2));后端渲染为 TRY_CAST */
     typeConversion?: string;
+    /** UI-only:'pending'=推断中,'unsafe'=无法安全推断需用户显式选择。二者都会挡住生成/执行。 */
+    castStatus?: 'pending' | 'unsafe';
 }
 
 interface PivotTableDesignerProps {
@@ -307,36 +309,44 @@ export const PivotTableDesigner: React.FC<PivotTableDesignerProps> = ({
             !isFieldNumeric(col) &&
             (agg === AggregationFunction.SUM || agg === AggregationFunction.AVG);
         if (!needsNumericCast) {
-            // 数值列 / COUNT 等:无需转换,清掉 typeConversion
-            updateValueAt(idx, { aggregation: agg, typeConversion: undefined });
+            // 数值列 / COUNT 等:无需转换,清掉 typeConversion 与状态
+            updateValueAt(idx, { aggregation: agg, typeConversion: undefined, castStatus: undefined });
             return;
         }
-        // 文本列 SUM/AVG:先设聚合 + DECIMAL(38,6) 兜底,再在筛选后数据上做数据感知推断——
-        // scale 取自实际数据(而非固定常量),从根上避免舍入假匹配;不可转行给明确提示。
-        updateValueAt(idx, { aggregation: agg, typeConversion: "DECIMAL(38,6)" });
-        if (!onInferCast) return;
+        // 文本列 SUM/AVG:不落任何固定默认(固定 scale 会舍入假匹配)。进入 pending 态挡住生成/执行,
+        // 在筛选后数据上做数据感知推断:能安全推断(scale 取自实际数据)才落 cast、放行;
+        // 否则进 unsafe 态,要求用户显式选择,绝不静默用一个可能有损的默认。
+        updateValueAt(idx, { aggregation: agg, typeConversion: undefined, castStatus: 'pending' });
+        if (!onInferCast) {
+            updateValueAt(idx, { castStatus: 'unsafe' });
+            return;
+        }
         void onInferCast(col).then((res) => {
-            if (!res) return; // 推断失败:保留 DECIMAL(38,6) 兜底
-            // 目标值可能已被增删/换列——按列名核对后再落
-            if (valuesRef.current[idx]?.column !== col) return;
-            const cast = res.recommended ?? "DECIMAL(38,6)";
-            updateValueAt(idx, { typeConversion: cast });
-            if (res.non_numeric > 0) {
-                showErrorToast(t, undefined, t("query.pivot.textCastNonNumericRows", {
-                    column: col, count: res.non_numeric, cast,
+            if (valuesRef.current[idx]?.column !== col) return; // 目标值已增删/换列
+            if (res && res.recommended) {
+                updateValueAt(idx, { typeConversion: res.recommended, castStatus: undefined });
+                showSuccessToast(t, undefined, t("query.pivot.textCastRecommended", {
+                    column: col, cast: res.recommended,
                 }));
             } else {
-                showSuccessToast(t, undefined, t("query.pivot.textCastRecommended", {
-                    column: col, cast,
+                // 无法安全推断(有非数字行 / 超容量 / 推断失败):要求显式选择,不放行
+                updateValueAt(idx, { typeConversion: undefined, castStatus: 'unsafe' });
+                showErrorToast(t, undefined, t("query.pivot.textCastUnsafe", {
+                    column: col, count: res?.non_numeric ?? 0,
                 }));
             }
         });
     };
 
-    // 值 chip 上的可编辑 cast 输入(用户可手填 DECIMAL(x,x) 等;空则清除转换)
+    // 值 chip 上的可编辑 cast 输入(用户手填 DECIMAL(x,x) 即视为显式选择,清除 unsafe/pending 态;
+    // 空则清除转换但保留 unsafe 态,防止空手放行)
     const handleUpdateValueCast = (idx: number, cast: string) => {
         const trimmed = cast.trim();
-        updateValueAt(idx, { typeConversion: trimmed || undefined });
+        if (trimmed) {
+            updateValueAt(idx, { typeConversion: trimmed, castStatus: undefined });
+        } else {
+            updateValueAt(idx, { typeConversion: undefined });
+        }
     };
 
     const dropAnimation: DropAnimation = {
@@ -433,12 +443,23 @@ export const PivotTableDesigner: React.FC<PivotTableDesignerProps> = ({
                                             value={v.aggregation}
                                             onChange={(agg) => handleUpdateValueAgg(i, agg)}
                                         />
-                                        {v.typeConversion !== undefined && (
+                                        {v.castStatus === 'pending' && (
+                                            <span className="text-[11px] text-muted-foreground whitespace-nowrap">
+                                                {t("query.pivot.castInferring", "推断中…")}
+                                            </span>
+                                        )}
+                                        {(v.typeConversion !== undefined || v.castStatus === 'unsafe') && (
                                             <input
-                                                // key 随 typeConversion 变:异步推荐到达时重挂显示新值
-                                                key={`cast-${i}-${v.typeConversion}`}
-                                                className="w-28 text-[11px] px-1 py-0.5 rounded border border-border bg-background text-foreground"
-                                                defaultValue={v.typeConversion}
+                                                // key 随 typeConversion/状态 变:异步推荐到达时重挂显示新值
+                                                key={`cast-${i}-${v.typeConversion ?? v.castStatus}`}
+                                                className={
+                                                    "w-28 text-[11px] px-1 py-0.5 rounded border bg-background text-foreground " +
+                                                    (v.castStatus === 'unsafe' ? "border-destructive" : "border-border")
+                                                }
+                                                defaultValue={v.typeConversion ?? ''}
+                                                placeholder={v.castStatus === 'unsafe'
+                                                    ? t("query.pivot.castPickType", "请选类型")
+                                                    : "DECIMAL(38,2)"}
                                                 title={t("query.pivot.castTypeHint", "聚合前的类型转换(可手填,如 DECIMAL(38,2);留空取消)")}
                                                 onBlur={(e) => handleUpdateValueCast(i, e.target.value)}
                                                 onKeyDown={(e) => {
