@@ -49,6 +49,12 @@ export function shouldUseLocalPivotSql(columns: string[]): boolean {
     return columns.length > 1;
 }
 
+/**
+ * 透视结果列数上限(不同于行数上限 maxQueryRows)。列维度取值超过此数时只采样前 N 个,
+ * 避免把行限(默认 10000)当列限、生成上万个结果列拖垮网格。高基数列请先加筛选。
+ */
+export const PIVOT_MAX_COLUMNS = 1000;
+
 export function buildPivotTableRef(table: SelectedTable): {
     tableName: string;
     attachDatabases: AttachDatabase[];
@@ -93,7 +99,8 @@ export function buildPivotQueryPayload(params: {
             // 透传类型转换(如文本列按数值求和时的 DOUBLE);后端会走 TRY_CAST + 白名单校验
             ...(v.typeConversion ? { typeConversion: v.typeConversion } : {}),
         })),
-        column_value_limit: maxQueryRows,
+        // 列数上限用独立常量,不再复用行数上限 maxQueryRows(语义不同,后者默认 10000)
+        column_value_limit: PIVOT_MAX_COLUMNS,
     };
 
     return { config, pivotConfig, attachDatabases };
