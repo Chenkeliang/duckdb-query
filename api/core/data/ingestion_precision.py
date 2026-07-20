@@ -103,7 +103,7 @@ def build_csv_column_type_overrides(
     return overrides
 
 
-def _infer_varchar_column_promotion(
+def infer_varchar_column_promotion(
     connection: Any, quoted_table: str, column_name: str
 ) -> Optional[str]:
     """根据列内实际文本推断可无损提升的目标类型；无法保证则返回 None（保持 VARCHAR）。
@@ -243,7 +243,7 @@ def promote_table_column_types_from_varchar(
         if is_identifier_column_name(col_name):
             continue
 
-        target = _infer_varchar_column_promotion(connection, quoted_table, col_name)
+        target = infer_varchar_column_promotion(connection, quoted_table, col_name)
         if not target or target == "VARCHAR":
             continue
 

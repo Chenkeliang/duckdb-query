@@ -30,7 +30,7 @@ from core.data.excel_import_manager import (
 )
 from core.data.file_datasource_manager import (
     _quote_identifier,
-    create_table_from_dataframe,
+    create_table_from_file,
     create_table_from_file_path_typed,
     file_datasource_manager,
 )
@@ -162,7 +162,7 @@ def ingest_tabular_file(
         con, desired, user_provided=bool(table_alias)
     )
 
-    meta = create_table_from_dataframe(
+    meta = create_table_from_file(
         con,
         table_name,
         file_path,

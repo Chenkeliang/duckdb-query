@@ -7,7 +7,7 @@ import duckdb
 import pytest
 
 from core.data.file_datasource_manager import (
-    create_table_from_dataframe,
+    create_table_from_file,
     create_table_from_file_path_typed,
 )
 

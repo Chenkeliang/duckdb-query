@@ -9,7 +9,7 @@ from pydantic import BaseModel
 from core.common.exceptions import BaseAPIException, ValidationError as APIValidationError
 # 复用 CSV 促升的无损推断(最大小数位定标度、零前导/超容量不促升),
 # 让粘贴的 DECIMAL 列与文件导入走同一套财务准则,而非另造一份。
-from core.data.ingestion_precision import _infer_varchar_column_promotion
+from core.data.ingestion_precision import infer_varchar_column_promotion
 from core.data.rows_ingest import load_rows_as_varchar_table
 from core.database.duckdb_engine import with_duckdb_connection
 from core.data.file_datasource_manager import (
@@ -131,14 +131,14 @@ def _resolve_inferred_columns(
     for name, col_type in column_definitions:
         requested = (col_type or "").strip().upper()
         if requested == "DECIMAL":
-            promoted = _infer_varchar_column_promotion(connection, quoted_temp, name)
+            promoted = infer_varchar_column_promotion(connection, quoted_temp, name)
             # 推断器还会认日期/时间戳——但用户点的是"小数",只接受数值类结果
             if promoted and (promoted.startswith("DECIMAL(") or promoted == "BIGINT"):
                 resolved.append((name, promoted))
             else:
                 resolved.append((name, "VARCHAR"))
         elif requested == "DATE":
-            promoted = _infer_varchar_column_promotion(connection, quoted_temp, name)
+            promoted = infer_varchar_column_promotion(connection, quoted_temp, name)
             if promoted in ("DATE", "TIMESTAMP"):
                 resolved.append((name, promoted))
             elif _column_has_content(connection, quoted_temp, name):

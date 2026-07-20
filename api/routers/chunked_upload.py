@@ -29,7 +29,7 @@ from core.common.paths import get_temp_dir
 from core.database.duckdb_engine import with_duckdb_connection
 from core.data.excel_import_manager import sanitize_identifier
 from core.data.file_datasource_manager import (
-    create_table_from_dataframe,
+    create_table_from_file,
     file_datasource_manager,
 )
 from core.data.import_mode import normalize_import_mode
@@ -284,7 +284,7 @@ def _load_stream_into_duckdb(
             if session.get("csv_encoding") is not None:
                 _stream_csv_opts["encoding"] = session["csv_encoding"]
 
-        metadata = create_table_from_dataframe(
+        metadata = create_table_from_file(
             con,
             source_id,
             fifo_path,

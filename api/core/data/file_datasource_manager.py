@@ -448,22 +448,20 @@ def create_table_from_file_path_typed(
     return metadata
 
 
-def create_table_from_dataframe(
+def create_table_from_file(
     duckdb_con,
     table_name: str,
-    file_path_or_df,
+    file_path: str,
     file_type: Optional[str] = None,
     reader_options: Optional[Dict[str, Any]] = None,
     import_mode: Optional[str] = None,
 ) -> Dict[str, Any]:
-    """
-    统一入口：按文件路径建表（v1.2.1 起 DataFrame 直入已退役，参数名保留
-    以兼容既有调用方签名）。返回值包含行数、列数量、列定义与列类型元数据。
-    """
+    """统一入口：按文件路径建表（v1.2.1 起 DataFrame 直入已退役）。
+    返回值包含行数、列数量、列定义与列类型元数据。"""
     metadata = create_table_from_file_path_typed(
         duckdb_con,
         table_name,
-        file_path_or_df,
+        file_path,
         file_type or "",
         reader_options=reader_options,
         import_mode=import_mode,

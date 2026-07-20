@@ -177,10 +177,10 @@ def read_from_url(request: URLReadRequest):
             if native_attempted:
                 try:
                     from core.data.file_datasource_manager import (
-                        create_table_from_dataframe,
+                        create_table_from_file,
                     )
 
-                    metadata = create_table_from_dataframe(
+                    metadata = create_table_from_file(
                         conn,
                         table_name,
                         converted_url,

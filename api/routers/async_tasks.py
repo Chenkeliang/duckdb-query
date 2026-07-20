@@ -19,7 +19,7 @@ from core.common.config_manager import config_manager
 from core.common.timezone_utils import get_current_time, get_current_time_iso
 from core.data.file_datasource_manager import (
     build_table_metadata_snapshot,
-    create_table_from_dataframe,
+    create_table_from_file,
     file_datasource_manager,
 )
 from core.services.task_manager import TaskStatus, task_manager
