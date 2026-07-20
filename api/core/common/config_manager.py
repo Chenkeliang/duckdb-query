@@ -51,6 +51,11 @@ class AppConfig:
     """
 
     # ==================== 基础应用配置 ====================
+    config_schema_version: int = 2
+    """配置架构版本。用于版本化迁移(而非按值猜测)：加载时 version < 当前版本的旧配置
+    才跑迁移(如 v1 的 query_tree profiling 默认→no_output);version 达标的配置里
+    query_tree 视为用户主动选择,予以尊重。默认配置/保存后的配置都带当前版本。"""
+
     debug: bool = False
     """调试模式开关，启用后会输出详细的调试信息"""
 
@@ -98,11 +103,11 @@ class AppConfig:
     """DuckDB 数据库文件路径，为空时在数据目录下创建 main.db"""
 
     duckdb_enable_profiling: str = "no_output"
-    """DuckDB 查询性能分析格式：json, query_tree_optimizer, no_output。
+    """DuckDB 查询性能分析格式：json, query_tree, query_tree_optimizer, no_output。
     默认 no_output:不向 stderr 吐执行树(否则连 SELECT 42 都刷满桌面 4MB 日志)。
-    注意:值 "query_tree" 会在加载期被【无条件重映射】为 no_output——它曾是刷屏的旧
-    出厂默认,且无法按值区分"遗留"还是"主动选择"。要看执行树诊断请用
-    query_tree_optimizer 或 json(二者不受重映射影响);慢查询另有 auto-EXPLAIN 兜底。"""
+    版本化迁移:仅 v1 旧配置(无 config_schema_version)里遗留的 query_tree 会被一次性
+    迁移为 no_output(它曾是刷屏的旧出厂默认);当前版本配置里主动设的 query_tree 予以尊重。
+    非法值一律回退 no_output 并告警。慢查询另有 auto-EXPLAIN 兜底。"""
 
     duckdb_profiling_output: str = None
     """性能分析输出文件路径，None 时使用系统默认"""
@@ -288,6 +293,14 @@ class ConfigManager:
         try:
             # 读取现有配置
             existing_config = self._load_json(self.app_config_file)
+
+            # 版本化迁移(在合并默认值之前,用原始文件判版本——合并会补上 config_schema_version
+            # 默认值,之后就分不清"遗留"与"主动选择"了)。v1(无该字段)的 query_tree profiling
+            # 默认→no_output;迁移随下面的合并一并持久化(补成当前版本),故只发生一次,之后
+            # query_tree 视为用户主动选择不再迁移(Codex #5)。
+            if int(existing_config.get("config_schema_version", 1) or 1) < 2:
+                if existing_config.get("duckdb_enable_profiling") == "query_tree":
+                    existing_config["duckdb_enable_profiling"] = "no_output"
 
             # 创建默认配置
             default_config = asdict(AppConfig())
@@ -632,12 +645,23 @@ class ConfigManager:
                         "Invalid DUCKDB_REMOTE_SETTINGS JSON: %s", parse_err
                     )
 
-            # 无条件把 query_tree 重映射为 no_output:它曾是旧出厂默认(把完整执行树刷进
-            # stderr,桌面 4MB 日志),且无法按值区分"遗留"与"主动选择"。这是有意的功能取舍
-            # (非一次性迁移)——要执行树诊断请用 query_tree_optimizer / json(不受此影响)。
-            # 字段注释已如实说明,文档同步。
-            if config_data.get("duckdb_enable_profiling") == "query_tree":
-                config_data["duckdb_enable_profiling"] = "no_output"
+            # 版本化迁移(替代按值猜测):只有 version < 当前版本的旧配置才迁移。
+            # v1(无 version 字段)曾把 query_tree 当出厂默认→刷爆 stderr,迁移为 no_output;
+            # version 达标的配置里 query_tree 视为用户主动选择,予以尊重(仅校验合法性)。
+            schema_version = int(config_data.get("config_schema_version", 1) or 1)
+            if schema_version < 2:
+                if config_data.get("duckdb_enable_profiling") == "query_tree":
+                    config_data["duckdb_enable_profiling"] = "no_output"
+
+            # profiling 值合法性校验:非法值(无论版本)→ no_output + 告警,避免 SET 静默失败
+            _valid_profiling = {"no_output", "json", "query_tree", "query_tree_optimizer"}
+            if config_data.get("duckdb_enable_profiling") not in _valid_profiling:
+                if "duckdb_enable_profiling" in config_data:
+                    logger.warning(
+                        "Invalid duckdb_enable_profiling %r; falling back to no_output",
+                        config_data.get("duckdb_enable_profiling"),
+                    )
+                    config_data["duckdb_enable_profiling"] = "no_output"
 
             # duckdb_debug_logging 曾是死开关(无人消费),已移除字段;剥离旧
             # app-config.json 里的遗留键,否则 AppConfig(**config_data) 会因未知

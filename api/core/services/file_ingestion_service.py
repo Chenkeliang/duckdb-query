@@ -28,8 +28,8 @@ from core.data.excel_import_manager import (
     register_excel_upload,
     sanitize_identifier,
 )
+from core.common.sql_identifiers import quote_identifier as _quote_identifier
 from core.data.file_datasource_manager import (
-    _quote_identifier,
     create_table_from_file,
     create_table_from_file_path_typed,
     file_datasource_manager,

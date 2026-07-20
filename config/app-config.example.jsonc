@@ -17,6 +17,9 @@
 {
   // ==================== 基础应用 / Basic ====================
 
+  // 配置架构版本 / Config schema version. 用于版本化迁移；请勿手动降级。
+  "config_schema_version": 2,
+
   // 调试模式：输出详细日志 / Verbose logging. 默认 false。 [ENV: DEBUG]
   "debug": false,
 
@@ -63,9 +66,9 @@
   "duckdb_extension_directory": null, // 扩展安装目录 / extension dir [ENV: DUCKDB_EXTENSION_DIRECTORY]
   "duckdb_home_directory": null,      // home 目录 / home dir [ENV: DUCKDB_HOME_DIRECTORY]
 
-  // 查询性能分析格式 / Profiling format: "no_output" | "json" | "query_tree_optimizer"。
-  // 默认 no_output（不向 stderr 刷执行树）。注意 "query_tree" 会被重映射为 no_output
-  // 防刷屏；要执行树诊断用 query_tree_optimizer 或 json。
+  // 查询性能分析格式 / Profiling format: "no_output" | "json" | "query_tree" | "query_tree_optimizer"。
+  // 默认 no_output（不向 stderr 刷执行树）。仅 v1 旧配置里遗留的 query_tree 会被一次性
+  // 迁移为 no_output 防刷屏；本模板已是 v2,这里主动设 query_tree 会生效(会刷执行树,慎用)。
   "duckdb_enable_profiling": "no_output",
   // 性能分析输出文件 / Profiling output file. null = 不写文件。
   "duckdb_profiling_output": null,

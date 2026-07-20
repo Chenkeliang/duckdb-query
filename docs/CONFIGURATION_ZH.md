@@ -159,7 +159,7 @@ JOIN / 集合运算的预览、LIMIT、BY NAME 语义见 [QUERY_BEHAVIOR_ZH.md](
 
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
-| `duckdb_enable_profiling` | string | `"no_output"` | 连接级 `SET enable_profiling`（`query_tree` 会被重映射为 `no_output` 防刷屏；执行树诊断请用 `query_tree_optimizer` 或 `json`） |
+| `duckdb_enable_profiling` | string | `"no_output"` | 连接级 `SET enable_profiling`（仅 v1 旧配置里遗留的 `query_tree` 会一次性迁移为 `no_output` 防刷屏；当前版本配置里主动设的 `query_tree` 予以尊重） |
 | `duckdb_profiling_output` | string \| null | `null` | Profiling 输出文件（Docker 须挂载卷，如 `/app/data/duckdb/profiling.json`） |
 | `duckdb_auto_explain_threshold_ms` | integer | `0` | 超过该毫秒数在日志中输出 `EXPLAIN`；`0` 关闭；生产可设 `5000` |
 

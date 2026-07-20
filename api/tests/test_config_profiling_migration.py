@@ -8,11 +8,17 @@ import core.common.config_manager as cm
 
 
 def _write_cfg(config_dir, profiling_value):
+    # 不带 config_schema_version → 视作 v1 旧配置(会跑迁移)
     config_dir.mkdir(parents=True, exist_ok=True)
     (config_dir / "app-config.json").write_text(
         json.dumps({"duckdb_enable_profiling": profiling_value}),
         encoding="utf-8",
     )
+
+
+def _write_raw(config_dir, data):
+    config_dir.mkdir(parents=True, exist_ok=True)
+    (config_dir / "app-config.json").write_text(json.dumps(data), encoding="utf-8")
 
 
 def test_legacy_query_tree_default_is_migrated_to_no_output(tmp_path):
@@ -36,6 +42,20 @@ def test_query_tree_optimizer_is_not_migrated(tmp_path):
 
 def test_no_output_stays_no_output(tmp_path):
     _write_cfg(tmp_path, "no_output")
+    app_config = cm.ConfigManager(config_dir=str(tmp_path)).load_app_config()
+    assert app_config.duckdb_enable_profiling == "no_output"
+
+
+def test_current_version_query_tree_is_respected(tmp_path):
+    # 版本达标(v2)的配置里 query_tree 视为用户主动选择,不迁移(Codex #5:版本化而非按值猜测)
+    _write_raw(tmp_path, {"config_schema_version": 2, "duckdb_enable_profiling": "query_tree"})
+    app_config = cm.ConfigManager(config_dir=str(tmp_path)).load_app_config()
+    assert app_config.duckdb_enable_profiling == "query_tree"
+
+
+def test_invalid_profiling_value_falls_back_to_no_output(tmp_path):
+    # 非法值(任何版本)→ no_output + 告警,避免 SET enable_profiling 静默失败
+    _write_raw(tmp_path, {"config_schema_version": 2, "duckdb_enable_profiling": "bogus"})
     app_config = cm.ConfigManager(config_dir=str(tmp_path)).load_app_config()
     assert app_config.duckdb_enable_profiling == "no_output"
 

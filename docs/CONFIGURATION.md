@@ -179,7 +179,7 @@ See [QUERY_BEHAVIOR_ZH.md](QUERY_BEHAVIOR_ZH.md) (Chinese only) for JOIN / set-o
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `duckdb_enable_profiling` | string | `"no_output"` | Per-connection `SET enable_profiling` (`query_tree` is remapped to `no_output` to prevent log flooding; use `query_tree_optimizer` or `json` for execution-tree diagnostics) |
+| `duckdb_enable_profiling` | string | `"no_output"` | Per-connection `SET enable_profiling` (legacy `query_tree` in v1 configs is migrated once to `no_output` to prevent log flooding; a deliberately-set `query_tree` in current configs is honored) |
 | `duckdb_profiling_output` | string \| null | `null` | Profiling output file (on Docker this must be on a mounted volume, e.g. `/app/data/duckdb/profiling.json`) |
 | `duckdb_auto_explain_threshold_ms` | integer | `0` | Log `EXPLAIN` output for queries slower than this many ms; `0` disables it; `5000` is a reasonable production value |
 
