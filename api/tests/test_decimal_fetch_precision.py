@@ -204,11 +204,24 @@ def test_timestamp_ns_exact_alongside_decimal(con):
 
 def test_timestamp_ns_duplicate_column_names_keep_nanoseconds(con):
     """复审:两个同名 TIMESTAMP_NS 列时,SELECT * REPLACE 按列名只命中首个,次列
-    仍丢纳秒。改用位置别名重写后,两列纳秒都逐位精确(输出列名 dedup 为 a/a_1)。"""
-    columns, records, _ = fetch_query_records(
+    仍丢纳秒。改用位置别名重写(唯一路径)后,两列纳秒都逐位精确。"""
+    _, records, _ = fetch_query_records(
         con,
         "SELECT TIMESTAMP_NS '2020-01-01 00:00:00.123456789' AS a, "
         "TIMESTAMP_NS '2020-01-01 00:00:00.987654321' AS a",
+    )
+    vals = list(records[0].values())
+    assert "2020-01-01 00:00:00.123456789" in vals
+    assert "2020-01-01 00:00:00.987654321" in vals
+
+
+def test_timestamp_ns_case_differing_column_names_keep_nanoseconds(con):
+    """复审:a 与 A 大小写不同,旧「按精确字符串去重」判定不为重复而走 REPLACE 路径,
+    结果只改到首个。位置重写按位置处理,两列纳秒都精确。"""
+    _, records, _ = fetch_query_records(
+        con,
+        "SELECT TIMESTAMP_NS '2020-01-01 00:00:00.123456789' AS a, "
+        'TIMESTAMP_NS \'2020-01-01 00:00:00.987654321\' AS "A"',
     )
     vals = list(records[0].values())
     assert "2020-01-01 00:00:00.123456789" in vals

@@ -493,37 +493,30 @@ def fetch_query_records(connection, query):
     # 格式,字符串原样直达前端(零损失)。改写后只执行这一条(不双执行)。
     final_sql = query
     if ns_cols:
-        names = [n for n, _ in describe_types]
-        if len(names) != len(set(names)):
-            # 重复列名:SELECT * REPLACE 按列名改写只命中首个同名列,后续同名
-            # TIMESTAMP_NS 列仍走 datetime 取数丢纳秒。改用位置别名重写——先把每列
-            # 重命名为唯一别名 c{i},按位置 CAST NS 列为 VARCHAR,再以原名(允许重复)
-            # 输出,零列漏改。
-            inner = ", ".join(f"c{i}" for i in range(len(describe_types)))
-            outer = ", ".join(
-                (f"CAST(c{i} AS VARCHAR) AS " if t.upper() == "TIMESTAMP_NS" else f"c{i} AS ")
-                + f'"{n.replace(chr(34), chr(34) * 2)}"'
-                for i, (n, t) in enumerate(describe_types)
-            )
-            final_sql = (
-                f"SELECT {outer} FROM ({query.rstrip().rstrip(';')}) AS _nswrap({inner})"
-            )
-        else:
-            quoted = ", ".join(
-                f'CAST("{c.replace(chr(34), chr(34) * 2)}" AS VARCHAR) AS '
-                f'"{c.replace(chr(34), chr(34) * 2)}"'
-                for c in ns_cols
-            )
-            final_sql = f"SELECT * REPLACE ({quoted}) FROM ({query.rstrip().rstrip(';')})"
+        # 位置别名重写(唯一路径):把每列重命名为唯一别名 c{i},按位置把 TIMESTAMP_NS 列
+        # CAST 成 VARCHAR 保全纳秒,再以原列名输出。天然覆盖同名、大小写差异(a/A)、带引号、
+        # JOIN 产生的重复列——这些是旧 SELECT * REPLACE 按列名改写会漏改的情形(Codex 复审)。
+        inner = ", ".join(f"c{i}" for i in range(len(describe_types)))
+        outer = ", ".join(
+            (f"CAST(c{i} AS VARCHAR) AS " if t.upper() == "TIMESTAMP_NS" else f"c{i} AS ")
+            + f'"{n.replace(chr(34), chr(34) * 2)}"'
+            for i, (n, t) in enumerate(describe_types)
+        )
+        final_sql = (
+            f"SELECT {outer} FROM ({query.rstrip().rstrip(';')}) AS _nswrap({inner})"
+        )
 
     try:
         res = _execute_with_federated_heal(connection, final_sql, query)
     except Exception as wrap_err:  # pylint: disable=broad-except
         if final_sql is query:
             raise
-        # 改写型执行失败(极少数:重复列名/特殊构造)→ 退回原查询执行一次
-        logger.debug("TIMESTAMP_NS rewrap execution failed, falling back: %s", wrap_err)
-        res = _execute_with_federated_heal(connection, query, query)
+        # 位置重写失败:不静默回退微秒(接口承诺纳秒保真,静默截断用户无从知晓)。位置重写
+        # 对任何可 DESCRIBE 的只读查询都应成立,失败即真实 bug——明确报错让用户知晓(Codex 复审)。
+        raise RuntimeError(
+            f"TIMESTAMP_NS nanosecond-fidelity rewrite failed; aborting to avoid silent "
+            f"microsecond truncation: {wrap_err}"
+        ) from wrap_err
 
     desc = res.description or []
     # cursor_types 优先用 DESCRIBE 的原始类型(NS 列仍报 TIMESTAMP_NS,与旧行为一致);
