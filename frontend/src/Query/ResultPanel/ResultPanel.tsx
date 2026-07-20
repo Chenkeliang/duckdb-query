@@ -81,8 +81,6 @@ export interface ResultPanelProps {
   onTogglePinResultTab?: (id: string) => void;
   /** 未开启保留时的单槽标题 */
   singleResultSlotLabel?: string;
-  /** 联邦导出时 ATTACH 配置 */
-  attachDatabases?: { alias: string; connectionId: string }[];
   /** 图表下钻:收到明细 SQL,由调用方负责填入编辑器(不自动执行) */
   onDrilldown?: (sql: string) => void;
 }
@@ -124,7 +122,6 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
   onCloseResultTabsToRight,
   onTogglePinResultTab,
   singleResultSlotLabel,
-  attachDatabases,
   onDrilldown,
 }) => {
   const actualExecTime = executionTime ?? execTime;
@@ -304,7 +301,10 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
       const result = await exportQueryResults({
         sql,
         format: 'parquet',
-        attach_databases: toAttachDatabasesPayload(attachDatabases),
+        // attach 必须取自 effectiveSource(单槽=source / 多页=activeTab.query.source),
+        // 与图表视图同源;原来的 attachDatabases prop 父级并不可靠传递,联邦导出会
+        // 拿不到 ATTACH → "schema xxx does not exist"(与 effectiveSQL 配套)。
+        attach_databases: toAttachDatabasesPayload(effectiveAttachDatabases),
       });
       if (targetPath) {
         await saveQueryExportToPath(result.file_id, { targetPath });
@@ -325,7 +325,7 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
     useMultiTabGrids,
     activeTab?.query.sql,
     currentSQL,
-    attachDatabases,
+    effectiveAttachDatabases,
     t,
   ]);
 
