@@ -63,8 +63,9 @@
   "duckdb_extension_directory": null, // 扩展安装目录 / extension dir [ENV: DUCKDB_EXTENSION_DIRECTORY]
   "duckdb_home_directory": null,      // home 目录 / home dir [ENV: DUCKDB_HOME_DIRECTORY]
 
-  // 查询性能分析格式 / Profiling format: "no_output" | "json" | "query_tree" | "query_tree_optimizer"。
-  // 默认 no_output（不向 stderr 刷执行树）；诊断时再改 query_tree/json。
+  // 查询性能分析格式 / Profiling format: "no_output" | "json" | "query_tree_optimizer"。
+  // 默认 no_output（不向 stderr 刷执行树）。注意 "query_tree" 会被重映射为 no_output
+  // 防刷屏；要执行树诊断用 query_tree_optimizer 或 json。
   "duckdb_enable_profiling": "no_output",
   // 性能分析输出文件 / Profiling output file. null = 不写文件。
   "duckdb_profiling_output": null,

@@ -98,9 +98,11 @@ class AppConfig:
     """DuckDB 数据库文件路径，为空时在数据目录下创建 main.db"""
 
     duckdb_enable_profiling: str = "no_output"
-    """DuckDB 查询性能分析格式：json, query_tree, query_tree_optimizer, no_output。
-    默认 no_output:不向 stderr 吐执行树(否则连 SELECT 42 都刷满桌面 4MB 日志、
-    徒增开销)。诊断时可显式改为 query_tree/json;慢查询另有 auto-EXPLAIN 兜底。"""
+    """DuckDB 查询性能分析格式：json, query_tree_optimizer, no_output。
+    默认 no_output:不向 stderr 吐执行树(否则连 SELECT 42 都刷满桌面 4MB 日志)。
+    注意:值 "query_tree" 会在加载期被【无条件重映射】为 no_output——它曾是刷屏的旧
+    出厂默认,且无法按值区分"遗留"还是"主动选择"。要看执行树诊断请用
+    query_tree_optimizer 或 json(二者不受重映射影响);慢查询另有 auto-EXPLAIN 兜底。"""
 
     duckdb_profiling_output: str = None
     """性能分析输出文件路径，None 时使用系统默认"""
@@ -630,9 +632,10 @@ class ConfigManager:
                         "Invalid DUCKDB_REMOTE_SETTINGS JSON: %s", parse_err
                     )
 
-            # 迁移:query_tree 曾是旧默认值(非用户刻意选择),会把完整执行树刷进
-            # stderr(桌面 4MB 日志)。既有 app-config.json 会保留该旧值,故在加载期
-            # 归一为 no_output,让新默认对已安装用户也生效(Codex P1-12 复审)。
+            # 无条件把 query_tree 重映射为 no_output:它曾是旧出厂默认(把完整执行树刷进
+            # stderr,桌面 4MB 日志),且无法按值区分"遗留"与"主动选择"。这是有意的功能取舍
+            # (非一次性迁移)——要执行树诊断请用 query_tree_optimizer / json(不受此影响)。
+            # 字段注释已如实说明,文档同步。
             if config_data.get("duckdb_enable_profiling") == "query_tree":
                 config_data["duckdb_enable_profiling"] = "no_output"
 
