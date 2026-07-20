@@ -31,6 +31,30 @@ describe('buildPivotQueryPayload', () => {
         expect(payload?.pivotConfig.rows).toEqual(['region']);
     });
 
+    it('passes typeConversion through so text columns can sum as numbers', () => {
+        const payload = buildPivotQueryPayload({
+            table: duckdbTable,
+            rows: ['region'],
+            columns: ['year'],
+            values: [
+                { column: 'amount_text', aggregation: AggregationFunction.SUM, typeConversion: 'DOUBLE' },
+            ],
+            maxQueryRows: 500,
+        });
+        expect(payload?.pivotConfig.values[0].typeConversion).toBe('DOUBLE');
+    });
+
+    it('omits typeConversion when not set (numeric columns)', () => {
+        const payload = buildPivotQueryPayload({
+            table: duckdbTable,
+            rows: ['region'],
+            columns: ['year'],
+            values: [{ column: 'amount', aggregation: AggregationFunction.SUM }],
+            maxQueryRows: 500,
+        });
+        expect(payload?.pivotConfig.values[0].typeConversion).toBeUndefined();
+    });
+
     it('shouldUseLocalPivotSql when multiple column dimensions', () => {
         expect(shouldUseLocalPivotSql(['a', 'b'])).toBe(true);
         expect(buildPivotQueryPayload({

@@ -667,6 +667,7 @@
       "externalNotSupported": "Pivot tables are not supported for external tables. Please import the external table into DuckDB first.",
       "asyncNotSupportedForExternal": "Async execution is not supported for pivot tables on external database tables",
       "availableFields": "Available Fields",
+      "textCastToNumber": "Text column \"{{column}}\" is summed as numbers; non-numeric values count as empty",
       "selectTableHint": "Please select a data table first",
       "allFieldsConfigured": "All fields have been configured",
       "rows": "Row Fields",

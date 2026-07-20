@@ -35,11 +35,15 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { AggregationFunction } from "@/types/pivotQuery";
+import { isNumericType } from "@/utils/duckdbTypes";
+import { showSuccessToast } from "@/utils/toastHelpers";
 
 // Types
 interface PivotValueConfig {
     column: string;
     aggregation: AggregationFunction;
+    /** 文本列按数值聚合时的转换目标(如 DOUBLE);后端渲染为 TRY_CAST */
+    typeConversion?: string;
 }
 
 interface PivotTableDesignerProps {
@@ -221,6 +225,12 @@ export const PivotTableDesigner: React.FC<PivotTableDesignerProps> = ({
     const configuredFields = new Set([...rows, ...columns, ...values.map(v => v.column)]);
     const paletteFields = availableFields.filter(f => !configuredFields.has(f.name));
 
+    // 字段是否数值类型(据 availableFields 的 type);拿不到类型时保守视为数值(维持旧默认)
+    const isFieldNumeric = (fieldName: string): boolean => {
+        const field = availableFields.find(f => f.name === fieldName);
+        return field ? isNumericType(field.type) : true;
+    };
+
     const handleDragStart = (event: DragStartEvent) => {
         setActiveId(event.active.id as string);
         setActiveData(event.active.data.current);
@@ -264,7 +274,11 @@ export const PivotTableDesigner: React.FC<PivotTableDesignerProps> = ({
             // Single column limit - replace
             onColumnsChange([fieldName]);
         } else if (targetZone === "values") {
-            onValuesChange([...values, { column: fieldName, aggregation: AggregationFunction.SUM }]);
+            // 按列类型给默认聚合:数值→SUM,非数值(文本/日期)→COUNT(避免默认 SUM 直接撞 sum(VARCHAR))
+            const defaultAgg = isFieldNumeric(fieldName)
+                ? AggregationFunction.SUM
+                : AggregationFunction.COUNT;
+            onValuesChange([...values, { column: fieldName, aggregation: defaultAgg }]);
         }
     };
 
@@ -273,8 +287,25 @@ export const PivotTableDesigner: React.FC<PivotTableDesignerProps> = ({
     const handleRemoveValue = (idx: number) => onValuesChange(values.filter((_, i) => i !== idx));
     const handleUpdateValueAgg = (idx: number, agg: AggregationFunction) => {
         const newValues = [...values];
-        newValues[idx] = { ...newValues[idx], aggregation: agg };
+        const col = newValues[idx].column;
+        // 文本列显式选 SUM/AVG:自动 TRY_CAST 到 DOUBLE(数字文本正确求和,非数字→NULL 被忽略),
+        // 并提示;其余情况清掉 typeConversion(数值列/COUNT 等无需转换)。
+        const needsNumericCast =
+            !isFieldNumeric(col) &&
+            (agg === AggregationFunction.SUM || agg === AggregationFunction.AVG);
+        newValues[idx] = {
+            ...newValues[idx],
+            aggregation: agg,
+            typeConversion: needsNumericCast ? "DOUBLE" : undefined,
+        };
         onValuesChange(newValues);
+        if (needsNumericCast) {
+            showSuccessToast(
+                t,
+                undefined,
+                t("query.pivot.textCastToNumber", { column: col })
+            );
+        }
     };
 
     const dropAnimation: DropAnimation = {

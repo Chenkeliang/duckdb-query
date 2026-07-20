@@ -15,6 +15,8 @@ import {
 export interface PivotPanelValueConfig {
     column: string;
     aggregation: AggregationFunction;
+    /** 文本列按数值聚合时的转换目标(如 DOUBLE);透传给后端 TRY_CAST */
+    typeConversion?: string;
 }
 
 const AGG_TO_API: Record<AggregationFunction, string> = {
@@ -88,6 +90,8 @@ export function buildPivotQueryPayload(params: {
         values: values.map((v) => ({
             column: v.column,
             aggregation: mapPivotAggregation(v.aggregation) as AggregationFunction,
+            // 透传类型转换(如文本列按数值求和时的 DOUBLE);后端会走 TRY_CAST + 白名单校验
+            ...(v.typeConversion ? { typeConversion: v.typeConversion } : {}),
         })),
         column_value_limit: maxQueryRows,
     };

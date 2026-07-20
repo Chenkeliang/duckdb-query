@@ -109,6 +109,33 @@ class TestPivotQueryModeGeneration:
         assert result.metadata.get("strategy") == "native"
         assert result.metadata.get("uses_pivot_extension") is False
 
+    def test_pivot_value_type_conversion_wraps_try_cast(self):
+        """文本列按数值聚合:typeConversion=DOUBLE → SUM(TRY_CAST(col AS DOUBLE)),
+        避免 sum(VARCHAR) Binder Error(前端对文本列显式选 SUM 时自动带此字段)。"""
+        config = PivotQueryConfig(table_name="Qqq1", filters=[])
+        pivot_config = PivotConfig(
+            rows=["创建时间"],
+            columns=["店铺"],
+            values=[
+                PivotValueConfig(
+                    column="用友出库单",
+                    aggregation=AggregationFunction.SUM,
+                    typeConversion="DOUBLE",
+                )
+            ],
+            manual_column_values=["SC0058"],
+            strategy="native",
+        )
+
+        with patch("core.services.pivot_query_generator.config_manager") as mock_manager:
+            mock_manager.get_app_config.return_value = Mock(
+                enable_pivot_tables=True,
+                pivot_table_extension="pivot_table",
+            )
+            result = generate_pivot_query_sql(config, pivot_config=pivot_config)
+
+        assert 'SUM(TRY_CAST("用友出库单" AS DOUBLE))' in result.final_sql
+
     def test_generate_pivot_query_sql_pivot_native_with_totals(self):
         config = PivotQueryConfig(
             table_name="sales",
