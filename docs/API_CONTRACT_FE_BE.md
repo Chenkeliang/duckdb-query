@@ -166,7 +166,7 @@
 | DELETE | `/api/sql-favorites/{id}` | 对象 | `deleteSqlFavorite`；404 `FAVORITE_NOT_FOUND` |
 | POST | `/api/sql-favorites/{id}/use` | 对象 | `incrementFavoriteUsage`；404 `FAVORITE_NOT_FOUND` |
 | GET | `/api/app-config/features` | 对象 | `getAppConfig`；含 `json_import_column_type`, `remote_storage_configured`（是否配置 `duckdb_remote_settings`）, `pivot_max_columns`（透视结果列数上限，默认 300；前端据此发 `column_value_limit`） |
-| POST | `/api/columns/infer-cast` | 对象 | `inferColumnCast`（`columnAnalysisApi.ts`）；入参 `{table_name, column, filters?, attach_databases?}`；在筛选后真实数据上刻画一列作为数值 cast 目标：`{recommended: 'BIGINT'\|'DECIMAL(38,s)'\|null, total, numeric, non_numeric, max_int_digits, max_frac_digits, fits_decimal38}`；DECIMAL scale 取自实际数据;有非数字行/超容量时 `recommended=null`。供透视文本聚合与 JOIN 类型冲突的数据感知安全推荐 |
+| POST | `/api/columns/infer-cast` | 对象 | `inferColumnCast`（`columnAnalysisApi.ts`）；入参 `{table_name, column, filters?, attach_databases?}`；在筛选后真实数据上刻画一列作为数值 cast 目标：`{recommended: 'BIGINT'\|'DECIMAL(38,s)'\|null, total, numeric, non_numeric, max_int_digits, max_frac_digits, safe_decimal_cast, reason}`；DECIMAL scale 取自实际数据。`safe_decimal_cast`=是否可**安全自动量化**（`recommended` 非 null 时恒 true；语义非"数学上能否放进 DECIMAL(38)"——二进制浮点源即便数值能放进也为 false，量化有损）。`reason`∈ `null\|empty\|non_numeric\|binary_float\|scientific\|overflow`（不安全原因）：`binary_float`=源列本就是 FLOAT/DOUBLE（`CAST(AS VARCHAR)` 是最短往返串，量化会让 `19.99→19.98999999999999744` 失真，交 JOIN 分侧转换/用户显式选）；`scientific`=含科学计数法文本无法可靠定标度；`overflow`=整数位+小数位超 38。任一不安全 → `recommended=null`，不静默丢数据。供透视文本聚合与 JOIN 类型冲突的数据感知安全推荐 |
 
 ## 8. 设置（`settingsShortcutsApi.ts`）
 

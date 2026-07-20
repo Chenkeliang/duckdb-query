@@ -218,18 +218,43 @@ def analyze_numeric_cast(
     "固定 scale < 数据精度" 导致的舍入假匹配。
 
     quoted_table 可为真实表名(已转义)或子查询 "(SELECT ...)";列名必须在其中可见。
-    返回 {recommended, total, numeric, non_numeric, max_int_digits, max_frac_digits, fits_decimal38}：
-    - recommended: 'BIGINT' | 'DECIMAL(38,s)' | None(有不可转行 / 超 DECIMAL(38) 容量时为 None,
-      交由前端提示,不静默丢数据)。
+    返回 {recommended, total, numeric, non_numeric, max_int_digits, max_frac_digits,
+          safe_decimal_cast, reason}:
+    - recommended: 'BIGINT' | 'DECIMAL(38,s)' | None(不安全时为 None,交前端提示,不静默丢数据)。
+    - safe_decimal_cast: 是否可【安全自动推荐】DECIMAL/BIGINT(recommended 非 None 时恒 True)。
+      注意语义是"能否安全自动量化",不是"数学上能否放进 DECIMAL(38)"——4e-07 数学上能进
+      DECIMAL(38,7),但源为二进制浮点故仍 False。
+    - reason: None(安全) | 'empty' | 'non_numeric' | 'binary_float' | 'scientific' | 'overflow',
+      解释为何不安全,供调用方精准提示 / 契约文档对齐。
     """
     qcol = _quote_identifier(column_name)
+    # 源列本就是二进制浮点(FLOAT/DOUBLE)时绝不自动量化:CAST(col AS VARCHAR) 是最短往返串,
+    # 某一行的浮点残差(如 0.1+0.2 = 0.30000000000000004,17 位小数)会把整列标度抬高,而
+    # TRY_CAST 实际作用在【裸 DOUBLE 列】上——会让其它"看着干净"的值静默失真
+    # (19.99 → 19.98999999999999744)。二进制浮点→DECIMAL 量化本就有损,交用户显式选
+    # (Codex 对抗复审 medium;用户 P2 亦倾向 JOIN 分侧转换而非把浮点统一量化成 DECIMAL)。
+    try:
+        type_row = connection.execute(
+            f"SELECT typeof({qcol}) FROM {quoted_table} "
+            f"WHERE {qcol} IS NOT NULL LIMIT 1"
+        ).fetchone()
+        src_type = ((type_row[0] if type_row else "") or "").upper()
+    except Exception:  # pylint: disable=broad-exception-caught
+        src_type = ""
+    if src_type in {"FLOAT", "DOUBLE", "REAL"}:
+        # 二进制浮点源恒不量化(见上)——typeof(LIMIT 1 下推,亚毫秒)已足以定论,直接短路,
+        # 不再跑下面 O(n) 的逐行 trim+regex+TRY_CAST 全表扫描(亿级 DOUBLE 列曾白扫 ~2s;
+        # 该端点在 JOIN 冲突/透视文本聚合里对两侧反复调用,省下这次扫描是实打实的每请求收益)。
+        return {
+            "recommended": None, "total": 0, "numeric": 0, "non_numeric": 0,
+            "max_int_digits": 0, "max_frac_digits": 0,
+            "safe_decimal_cast": False, "reason": "binary_float",
+        }
+
     # 只对【全部为纯十进制/整数文本】的列给 DECIMAL/BIGINT 推荐,标度按文本有效位精确取值:
     #  - 数字判定:TRY_CAST(v AS DOUBLE) 非空且 isfinite(排除 inf/nan——DuckDB 会把它们转成 DOUBLE);
-    #  - v_plain:纯十进制/整数文本(无指数)。这类值的整数位/小数位按文本长度精确计,
-    #    24-38 位大整数也不会被任何固定 DECIMAL 中间量误判;
-    #  - 科学计数法等 non_plain 数值(如真实 DOUBLE 的 '4e-07' / '1e-20'):无法从文本可靠定标度,
-    #    且二进制浮点量化成 DECIMAL 本就有损——一律不自动推荐(recommended=None),交用户显式选,
-    #    绝不用一个可能舍入/清零的 DECIMAL 静默出结果(Codex 对抗复审:1e-20 曾被荐 BIGINT 并舍成 0)。
+    #  - v_plain:纯十进制/整数文本(无指数)。整数位/小数位按文本长度精确计,24-38 位大整数也不误判;
+    #  - 科学计数法等 non_plain 数值:无法从文本可靠定标度,不自动推荐,交用户显式选。
     stats = connection.execute(
         f"""
         WITH src AS (
@@ -258,7 +283,8 @@ def analyze_numeric_cast(
 
     empty = {
         "recommended": None, "total": 0, "numeric": 0, "non_numeric": 0,
-        "max_int_digits": 0, "max_frac_digits": 0, "fits_decimal38": False,
+        "max_int_digits": 0, "max_frac_digits": 0,
+        "safe_decimal_cast": False, "reason": "empty",
     }
     if not stats or not stats[0]:
         return empty
@@ -267,13 +293,20 @@ def analyze_numeric_cast(
     non_plain = int(stats[2])
     max_frac, max_int = int(stats[3] or 0), int(stats[4] or 0)
     non_numeric = total - numeric
-    # 全部可转有限数字、全部是纯十进制文本(无科学计数法)、整数位+小数位 ≤ 38 才安全可 DECIMAL 化
-    fits_decimal38 = (
-        non_numeric == 0 and non_plain == 0 and (max_int + max_frac) <= 38
-    )
+
+    # 不安全的首要原因(优先级:非数字 > 科学计数法 > 超 DECIMAL(38) 容量)。二进制浮点源已在
+    # 上面 typeof 短路,到不了这里。全部为纯十进制文本、整数位+小数位 ≤ 38 → reason=None → 可安全量化。
+    reason: Optional[str] = None
+    if non_numeric > 0:
+        reason = "non_numeric"
+    elif non_plain > 0:
+        reason = "scientific"
+    elif (max_int + max_frac) > 38:
+        reason = "overflow"
+    safe_decimal_cast = reason is None
 
     recommended: Optional[str] = None
-    if fits_decimal38:
+    if safe_decimal_cast:
         if max_frac == 0:
             # 全整数值:≤18 位走 BIGINT(SUM 自动升 HUGEINT),更大走 DECIMAL(38,0)
             recommended = "BIGINT" if max_int <= 18 else "DECIMAL(38,0)"
@@ -283,7 +316,8 @@ def analyze_numeric_cast(
     return {
         "recommended": recommended, "total": total, "numeric": numeric,
         "non_numeric": non_numeric, "max_int_digits": max_int,
-        "max_frac_digits": max_frac, "fits_decimal38": fits_decimal38,
+        "max_frac_digits": max_frac,
+        "safe_decimal_cast": safe_decimal_cast, "reason": reason,
     }
 
 

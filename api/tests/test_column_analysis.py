@@ -109,15 +109,51 @@ def test_tiny_scientific_value_not_silently_rounded():
         _drop("qa_ic_tiny")
 
 
-def test_infinity_and_nan_count_as_non_numeric():
-    with with_duckdb_connection() as con:
-        con.execute(
-            'CREATE OR REPLACE TABLE "qa_ic_inf" AS '
-            "SELECT * FROM (VALUES ('Infinity'::DOUBLE), (1.0::DOUBLE)) v(a)"
-        )
+def test_infinity_text_counts_as_non_numeric():
+    # VARCHAR 文本 'Infinity':TRY_CAST(DOUBLE)=inf 但 isfinite 为假 → 计非数字(不静默当 0 求和)。
+    # (若源列本就是 DOUBLE 则走 binary_float 短路,见 test_binary_float_double_column_not_quantized)
+    _make_table("qa_ic_inf", ["Infinity", "1.0"])
     try:
         data = _infer("qa_ic_inf")
         assert data["recommended"] is None
         assert data["non_numeric"] == 1
+        assert data["reason"] == "non_numeric"
     finally:
         _drop("qa_ic_inf")
+
+
+def test_binary_float_double_column_not_quantized():
+    """对抗复审(medium):源列本就是 DOUBLE 时,CAST(AS VARCHAR) 是最短往返串,某行浮点残差
+    (0.1+0.2=0.30000000000000004,17 位小数)会把整列标度抬到 17;而 TRY_CAST 实际作用在裸
+    DOUBLE 列上,会让 19.99→19.98999999999999744 静默失真。故 DOUBLE 源列一律不自动量化。"""
+    with with_duckdb_connection() as con:
+        con.execute(
+            'CREATE OR REPLACE TABLE "qa_ic_dblmix" AS '
+            "SELECT * FROM (VALUES (19.99::DOUBLE), (5.00::DOUBLE), "
+            "(0.1::DOUBLE + 0.2::DOUBLE)) v(a)"
+        )
+    try:
+        data = _infer("qa_ic_dblmix")
+        assert data["recommended"] is None
+        assert data["reason"] == "binary_float"
+        assert data["non_numeric"] == 0
+    finally:
+        _drop("qa_ic_dblmix")
+
+
+def test_reason_field_covers_each_unsafe_cause():
+    """reason 精确解释不安全原因(契约字段),供调用方精准提示。"""
+    _make_table("qa_ic_ok", ["1", "2.5"])          # 安全 → None
+    _make_table("qa_ic_nn", ["1", "abc"])          # 非数字 → non_numeric
+    _make_table("qa_ic_sci", ["1e-20", "1"])       # 科学计数法文本 → scientific
+    _make_table("qa_ic_of", ["1" * 40, "1"])       # 40 位整数超容量 → overflow
+    try:
+        ok = _infer("qa_ic_ok")
+        assert ok["reason"] is None and ok["safe_decimal_cast"] is True
+        assert _infer("qa_ic_nn")["reason"] == "non_numeric"
+        assert _infer("qa_ic_sci")["reason"] == "scientific"
+        of = _infer("qa_ic_of")
+        assert of["reason"] == "overflow" and of["safe_decimal_cast"] is False
+    finally:
+        for t in ("qa_ic_ok", "qa_ic_nn", "qa_ic_sci", "qa_ic_of"):
+            _drop(t)

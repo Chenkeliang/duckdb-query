@@ -46,21 +46,24 @@ def _table_ref(table_name: str) -> str:
 def infer_column_cast(request: InferCastRequest):
     """返回该列(在给定筛选下)作为数值 cast 目标的安全推荐 + 统计:
     {recommended: 'BIGINT'|'DECIMAL(38,s)'|None, total, numeric, non_numeric,
-     max_int_digits, max_frac_digits, fits_decimal38}。"""
+     max_int_digits, max_frac_digits, safe_decimal_cast, reason}。
+    reason ∈ None|empty|non_numeric|binary_float|scientific|overflow(不安全原因)。"""
     qcol = quote_identifier(request.column)
     where = _build_where_clause(request.filters or [])
     base = f"(SELECT {qcol} FROM {_table_ref(request.table_name)} {where})"
 
-    attached: List[str] = []
+    attach_list = request.attach_databases or None
     with with_duckdb_connection() as con:
         try:
-            if request.attach_databases:
-                attached = attach_databases_on_connection(
-                    con, resolve_attach_configs(request.attach_databases)
-                )
+            if attach_list:
+                attach_databases_on_connection(con, resolve_attach_configs(attach_list))
             result = analyze_numeric_cast(con, base, request.column)
         finally:
-            if attached:
-                detach_databases_on_connection(con, attached)
+            # 防御性 detach:按【意图 attach 的别名】清理——部分 attach 失败(前面已成功部分)
+            # 也不把带残留 ATTACH 的连接放回池(detach 对不存在别名安全跳过)。与 pivot 路由一致。
+            if attach_list:
+                detach_databases_on_connection(
+                    con, [db.alias for db in attach_list if getattr(db, "alias", None)]
+                )
 
     return create_success_response(data=result, message_code=MessageCode.OPERATION_SUCCESS)
