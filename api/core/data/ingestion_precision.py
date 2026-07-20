@@ -223,11 +223,13 @@ def analyze_numeric_cast(
       交由前端提示,不静默丢数据)。
     """
     qcol = _quote_identifier(column_name)
-    # 用 TRY_CAST + DECIMAL(38,15) 归一,而非文本正则:
-    #  - TRY_CAST(v AS DOUBLE) 天然识别科学计数法(如真实 DOUBLE 的 '4e-07')与各种数字写法;
-    #  - 归一成 DECIMAL(38,15) 再取小数部分去尾零的长度 = 该值的有效小数位(4e-07→7 位),
-    #    scale 恒取自实际数据而非固定常量;
-    #  - 归一失败(超 DECIMAL(38,15) 容量)但可转 DOUBLE 的极大值,单独计数→判超容量。
+    # 只对【全部为纯十进制/整数文本】的列给 DECIMAL/BIGINT 推荐,标度按文本有效位精确取值:
+    #  - 数字判定:TRY_CAST(v AS DOUBLE) 非空且 isfinite(排除 inf/nan——DuckDB 会把它们转成 DOUBLE);
+    #  - v_plain:纯十进制/整数文本(无指数)。这类值的整数位/小数位按文本长度精确计,
+    #    24-38 位大整数也不会被任何固定 DECIMAL 中间量误判;
+    #  - 科学计数法等 non_plain 数值(如真实 DOUBLE 的 '4e-07' / '1e-20'):无法从文本可靠定标度,
+    #    且二进制浮点量化成 DECIMAL 本就有损——一律不自动推荐(recommended=None),交用户显式选,
+    #    绝不用一个可能舍入/清零的 DECIMAL 静默出结果(Codex 对抗复审:1e-20 曾被荐 BIGINT 并舍成 0)。
     stats = connection.execute(
         f"""
         WITH src AS (
@@ -239,28 +241,17 @@ def analyze_numeric_cast(
             SELECT
                 v,
                 regexp_full_match(v, '^[+-]?([0-9]+(\\.[0-9]*)?|\\.[0-9]+)$') AS v_plain,
-                TRY_CAST(v AS DOUBLE) AS d,
-                CAST(TRY_CAST(v AS DECIMAL(38,15)) AS VARCHAR) AS ds
+                TRY_CAST(v AS DOUBLE) AS d
             FROM src
         )
         SELECT
             count(*) AS n,
-            count(*) FILTER (WHERE d IS NOT NULL) AS numeric_n,
-            count(*) FILTER (WHERE ds IS NOT NULL) AS decimalizable_n,
-            -- 有效小数位:普通小数文本(无指数)按文本去尾零(精确,不丢高精度小数);
-            -- 科学计数法/其它写法按 DOUBLE 归一后的有效位。整数位同理。
-            max(CASE
-                    WHEN d IS NULL THEN 0
-                    WHEN v_plain THEN length(split_part(v, '.', 2))
-                    WHEN ds IS NULL THEN 0
-                    ELSE length(rtrim(coalesce(split_part(ds, '.', 2), ''), '0'))
-                END) AS max_frac,
-            max(CASE
-                    WHEN d IS NULL THEN 0
-                    WHEN v_plain THEN length(replace(replace(split_part(v, '.', 1), '-', ''), '+', ''))
-                    WHEN ds IS NULL THEN 0
-                    ELSE length(replace(replace(split_part(ds, '.', 1), '-', ''), '+', ''))
-                END) AS max_int
+            count(*) FILTER (WHERE d IS NOT NULL AND isfinite(d)) AS numeric_n,
+            count(*) FILTER (WHERE d IS NOT NULL AND isfinite(d) AND NOT v_plain) AS non_plain_n,
+            max(CASE WHEN v_plain THEN length(split_part(v, '.', 2)) ELSE 0 END) AS max_frac,
+            max(CASE WHEN v_plain
+                     THEN length(replace(replace(split_part(v, '.', 1), '-', ''), '+', ''))
+                     ELSE 0 END) AS max_int
         FROM norm
         """
     ).fetchone()
@@ -273,12 +264,12 @@ def analyze_numeric_cast(
         return empty
 
     total, numeric = int(stats[0]), int(stats[1])
-    decimalizable = int(stats[2])
+    non_plain = int(stats[2])
     max_frac, max_int = int(stats[3] or 0), int(stats[4] or 0)
     non_numeric = total - numeric
-    # 全部可转数字、全部落进 DECIMAL(38,15)、且归一后整数位+小数位 ≤ 38 才算安全可 DECIMAL 化
+    # 全部可转有限数字、全部是纯十进制文本(无科学计数法)、整数位+小数位 ≤ 38 才安全可 DECIMAL 化
     fits_decimal38 = (
-        non_numeric == 0 and decimalizable == total and (max_int + max_frac) <= 38
+        non_numeric == 0 and non_plain == 0 and (max_int + max_frac) <= 38
     )
 
     recommended: Optional[str] = None

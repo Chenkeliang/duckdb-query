@@ -85,12 +85,9 @@ def _generate_pivot_query(request: PivotQueryRequest):
         # 生成器保持纯:不自开连接,用这里 ATTACH 好的连接。
         attach_list = getattr(request, "attach_databases", None) or None
         with with_duckdb_connection() as con:
-            attached: list = []
             try:
                 if attach_list:
-                    attached = attach_databases_on_connection(
-                        con, resolve_attach_configs(attach_list)
-                    )
+                    attach_databases_on_connection(con, resolve_attach_configs(attach_list))
                 generation = generate_pivot_query_sql(
                     request.config,
                     pivot_config=request.pivot_config,
@@ -98,8 +95,12 @@ def _generate_pivot_query(request: PivotQueryRequest):
                     connection=con,
                 )
             finally:
-                if attached:
-                    detach_databases_on_connection(con, attached)
+                # 防御性 detach:按【意图 attach 的别名】清理——即使 attach 中途失败(前面已成功
+                # 部分),也不把带残留 ATTACH 的连接放回池(detach 对不存在别名安全跳过)。
+                if attach_list:
+                    detach_databases_on_connection(
+                        con, [db.alias for db in attach_list if getattr(db, "alias", None)]
+                    )
 
         combined_warnings = list(validation_result.warnings or [])
         combined_warnings.extend(generation.warnings)
@@ -155,12 +156,9 @@ def _preview_pivot_query(
 
         # 生成期的列上限探测/采样须在已 ATTACH 连接上(联邦透视看得到外部表);生成器不自开连接。
         with with_duckdb_connection() as con:
-            attached: list = []
             try:
                 if attach_list:
-                    attached = attach_databases_on_connection(
-                        con, resolve_attach_configs(attach_list)
-                    )
+                    attach_databases_on_connection(con, resolve_attach_configs(attach_list))
                 generation = generate_pivot_query_sql(
                     request.config,
                     pivot_config=request.pivot_config,
@@ -168,8 +166,11 @@ def _preview_pivot_query(
                     connection=con,
                 )
             finally:
-                if attached:
-                    detach_databases_on_connection(con, attached)
+                # 防御性 detach:按【意图 attach 的别名】清理(部分 attach 失败也不残留,见 generate 路由)
+                if attach_list:
+                    detach_databases_on_connection(
+                        con, [db.alias for db in attach_list if getattr(db, "alias", None)]
+                    )
 
         preview_limit = request.limit
         if preview_limit is None or preview_limit <= 0:

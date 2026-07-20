@@ -322,7 +322,14 @@ export const PivotTableDesigner: React.FC<PivotTableDesignerProps> = ({
             return;
         }
         void onInferCast(col).then((res) => {
-            if (valuesRef.current[idx]?.column !== col) return; // 目标值已增删/换列
+            // 丢弃 stale 结果:目标值已增删/换列,或已不再需要 cast(如切回 COUNT)——
+            // 否则会把一个不再需要转换的值错误挂上 pending/unsafe 卡住执行
+            const cur = valuesRef.current[idx];
+            if (!cur || cur.column !== col) return;
+            const stillNeedsCast =
+                !isFieldNumeric(cur.column) &&
+                (cur.aggregation === AggregationFunction.SUM || cur.aggregation === AggregationFunction.AVG);
+            if (!stillNeedsCast) return;
             if (res && res.recommended) {
                 updateValueAt(idx, { typeConversion: res.recommended, castStatus: undefined });
                 showSuccessToast(t, undefined, t("query.pivot.textCastRecommended", {
