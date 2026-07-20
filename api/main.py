@@ -32,6 +32,7 @@ from routers import (
     set_operations,  # /api/set-operations/*
     query_export,  # /api/query-results/export
     duckdb_extensions,  # DuckDB 扩展管理：/api/duckdb/extensions/*
+    column_analysis,  # /api/columns/infer-cast
 )
 from routers import config_api
 from routers import ai as ai_router
@@ -141,6 +142,7 @@ app.include_router(join_query.router)
 app.include_router(pivot_query.router)
 app.include_router(set_operations.router)
 app.include_router(query_export.router)
+app.include_router(column_analysis.router)
 app.include_router(paste_data.router)
 app.include_router(chunked_upload.router)
 app.include_router(url_reader.router)

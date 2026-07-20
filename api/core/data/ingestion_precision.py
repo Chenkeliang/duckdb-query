@@ -210,6 +210,64 @@ def infer_varchar_column_promotion(
     return None
 
 
+def analyze_numeric_cast(
+    connection: Any, quoted_table: str, column_name: str
+) -> Dict[str, Any]:
+    """在(已筛选的)数据上刻画一列作为数值 cast 目标的安全性,用于透视文本聚合 / JOIN 冲突
+    的数据感知推荐。关键:DECIMAL 标度取自实际最大小数位,而非固定常量——从根上避免
+    "固定 scale < 数据精度" 导致的舍入假匹配。
+
+    quoted_table 可为真实表名(已转义)或子查询 "(SELECT ...)";列名必须在其中可见。
+    返回 {recommended, total, numeric, non_numeric, max_int_digits, max_frac_digits, fits_decimal38}：
+    - recommended: 'BIGINT' | 'DECIMAL(38,s)' | None(有不可转行 / 超 DECIMAL(38) 容量时为 None,
+      交由前端提示,不静默丢数据)。
+    """
+    qcol = _quote_identifier(column_name)
+    stats = connection.execute(
+        f"""
+        WITH src AS (
+            SELECT trim(CAST({qcol} AS VARCHAR)) AS v
+            FROM {quoted_table}
+            WHERE {qcol} IS NOT NULL AND trim(CAST({qcol} AS VARCHAR)) <> ''
+        )
+        SELECT
+            count(*) AS n,
+            count(*) FILTER (WHERE regexp_full_match(v, '^[+-]?\\d+$')) AS int_like,
+            count(*) FILTER (WHERE regexp_full_match(v, '^[+-]?\\d+\\.\\d+$')) AS dec_like,
+            max(length(split_part(v, '.', 2))) AS max_frac,
+            max(length(replace(replace(split_part(v, '.', 1), '-', ''), '+', ''))) AS max_int
+        FROM src
+        """
+    ).fetchone()
+
+    empty = {
+        "recommended": None, "total": 0, "numeric": 0, "non_numeric": 0,
+        "max_int_digits": 0, "max_frac_digits": 0, "fits_decimal38": False,
+    }
+    if not stats or not stats[0]:
+        return empty
+
+    total, int_like, dec_like = int(stats[0]), int(stats[1]), int(stats[2])
+    max_frac, max_int = int(stats[3] or 0), int(stats[4] or 0)
+    numeric = int_like + dec_like
+    non_numeric = total - numeric
+    fits_decimal38 = (max_int + max_frac) <= 38
+
+    recommended: Optional[str] = None
+    if non_numeric == 0 and fits_decimal38:
+        if dec_like == 0:
+            # 全整数:≤18 位走 BIGINT(SUM 自动升 HUGEINT),更大走 DECIMAL(38,0)
+            recommended = "BIGINT" if max_int <= 18 else "DECIMAL(38,0)"
+        else:
+            recommended = f"DECIMAL(38,{max_frac})"
+
+    return {
+        "recommended": recommended, "total": total, "numeric": numeric,
+        "non_numeric": non_numeric, "max_int_digits": max_int,
+        "max_frac_digits": max_frac, "fits_decimal38": fits_decimal38,
+    }
+
+
 def promote_table_column_types_from_varchar(
     connection: Any, table_name: str
 ) -> List[Tuple[str, str]]:
