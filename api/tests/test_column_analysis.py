@@ -61,3 +61,28 @@ def test_non_numeric_rows_yield_no_recommendation_and_count():
         assert data["non_numeric"] == 1
     finally:
         _drop("qa_ic_bad")
+
+
+def test_real_double_scientific_notation_is_numeric():
+    """复审 P2:真实 DOUBLE 0.0000004 文本形态是 4e-07,旧正则算成非数字。
+    现用 TRY_CAST(DOUBLE) 识别 + 按有效小数位得 scale。"""
+    with with_duckdb_connection() as con:
+        con.execute(
+            'CREATE OR REPLACE TABLE "qa_ic_dbl" AS '
+            "SELECT * FROM (VALUES (0.0000004::DOUBLE), (1.0000004::DOUBLE)) v(a)"
+        )
+    try:
+        data = _infer("qa_ic_dbl")
+        assert data["recommended"] == "DECIMAL(38,7)"
+        assert data["non_numeric"] == 0
+    finally:
+        _drop("qa_ic_dbl")
+
+
+def test_high_precision_decimal_text_keeps_exact_scale():
+    # 纯文本高精度小数(19 位)不经 DOUBLE 丢精度,标度按文本有效位
+    _make_table("qa_ic_hp19", ["0.1234567890123456789", "1"])
+    try:
+        assert _infer("qa_ic_hp19")["recommended"] == "DECIMAL(38,19)"
+    finally:
+        _drop("qa_ic_hp19")

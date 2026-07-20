@@ -170,6 +170,33 @@ class TestPivotQueryModeGeneration:
             with pytest.raises(PivotColumnLimitError):
                 generate_pivot_query_sql(config, pivot_config=pivot_config)
 
+    def test_pivot_cap_uses_passed_connection_for_federated(self):
+        """回归:联邦透视时列上限探测必须用路由传入的【已 ATTACH】连接,而非自开新连接
+        (自开的看不到外部表→吞错→'Native PIVOT conditions not met')。这里用一个只在
+        传入连接里可见的表,验证探测确实走了它。"""
+        import duckdb
+        from core.services.pivot_query_generator import PivotColumnLimitError
+
+        con = duckdb.connect(":memory:")
+        con.execute(
+            "CREATE TABLE ext_only AS SELECT range AS r, ('c' || (range % 400)) AS cat FROM range(400)"
+        )
+        config = PivotQueryConfig(table_name="ext_only", filters=[])
+        pivot_config = PivotConfig(
+            rows=["r"],
+            columns=["cat"],
+            values=[PivotValueConfig(column="r", aggregation=AggregationFunction.SUM)],
+        )
+        with patch("core.services.pivot_query_generator.config_manager") as mock_mgr:
+            mock_mgr.get_app_config.return_value = Mock(
+                enable_pivot_tables=True,
+                pivot_table_extension="pivot_table",
+                pivot_max_columns=300,
+            )
+            # 不 patch with_duckdb_connection:若生成器自开连接,ext_only 不存在会吞错、不报超限
+            with pytest.raises(PivotColumnLimitError):
+                generate_pivot_query_sql(config, pivot_config=pivot_config, connection=con)
+
     def test_generate_pivot_query_sql_pivot_native_with_totals(self):
         config = PivotQueryConfig(
             table_name="sales",

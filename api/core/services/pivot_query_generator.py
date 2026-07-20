@@ -56,8 +56,10 @@ def generate_pivot_query_sql(
     pivot_config: PivotConfig,
     app_config: Optional[Any] = None,
     resolved_casts: Optional[Dict[str, str]] = None,
+    connection=None,
 ) -> GeneratedPivotQuery:
-    """Generate pivot SQL (HTTP /api/pivot-query/*)."""
+    """Generate pivot SQL (HTTP /api/pivot-query/*)。connection:路由传入的已 ATTACH 连接,
+    供列上限探测/列值采样使用(联邦透视必需,否则自开的新连接看不到外部表)。"""
     warnings: List[str] = []
     mode = PivotQueryMode.PIVOT
 
@@ -82,6 +84,7 @@ def generate_pivot_query_sql(
         base_sql=base_sql,
         pivot_config=pivot_config,
         casts_map=resolved_casts,
+        connection=connection,
     )
 
     warnings.extend(pivot_result.get("warnings", []))
@@ -141,6 +144,18 @@ def _generate_pivot_base_sql(
     return _strip_trailing_semicolon(" ".join(sql_parts))
 
 
+def _conn_ctx(connection):
+    """有外部连接就直接用它(路由已 ATTACH,联邦表可见);否则自开一个池连接(本地表)。
+    联邦透视的上限探测/列值读取必须用路由传入的已 ATTACH 连接,自开的新连接看不到外部表。"""
+    from contextlib import nullcontext
+
+    if connection is not None:
+        return nullcontext(connection)
+    from core.database.duckdb_engine import with_duckdb_connection  # type: ignore
+
+    return with_duckdb_connection()
+
+
 class PivotColumnLimitError(ValueError):
     """透视列维度去重值超过 pivot_max_columns 上限。作为 ValueError 子类,路由现有
     except ValueError 会直接把消息回传给用户(消息含 PIVOT_COLUMN_LIMIT_EXCEEDED 标记)。"""
@@ -163,14 +178,12 @@ def _pivot_column_cap() -> int:
         return 300
 
 
-def _enforce_pivot_column_cap(base_sql: str, target_col: str) -> None:
+def _enforce_pivot_column_cap(base_sql: str, target_col: str, connection=None) -> None:
     """单列维度去重值 > pivot_max_columns 时抛 PivotColumnLimitError(Codex #3:超限报错,
     不静默采样出「看似完整、实际少算」的结果)。只探到 cap+1 即止;内省失败不阻断
-    (交由后续 native pivot 尝试/兜底报错)。"""
+    (交由后续 native pivot 尝试/兜底报错)。connection:路由传入的已 ATTACH 连接(联邦必需)。"""
     cap = _pivot_column_cap()
     try:
-        from core.database.duckdb_engine import with_duckdb_connection  # type: ignore
-
         qcol = _quote_identifier(target_col)
         probe = (
             f"WITH base AS (\n{_strip_trailing_semicolon(base_sql)}\n)\n"
@@ -178,7 +191,7 @@ def _enforce_pivot_column_cap(base_sql: str, target_col: str) -> None:
             f"SELECT DISTINCT {qcol} AS v FROM base WHERE {qcol} IS NOT NULL "
             f"LIMIT {cap + 1})"
         )
-        with with_duckdb_connection() as con:
+        with _conn_ctx(connection) as con:
             distinct_n = con.execute(probe).fetchone()[0]
     except PivotColumnLimitError:
         raise
@@ -192,6 +205,7 @@ def _generate_pivot_transformation_sql(
     base_sql: str,
     pivot_config: PivotConfig,
     casts_map: Optional[Dict[str, str]] = None,
+    connection=None,
 ) -> Dict[str, Any]:
     row_dimensions = [_quote_identifier(dim) for dim in pivot_config.rows]
     manual_values = list(
@@ -207,8 +221,6 @@ def _generate_pivot_transformation_sql(
         if not max_values or max_values <= 0:
             return None
         try:
-            from core.database.duckdb_engine import with_duckdb_connection  # type: ignore
-
             target_col = pivot_config.columns[0]
             introspect_sql = (
                 f"WITH base AS (\n{_strip_trailing_semicolon(base_sql)}\n)\n"
@@ -217,7 +229,7 @@ def _generate_pivot_transformation_sql(
                 f"WHERE {_quote_identifier(target_col)} IS NOT NULL\n"
                 f"LIMIT {int(max_values)}"
             )
-            with with_duckdb_connection() as con:
+            with _conn_ctx(connection) as con:  # 用路由传入的已 ATTACH 连接(联邦必需)
                 rows = con.execute(introspect_sql).fetchall()
             # Preserve original values as string form; _format_literal will escape
             values: List[str] = [str(raw) for (raw,) in rows]
@@ -228,7 +240,7 @@ def _generate_pivot_transformation_sql(
     # 列数上限强制检查(Codex #3):单列维度、非手动选列时,列去重值超过 pivot_max_columns
     # 即报错——不再静默采样。手动选列(manual_values)视为用户显式选择,跳过。
     if pivot_config.columns and len(pivot_config.columns) == 1 and not manual_values:
-        _enforce_pivot_column_cap(base_sql, pivot_config.columns[0])
+        _enforce_pivot_column_cap(base_sql, pivot_config.columns[0], connection)
 
     # 检查是否设置了列数量限制
     # 如果设置了限制，我们不能使用动态 PIVOT（因为它会返回所有列），

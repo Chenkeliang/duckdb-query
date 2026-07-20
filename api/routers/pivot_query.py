@@ -12,7 +12,12 @@ from core.database.duckdb_engine import (
     with_duckdb_connection,
 )
 from core.database.duckdb_pool import interruptible_connection
-from core.database.federated_attach import execute_sql_with_attach
+from core.database.federated_attach import (
+    attach_databases_on_connection,
+    detach_databases_on_connection,
+    execute_sql_with_attach,
+    resolve_attach_configs,
+)
 from core.services.pivot_query_generator import (
     generate_pivot_query_sql,
     validate_query_config,
@@ -76,11 +81,25 @@ def _generate_pivot_query(request: PivotQueryRequest):
 
         resolved_casts_map = _map_resolved_casts(request.resolved_casts)
 
-        generation = generate_pivot_query_sql(
-            request.config,
-            pivot_config=request.pivot_config,
-            resolved_casts=resolved_casts_map,
-        )
+        # 列上限探测/列值采样须在【已 ATTACH】连接上跑,否则联邦透视看不到外部表(回归修复)。
+        # 生成器保持纯:不自开连接,用这里 ATTACH 好的连接。
+        attach_list = getattr(request, "attach_databases", None) or None
+        with with_duckdb_connection() as con:
+            attached: list = []
+            try:
+                if attach_list:
+                    attached = attach_databases_on_connection(
+                        con, resolve_attach_configs(attach_list)
+                    )
+                generation = generate_pivot_query_sql(
+                    request.config,
+                    pivot_config=request.pivot_config,
+                    resolved_casts=resolved_casts_map,
+                    connection=con,
+                )
+            finally:
+                if attached:
+                    detach_databases_on_connection(con, attached)
 
         combined_warnings = list(validation_result.warnings or [])
         combined_warnings.extend(generation.warnings)
@@ -132,12 +151,25 @@ def _preview_pivot_query(
             )
 
         resolved_casts_map = _map_resolved_casts(request.resolved_casts)
+        attach_list = getattr(request, "attach_databases", None) or None
 
-        generation = generate_pivot_query_sql(
-            request.config,
-            pivot_config=request.pivot_config,
-            resolved_casts=resolved_casts_map,
-        )
+        # 生成期的列上限探测/采样须在已 ATTACH 连接上(联邦透视看得到外部表);生成器不自开连接。
+        with with_duckdb_connection() as con:
+            attached: list = []
+            try:
+                if attach_list:
+                    attached = attach_databases_on_connection(
+                        con, resolve_attach_configs(attach_list)
+                    )
+                generation = generate_pivot_query_sql(
+                    request.config,
+                    pivot_config=request.pivot_config,
+                    resolved_casts=resolved_casts_map,
+                    connection=con,
+                )
+            finally:
+                if attached:
+                    detach_databases_on_connection(con, attached)
 
         preview_limit = request.limit
         if preview_limit is None or preview_limit <= 0:
@@ -145,7 +177,6 @@ def _preview_pivot_query(
 
             preview_limit = config_manager.get_app_config().max_query_rows or 10
         preview_sql = ensure_query_has_limit(generation.final_sql, preview_limit)
-        attach_list = getattr(request, "attach_databases", None) or None
 
         if attach_list:
             columns, data, _ = execute_sql_with_attach(
