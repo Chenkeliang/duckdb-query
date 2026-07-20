@@ -471,11 +471,14 @@ async def upload_chunk(
 
         # 保存分块
         chunk_path = _build_chunk_path(session, chunk_number)
-        chunk_content = await chunk.read()
+        # 有界读:至多读 chunk_size+1 字节,超限块不必先把整块灌进内存才发现
+        # (Starlette 已把 multipart part spool 到临时文件,这里封顶本层的分配)
+        max_chunk = session["chunk_size"]
+        chunk_content = await chunk.read(max_chunk + 1)
 
         # 单块不得超过声明的 chunk_size(末块可更小);累计不得超过声明的
         # file_size——否则可声明小文件却分块灌入超大数据,绕过 init 的大小门
-        if len(chunk_content) > session["chunk_size"]:
+        if len(chunk_content) > max_chunk:
             raise APIValidationError(
                 f"Chunk {chunk_number} exceeds declared chunk size "
                 f"({len(chunk_content)} > {session['chunk_size']})"

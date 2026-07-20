@@ -460,7 +460,8 @@ def execute_duckdb_query(
             logger.info(f"Preview mode, applied LIMIT {limit}")
 
         logger.info(f"Executing DuckDB query: {sql_query}")
-        logger.info(f"Available tables: {available_tables}")
+        # 完整表清单每查询约 1KB,DEBUG 级即可(桌面 stderr 日志减负)
+        logger.debug(f"Available tables: {available_tables}")
 
         execution_time = 0.0
         query_column_types = []
