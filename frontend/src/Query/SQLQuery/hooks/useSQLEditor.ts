@@ -176,9 +176,11 @@ export const useSQLEditor = ({
             t("query.sql.savedToTable", { table: data.saved_table })
           );
         } else {
+          // code 传 undefined:直接展示具体的 save_error / saveTableFailed 文案。
+          // 若传 "OPERATION_FAILED",其笼统翻译("操作失败")会盖过真正原因。
           showErrorToast(
             t,
-            "OPERATION_FAILED",
+            undefined,
             data.save_error ||
               t("query.sql.saveTableFailed", { table: variables.saveAsTable })
           );

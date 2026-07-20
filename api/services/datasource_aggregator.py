@@ -283,9 +283,10 @@ class DataSourceAggregator:
     async def _get_file_source_by_id(self, source_id: str) -> Optional[DataSourceResponse]:
         """根据 ID 获取文件数据源（DuckDB 表）"""
         try:
-            # 仅移除开头前缀(removeprefix 而非 replace——replace 会删掉名字中间
-            # 的 table_/file_ 文本,既改错名字又是注入面的一部分)
-            table_name = source_id.removeprefix("table_").removeprefix("file_")
+            # 文件/表源 id 恒为 table_ 前缀(见 _get_file_sources_sync 的 id=f"table_{name}"),
+            # 只剥这一个;不再链式 removeprefix("file_")——那会误伤真名以 file_ 开头的表
+            # (如 file_2026 → 2026)。removeprefix 只动开头,不像旧 .replace 会删名字中间文本。
+            table_name = source_id.removeprefix("table_")
 
             with self.duckdb_pool.get_connection() as conn:
                 # 检查表是否存在:表名是值,用参数化(? 占位)而非拼进字面量
@@ -350,8 +351,8 @@ class DataSourceAggregator:
     async def _delete_file_source(self, source_id: str) -> bool:
         """删除文件数据源（DuckDB 表）"""
         try:
-            # 仅移除开头前缀(见 _get_file_source_by_id 说明)
-            table_name = source_id.removeprefix("table_").removeprefix("file_")
+            # 仅剥 table_ 前缀(见 _get_file_source_by_id 说明,不再链式剥 file_)
+            table_name = source_id.removeprefix("table_")
 
             with self.duckdb_pool.get_connection() as conn:
                 # 删除表:表名走 quote_identifier 转义(IF EXISTS 保证不存在也安全)

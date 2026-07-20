@@ -45,14 +45,17 @@ class TestSaveAsTableInjection:
 
 class TestAttachInjection:
     @pytest.mark.parametrize("cfg", [
-        {"type": "sqlite", "path": ":memory:' AS \"z\"; DROP TABLE sentinel; --"},
-        {"type": "duckdb", "path": "/tmp/x' AS \"z\"; DROP TABLE sentinel; --"},
+        {"type": "sqlite", "path": "s' AS \"z\"; DROP TABLE sentinel; --"},
+        {"type": "duckdb", "path": "d' AS \"z\"; DROP TABLE sentinel; --"},
         {"type": "mysql", "host": "h", "user": "u",
          "password": "p'; DROP TABLE sentinel; --", "database": "d"},
         {"type": "postgresql", "host": "h", "user": "u",
          "password": "p'; DROP TABLE sentinel; --", "database": "d"},
     ])
-    def test_attach_string_escapes_single_quotes(self, cfg):
+    def test_attach_string_escapes_single_quotes(self, cfg, tmp_path, monkeypatch):
+        # 转义生效时,整串会被当成单个文件名 → DuckDB 落一个真文件;chdir 到 tmp
+        # 让它落在 pytest 临时目录(自动清理),不污染 repo。
+        monkeypatch.chdir(tmp_path)
         sql = build_attach_sql("z", cfg)
         # 恶意单引号必须被翻倍(不会提前闭合字面量)
         assert "''" in sql, sql
@@ -101,7 +104,12 @@ class TestAggregatorInjection:
 
     def test_removeprefix_does_not_mangle_midname(self):
         # 回归:旧 .replace 会把名字中间的 table_/file_ 也删掉
-        assert "table_atable_b".removeprefix("table_").removeprefix("file_") == "atable_b"
+        assert "table_my_table_data".removeprefix("table_") == "my_table_data"
+
+    def test_file_prefixed_table_name_resolves_correctly(self):
+        # 回归(复审发现):真名以 file_ 开头的表,id=table_file_2026,
+        # 只该剥 table_ → file_2026;旧链式 removeprefix("file_") 会误剥成 2026
+        assert "table_file_2026".removeprefix("table_") == "file_2026"
 
 
 class TestSaveAsTableResultSurfacing:

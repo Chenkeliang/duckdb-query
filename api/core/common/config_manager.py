@@ -636,6 +636,12 @@ class ConfigManager:
                         "Invalid DUCKDB_REMOTE_SETTINGS JSON: %s", parse_err
                     )
 
+            # 迁移:query_tree 曾是旧默认值(非用户刻意选择),会把完整执行树刷进
+            # stderr(桌面 4MB 日志)。既有 app-config.json 会保留该旧值,故在加载期
+            # 归一为 no_output,让新默认对已安装用户也生效(Codex P1-12 复审)。
+            if config_data.get("duckdb_enable_profiling") == "query_tree":
+                config_data["duckdb_enable_profiling"] = "no_output"
+
             self._app_config = AppConfig(**config_data)
             logger.info("Application configuration loaded successfully")
             return self._app_config

@@ -194,10 +194,12 @@ export function areTypesCompatible(leftType: string, rightType: string): boolean
   const numeric = (t: string) =>
     INTEGER_TYPES.has(t) || FLOAT_TYPES.has(t) || t === 'DECIMAL';
   if (numeric(left) && numeric(right)) {
-    const lossyBigIntFloat =
-      (LARGE_INT_TYPES.has(left) && FLOAT_TYPES.has(right)) ||
-      (LARGE_INT_TYPES.has(right) && FLOAT_TYPES.has(left));
-    return !lossyBigIntFloat;
+    // 唯一收紧的有损组合:大整数(可能 >2^53)× 浮点,相邻整数会塌缩到同一 double
+    // → 强制显式 cast。其余数值跨族(含 DECIMAL×浮点)沿用 DuckDB 自动提升,判兼容。
+    const lossy = (a: string, b: string) =>
+      LARGE_INT_TYPES.has(a) && FLOAT_TYPES.has(b);
+    if (lossy(left, right) || lossy(right, left)) return false;
+    return true;
   }
 
   return false;
@@ -207,9 +209,10 @@ export function areTypesCompatible(leftType: string, rightType: string): boolean
  * 获取推荐的 TRY_CAST 目标类型。
  *
  * 一律推荐无损方向:任何含字符串/复杂类型/未知组合 → VARCHAR;
- * 数值×数值 → VARCHAR(文本精确比较;DOUBLE 会丢大整数/高精度小数)。此分支现
- * 对"大整数 × 浮点"这类被判不兼容的组合可达(见 areTypesCompatible 的 S-18 收紧);
- * 日期时间组合 → TIMESTAMP。
+ * 数值×数值 → VARCHAR(文本精确比较;DOUBLE 会丢大整数/高精度小数);
+ * 仅当双方都是 date/timestamp 家族 → TIMESTAMP。含 TIME 或 date×time、
+ * 大整数/DECIMAL × 浮点等被 areTypesCompatible 收紧判为冲突的组合,一律落到
+ * VARCHAR(把 TIME 硬转 TIMESTAMP 是不可行的错误推荐,S-18 复审发现)。
  */
 export function getRecommendedCastType(leftType: string, rightType: string): string {
   const left = normalizeTypeName(leftType);
@@ -219,7 +222,7 @@ export function getRecommendedCastType(leftType: string, rightType: string): str
     return 'VARCHAR';
   }
 
-  if (DATETIME_TYPES.has(left) && DATETIME_TYPES.has(right)) {
+  if (DATE_LIKE_TYPES.has(left) && DATE_LIKE_TYPES.has(right)) {
     return 'TIMESTAMP';
   }
 

@@ -245,9 +245,17 @@ describe('duckdbTypes', () => {
         expect(getRecommendedCastType('BIGINT', 'TIMESTAMP')).toBe('VARCHAR');
       });
 
-      it('should recommend TIMESTAMP for different datetime types', () => {
-        expect(getRecommendedCastType('DATE', 'TIME')).toBe('TIMESTAMP');
+      it('should recommend TIMESTAMP only for date/timestamp-family pairs', () => {
+        // 同为"日期/时间戳族"(DATE、TIMESTAMP、TIMESTAMPTZ)才荐 TIMESTAMP
         expect(getRecommendedCastType('TIMESTAMPTZ', 'DATE')).toBe('TIMESTAMP');
+        expect(getRecommendedCastType('DATE', 'TIMESTAMP')).toBe('TIMESTAMP');
+      });
+
+      it('should recommend VARCHAR for TIME × date (TIME→TIMESTAMP 无意义)', () => {
+        // 复审修复:TIME 不属日期/时间戳族,硬荐 TIMESTAMP 是不可达的错误 cast,
+        // 退回无损 VARCHAR 作公共类型
+        expect(getRecommendedCastType('DATE', 'TIME')).toBe('VARCHAR');
+        expect(getRecommendedCastType('TIME', 'TIMESTAMP')).toBe('VARCHAR');
       });
     });
 

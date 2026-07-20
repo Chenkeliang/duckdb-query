@@ -69,18 +69,23 @@ class _CleanupScheduler:
             self._cv.notify()
 
     def _run(self) -> None:
+        # 整个循环体裹 try/except:任何意外异常都不能让这唯一的清理线程死掉
+        # (线程一死,后续所有延迟清理会静默失效直到有新任务触发重建)。
         while True:
-            with self._cv:
-                while not self._heap:
-                    self._cv.wait()
-                expiry, _seq, path = self._heap[0]
-                now = time.time()
-                if expiry > now:
-                    # 睡到最近到期时刻(封顶 1h,便于被新任务唤醒重排)
-                    self._cv.wait(timeout=min(expiry - now, 3600))
-                    continue
-                heapq.heappop(self._heap)
-            _delete_path(path)
+            try:
+                with self._cv:
+                    while not self._heap:
+                        self._cv.wait()
+                    expiry, _seq, path = self._heap[0]
+                    now = time.time()
+                    if expiry > now:
+                        # 睡到最近到期时刻(封顶 1h,便于被新任务唤醒重排)
+                        self._cv.wait(timeout=min(expiry - now, 3600))
+                        continue
+                    heapq.heappop(self._heap)
+                _delete_path(path)
+            except Exception as exc:  # noqa: BLE001 — 守住线程存活是第一要务
+                logger.warning("cleanup scheduler loop error (continuing): %s", exc)
 
 
 _scheduler = _CleanupScheduler()
