@@ -52,7 +52,7 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
     onExecute,
 }) => {
     const { t, i18n } = useTranslation("common");
-    const { maxQueryRows } = useAppConfig();
+    const { maxQueryRows, pivotMaxColumns } = useAppConfig();
 
     const chatStatus = useAiStatus("chat");
     const [chatOpen, setChatOpen] = React.useState(false);
@@ -104,10 +104,11 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
                       columns,
                       values,
                       maxQueryRows,
+                      pivotMaxColumns,
                       filters: apiFilters,
                   })
                 : null,
-        [selectedTable, useServerPivot, rows, columns, values, maxQueryRows, apiFilters]
+        [selectedTable, useServerPivot, rows, columns, values, maxQueryRows, pivotMaxColumns, apiFilters]
     );
 
     const pivotQueryKey = getPivotQueryKey(

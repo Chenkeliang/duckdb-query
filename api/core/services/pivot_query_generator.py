@@ -141,6 +141,53 @@ def _generate_pivot_base_sql(
     return _strip_trailing_semicolon(" ".join(sql_parts))
 
 
+class PivotColumnLimitError(ValueError):
+    """透视列维度去重值超过 pivot_max_columns 上限。作为 ValueError 子类,路由现有
+    except ValueError 会直接把消息回传给用户(消息含 PIVOT_COLUMN_LIMIT_EXCEEDED 标记)。"""
+
+    def __init__(self, column: str, cap: int):
+        self.column = column
+        self.cap = cap
+        super().__init__(
+            f"PIVOT_COLUMN_LIMIT_EXCEEDED: 透视列「{column}」的去重值超过上限 {cap}"
+            f"(至少 {cap + 1} 个分类)。请增加筛选缩小范围,或手动选择要展开的列值后重试。"
+        )
+
+
+def _pivot_column_cap() -> int:
+    try:
+        if config_manager is None:
+            return 300
+        return int(getattr(config_manager.get_app_config(), "pivot_max_columns", 300) or 300)
+    except Exception:  # pylint: disable=broad-except
+        return 300
+
+
+def _enforce_pivot_column_cap(base_sql: str, target_col: str) -> None:
+    """单列维度去重值 > pivot_max_columns 时抛 PivotColumnLimitError(Codex #3:超限报错,
+    不静默采样出「看似完整、实际少算」的结果)。只探到 cap+1 即止;内省失败不阻断
+    (交由后续 native pivot 尝试/兜底报错)。"""
+    cap = _pivot_column_cap()
+    try:
+        from core.database.duckdb_engine import with_duckdb_connection  # type: ignore
+
+        qcol = _quote_identifier(target_col)
+        probe = (
+            f"WITH base AS (\n{_strip_trailing_semicolon(base_sql)}\n)\n"
+            f"SELECT count(*) FROM ("
+            f"SELECT DISTINCT {qcol} AS v FROM base WHERE {qcol} IS NOT NULL "
+            f"LIMIT {cap + 1})"
+        )
+        with with_duckdb_connection() as con:
+            distinct_n = con.execute(probe).fetchone()[0]
+    except PivotColumnLimitError:
+        raise
+    except Exception:  # pylint: disable=broad-except
+        return
+    if distinct_n > cap:
+        raise PivotColumnLimitError(target_col, cap)
+
+
 def _generate_pivot_transformation_sql(
     base_sql: str,
     pivot_config: PivotConfig,
@@ -177,6 +224,11 @@ def _generate_pivot_transformation_sql(
             return values or None
         except Exception as _:
             return None
+
+    # 列数上限强制检查(Codex #3):单列维度、非手动选列时,列去重值超过 pivot_max_columns
+    # 即报错——不再静默采样。手动选列(manual_values)视为用户显式选择,跳过。
+    if pivot_config.columns and len(pivot_config.columns) == 1 and not manual_values:
+        _enforce_pivot_column_cap(base_sql, pivot_config.columns[0])
 
     # 检查是否设置了列数量限制
     # 如果设置了限制，我们不能使用动态 PIVOT（因为它会返回所有列），

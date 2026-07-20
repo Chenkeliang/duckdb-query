@@ -137,6 +137,39 @@ class TestPivotQueryModeGeneration:
 
         assert 'SUM(TRY_CAST("用友出库单" AS DECIMAL(38,6)))' in result.final_sql
 
+    def test_pivot_column_limit_exceeded_raises(self):
+        """Codex #3:列维度去重值超过 pivot_max_columns 时报 PivotColumnLimitError,
+        而非静默采样出少算的结果。"""
+        import duckdb
+        from contextlib import contextmanager
+        from core.services.pivot_query_generator import PivotColumnLimitError
+
+        con = duckdb.connect(":memory:")
+        con.execute(
+            "CREATE TABLE t AS SELECT range AS r, ('c' || (range % 400)) AS cat FROM range(400)"
+        )
+
+        @contextmanager
+        def _fake_conn():
+            yield con
+
+        config = PivotQueryConfig(table_name="t", filters=[])
+        pivot_config = PivotConfig(
+            rows=["r"],
+            columns=["cat"],
+            values=[PivotValueConfig(column="r", aggregation=AggregationFunction.SUM)],
+        )
+        with patch("core.services.pivot_query_generator.config_manager") as mock_mgr, patch(
+            "core.database.duckdb_engine.with_duckdb_connection", _fake_conn
+        ):
+            mock_mgr.get_app_config.return_value = Mock(
+                enable_pivot_tables=True,
+                pivot_table_extension="pivot_table",
+                pivot_max_columns=300,
+            )
+            with pytest.raises(PivotColumnLimitError):
+                generate_pivot_query_sql(config, pivot_config=pivot_config)
+
     def test_generate_pivot_query_sql_pivot_native_with_totals(self):
         config = PivotQueryConfig(
             table_name="sales",

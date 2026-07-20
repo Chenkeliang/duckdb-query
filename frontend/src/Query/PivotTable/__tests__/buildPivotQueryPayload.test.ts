@@ -26,6 +26,7 @@ describe('buildPivotQueryPayload', () => {
             columns: ['year'],
             values: [{ column: 'amount', aggregation: AggregationFunction.SUM }],
             maxQueryRows: 500,
+            pivotMaxColumns: 300,
         });
         expect(payload?.config.table_name).toBe('sales');
         expect(payload?.pivotConfig.rows).toEqual(['region']);
@@ -40,6 +41,7 @@ describe('buildPivotQueryPayload', () => {
                 { column: 'amount_text', aggregation: AggregationFunction.SUM, typeConversion: 'DOUBLE' },
             ],
             maxQueryRows: 500,
+            pivotMaxColumns: 300,
         });
         expect(payload?.pivotConfig.values[0].typeConversion).toBe('DOUBLE');
     });
@@ -51,6 +53,7 @@ describe('buildPivotQueryPayload', () => {
             columns: ['year'],
             values: [{ column: 'amount', aggregation: AggregationFunction.SUM }],
             maxQueryRows: 500,
+            pivotMaxColumns: 300,
         });
         expect(payload?.pivotConfig.values[0].typeConversion).toBeUndefined();
     });
@@ -63,6 +66,7 @@ describe('buildPivotQueryPayload', () => {
             columns: ['a', 'b'],
             values: [{ column: 'amount', aggregation: AggregationFunction.SUM }],
             maxQueryRows: 100,
+            pivotMaxColumns: 300,
         })).toBeNull();
     });
 
@@ -74,6 +78,7 @@ describe('buildPivotQueryPayload', () => {
             columns: ['year'],
             values: [{ column: 'amount', aggregation: AggregationFunction.SUM }],
             maxQueryRows: 500,
+            pivotMaxColumns: 300,
             filters,
         });
         expect(payload?.config.filters).toEqual(filters);

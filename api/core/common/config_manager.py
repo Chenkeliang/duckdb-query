@@ -71,6 +71,10 @@ class AppConfig:
     max_tables: int = 200
     """数据库表预览最大数量限制"""
 
+    pivot_max_columns: int = 300
+    """透视表结果列数上限(与行数上限 max_query_rows 语义不同)。列维度去重值超过此数时
+    透视查询报 PIVOT_COLUMN_LIMIT_EXCEEDED,而非静默采样出少算的结果;需用户加筛选或手动选列。"""
+
     timezone: str = "Asia/Shanghai"
     """应用时区设置，影响时间相关的数据处理。默认使用中国时区"""
 
