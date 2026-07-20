@@ -103,30 +103,15 @@ def _build_where_clause(
     return f"WHERE {' '.join(filter_conditions)}"
 
 
-def _format_identifier(identifier: str) -> str:
-    """Format column/alias/expression for SQL."""
-    if not identifier:
-        return ""
-
-    identifier = identifier.strip()
-    if any(
-        token in identifier
-        for token in ("(", ")", " ", "+", "-", "*", "/", "%")
-    ):
-        return identifier
-
-    if identifier.startswith('"') and identifier.endswith('"') and len(identifier) > 1:
-        return identifier
-
-    return f'"{identifier}"'
-
-
 def _build_filter_condition(
     filter_config: FilterConfig, casts_map: Optional[Dict[str, str]] = None
 ) -> str:
     """Build a pivot filter condition (column vs constant)."""
     raw_column = filter_config.column
-    column = _format_identifier(raw_column)
+    # 过滤列名一律走 quote_identifier 严格转义(双引号加倍 + 始终引号)。旧 _format_identifier
+    # 对含空格/括号/运算符的值原样直通(为"表达式"设计),被恶意 column 如 `1=1) -- ` 利用
+    # 注入 WHERE 子句(Codex 对抗复审 critical)。过滤列本就该是纯标识符,不接受表达式。
+    column = _quote_identifier(raw_column)
     column_expr = _apply_column_cast_sql(column, raw_column, casts_map)
     operator = filter_config.operator.value
     value = filter_config.value
