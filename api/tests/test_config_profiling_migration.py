@@ -38,3 +38,16 @@ def test_no_output_stays_no_output(tmp_path):
     _write_cfg(tmp_path, "no_output")
     app_config = cm.ConfigManager(config_dir=str(tmp_path)).load_app_config()
     assert app_config.duckdb_enable_profiling == "no_output"
+
+
+def test_legacy_debug_logging_key_does_not_crash_load(tmp_path):
+    # duckdb_debug_logging 曾是死开关,字段已删;旧 app-config.json 里的遗留键
+    # 必须在加载期被剥离,否则 AppConfig(**config_data) 因未知关键字参数崩。
+    tmp_path.mkdir(parents=True, exist_ok=True)
+    (tmp_path / "app-config.json").write_text(
+        json.dumps({"duckdb_debug_logging": True, "duckdb_memory_limit": "4GB"}),
+        encoding="utf-8",
+    )
+    app_config = cm.ConfigManager(config_dir=str(tmp_path)).load_app_config()
+    assert app_config.duckdb_memory_limit == "4GB"
+    assert not hasattr(app_config, "duckdb_debug_logging")

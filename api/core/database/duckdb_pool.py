@@ -174,6 +174,21 @@ class DuckDBConnectionPool:
                     connection.execute(
                         f"SET memory_limit='{app_config.duckdb_memory_limit}'"
                     )
+                # 兜底也尽力加载默认扩展 + engine_compat:此前基础兜底完全不装扩展,
+                # 连接会"建成功"却缺 excel/parquet/mysql，故障极难定位。独立 try,
+                # 失败不牵连上面已成功的基础 SET。
+                try:
+                    from core.database.duckdb_engine import (
+                        _resolve_duckdb_extensions,
+                        _install_duckdb_extensions,
+                        apply_engine_compat_settings,
+                    )
+                    fallback_exts = _resolve_duckdb_extensions(app_config)
+                    if fallback_exts:
+                        _install_duckdb_extensions(connection, fallback_exts)
+                    apply_engine_compat_settings(connection, app_config.engine_compat)
+                except Exception as ext_err:  # noqa: BLE001
+                    logger.warning("fallback extension/compat load failed: %s", ext_err)
             except Exception as fallback_error:
                 logger.error(f"Basic configuration also failed: {str(fallback_error)}")
                 # 最后的硬编码后备

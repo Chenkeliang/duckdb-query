@@ -191,6 +191,44 @@ def build_attach_sql(alias: str, db_config: Dict[str, Any]) -> str:
         raise ValueError(f"Unsupported database type: {db_type}")
 
 
+def _apply_perf_and_remote_settings(connection, app_config) -> None:
+    """性能优化 SET + 远程(S3/OSS)SET。主路径与默认后备路径共用同一实现,
+    避免两处漂移——profiling_output / remote_settings 曾只在主路径、后备遗漏,
+    配置加载失败跌入后备时 S3 凭据/诊断输出会静默失效。逐项 try/except,
+    单项失败不拖累其余。"""
+    perf = (
+        ("enable_profiling", str(app_config.duckdb_enable_profiling).lower()),
+        ("prefer_range_joins", str(app_config.duckdb_prefer_range_joins).lower()),
+        ("enable_object_cache", str(app_config.duckdb_enable_object_cache).lower()),
+        ("preserve_insertion_order", str(app_config.duckdb_preserve_insertion_order).lower()),
+        ("enable_progress_bar", str(app_config.duckdb_enable_progress_bar).lower()),
+    )
+    for name, value in perf:
+        try:
+            connection.execute(f"SET {name}={value}")
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("SET %s=%s skipped: %s", name, value, exc)
+    if app_config.duckdb_profiling_output:
+        try:
+            connection.execute(
+                f"SET profiling_output='{app_config.duckdb_profiling_output}'"
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("SET profiling_output skipped: %s", exc)
+    remote_settings = getattr(app_config, "duckdb_remote_settings", None) or {}
+    if isinstance(remote_settings, dict):
+        for setting_key, setting_value in remote_settings.items():
+            if not setting_key:
+                continue
+            try:
+                connection.execute(f"SET {setting_key}={setting_value}")
+                logger.info("Applied remote configuration: %s=%s", setting_key, setting_value)
+            except Exception as remote_error:  # noqa: BLE001
+                logger.warning(
+                    "Failed to apply remote config %s: %s", setting_key, remote_error
+                )
+
+
 def _apply_duckdb_configuration(connection, temp_dir: str):
     """
     自动应用所有DuckDB配置参数
@@ -214,10 +252,12 @@ def _apply_duckdb_configuration(connection, temp_dir: str):
 
         logger.info(f"Found {len(config_items)} DuckDB configuration items")
 
-        # 应用基础配置
-        if config_items.get("duckdb_threads"):
-            connection.execute(f"SET threads={config_items['duckdb_threads']}")
-            logger.info(f"DuckDB threads set to: {config_items['duckdb_threads']}")
+        # 应用基础配置（threads:用 is not None 而非真值判断,避免显式 0 被当"未设置";
+        # 并校验 >0，因为 DuckDB 不接受 threads=0）
+        threads = config_items.get("duckdb_threads")
+        if threads is not None and int(threads) > 0:
+            connection.execute(f"SET threads={int(threads)}")
+            logger.info(f"DuckDB threads set to: {threads}")
 
         if config_items.get("duckdb_memory_limit"):
             connection.execute(
@@ -234,63 +274,8 @@ def _apply_duckdb_configuration(connection, temp_dir: str):
         connection.execute(f"SET home_directory='{paths.home_dir}'")
         connection.execute(f"SET extension_directory='{paths.extension_dir}'")
 
-        # 应用性能优化配置
-        if config_items.get("duckdb_enable_profiling") is not None:
-            connection.execute(
-                f"SET enable_profiling={str(config_items['duckdb_enable_profiling']).lower()}"
-            )
-            if config_items.get("duckdb_profiling_output"):
-                connection.execute(
-                    f"SET profiling_output='{config_items['duckdb_profiling_output']}'"
-                )
-            logger.info(
-                f"DuckDB profiling set to: {config_items['duckdb_enable_profiling']}"
-            )
-
-        if config_items.get("duckdb_prefer_range_joins") is not None:
-            connection.execute(
-                f"SET prefer_range_joins={str(config_items['duckdb_prefer_range_joins']).lower()}"
-            )
-            logger.info(
-                f"DuckDB prefer range joins set to: {config_items['duckdb_prefer_range_joins']}"
-            )
-
-        if config_items.get("duckdb_enable_object_cache") is not None:
-            connection.execute(
-                f"SET enable_object_cache={str(config_items['duckdb_enable_object_cache']).lower()}"
-            )
-            logger.info(
-                f"DuckDB object cache set to: {config_items['duckdb_enable_object_cache']}"
-            )
-
-        if config_items.get("duckdb_preserve_insertion_order") is not None:
-            connection.execute(
-                f"SET preserve_insertion_order={str(config_items['duckdb_preserve_insertion_order']).lower()}"
-            )
-            logger.info(
-                f"DuckDB preserve insertion order set to: {config_items['duckdb_preserve_insertion_order']}"
-            )
-
-        if config_items.get("duckdb_enable_progress_bar") is not None:
-            connection.execute(
-                f"SET enable_progress_bar={str(config_items['duckdb_enable_progress_bar']).lower()}"
-            )
-            logger.info(
-                f"DuckDB progress bar set to: {config_items['duckdb_enable_progress_bar']}"
-            )
-
-        remote_settings = config_items.get("duckdb_remote_settings") or {}
-        if isinstance(remote_settings, dict):
-            for setting_key, setting_value in remote_settings.items():
-                if not setting_key:
-                    continue
-                try:
-                    connection.execute(f"SET {setting_key}={setting_value}")
-                    logger.info("Applied remote configuration: %s=%s", setting_key, setting_value)
-                except Exception as remote_error:
-                    logger.warning(
-                        "Failed to apply remote config %s: %s", setting_key, remote_error
-                    )
+        # 性能优化 + 远程(S3/OSS)配置——与默认后备路径共用同一函数,消灭漂移
+        _apply_perf_and_remote_settings(connection, app_config)
 
         # 设置目录配置
         if config_items.get("duckdb_home_directory"):
@@ -390,8 +375,9 @@ def apply_engine_compat_settings(connection, engine_compat: Optional[Dict[str, A
     SET GLOBAL 是数据库实例级作用域：在池中任意一个连接上执行，所有池化连接立即生效。
     这四个 option 分别由 sqlite_scanner/mysql/postgres/iceberg 扩展注册。
 
-    只 SET 值为 True 的开关：False 与 DuckDB 原生默认一致，SET 是纯空转——
-    且对未加载扩展的 option 执行 SET 会触发 DuckDB autoinstall 联网下载
+    对全部四个开关都显式下发 true/false：SET GLOBAL 是实例级黏性状态，只发 true
+    会导致用户关掉开关保存后运行实例仍停在 true（关不掉，与 UI 显示矛盾）。
+    对未加载扩展的 option 执行 SET 会触发 DuckDB autoinstall 联网下载
     （受限网络单次挂 ~120s，发生在连接池初始化 = "本地引擎启动超时"；
     扩展全量预置时代被掩盖，v1.2.0 按需预置后必须掐掉）。SET 期间临时关闭
     autoinstall：本地已装的扩展 autoload 即时生效；未装的快速失败降级为
@@ -399,20 +385,20 @@ def apply_engine_compat_settings(connection, engine_compat: Optional[Dict[str, A
     """
     if not engine_compat:
         return
-    enabled = [opt for opt in ENGINE_COMPAT_OPTIONS if bool(engine_compat.get(opt, False))]
-    if not enabled:
-        return
     with _autoinstall_toggle_lock:
         try:
             connection.execute("SET autoinstall_known_extensions=false")
         except Exception as exc:  # noqa: BLE001
             logger.debug("disable autoinstall before engine_compat failed: %s", exc)
         try:
-            for option in enabled:
+            # 全部四个都显式下发 true/false（不再只发已启用项）：SET GLOBAL 黏性，
+            # 关掉的开关若从不发 =false，实例级状态会永远停在 true 直到重启。
+            for option in ENGINE_COMPAT_OPTIONS:
+                value = "true" if bool(engine_compat.get(option, False)) else "false"
                 try:
-                    connection.execute(f"SET GLOBAL {option}=true")
+                    connection.execute(f"SET GLOBAL {option}={value}")
                 except Exception as exc:  # noqa: BLE001  扩展未装时的预期失败，静默降级
-                    logger.debug("engine_compat SET GLOBAL %s=true skipped: %s", option, exc)
+                    logger.debug("engine_compat SET GLOBAL %s=%s skipped: %s", option, value, exc)
         finally:
             try:
                 connection.execute("SET autoinstall_known_extensions=true")
@@ -445,22 +431,9 @@ def _apply_default_duckdb_config(connection, temp_dir: str):
         connection.execute(f"SET home_directory='{paths.home_dir}'")
         connection.execute(f"SET extension_directory='{paths.extension_dir}'")
 
-        # 性能优化 - 使用配置默认值
-        connection.execute(
-            f"SET enable_profiling={str(app_config.duckdb_enable_profiling).lower()}"
-        )
-        connection.execute(
-            f"SET prefer_range_joins={str(app_config.duckdb_prefer_range_joins).lower()}"
-        )
-        connection.execute(
-            f"SET enable_object_cache={str(app_config.duckdb_enable_object_cache).lower()}"
-        )
-        connection.execute(
-            f"SET preserve_insertion_order={str(app_config.duckdb_preserve_insertion_order).lower()}"
-        )
-        connection.execute(
-            f"SET enable_progress_bar={str(app_config.duckdb_enable_progress_bar).lower()}"
-        )
+        # 性能优化 + 远程配置 - 与主路径共用同一函数(含 profiling_output/remote_settings,
+        # 此前只在主路径、后备遗漏)
+        _apply_perf_and_remote_settings(connection, app_config)
 
         # 安装默认扩展
         extensions_to_load = _resolve_duckdb_extensions(app_config)

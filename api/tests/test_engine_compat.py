@@ -131,13 +131,18 @@ class _RecordingConnection:
         self.calls.append(sql)
 
 
-def test_apply_engine_compat_all_false_executes_nothing():
-    """默认全 False 配置绝不执行任何 SET：对未加载扩展的 option 执行 SET 会
-    触发 DuckDB autoinstall 联网下载（受限网络单次挂 ~120s，发生在连接池
-    初始化即"本地引擎启动超时"）。False 与 DuckDB 原生默认一致，无需 SET。"""
+def test_apply_engine_compat_all_false_sends_explicit_false():
+    """全 False 也要显式下发 SET GLOBAL x=false（在关闭 autoinstall 的守卫内,
+    不触发联网）：SET GLOBAL 是实例级黏性状态,只有显式发 false 才能把之前
+    开过的开关真正关掉——否则用户在 UI 关掉、接口返 200,引擎却仍停在 true。"""
     con = _RecordingConnection()
     apply_engine_compat_settings(con, _ALL_FALSE)
-    assert con.calls == []
+    # autoinstall 守卫仍在首尾
+    assert con.calls[0] == "SET autoinstall_known_extensions=false"
+    assert con.calls[-1] == "SET autoinstall_known_extensions=true"
+    # 四个开关都显式发 =false（而非旧行为"什么都不发"）
+    for option in ENGINE_COMPAT_OPTIONS:
+        assert f"SET GLOBAL {option}=false" in con.calls
 
 
 def test_apply_engine_compat_true_disables_autoinstall_around_set():

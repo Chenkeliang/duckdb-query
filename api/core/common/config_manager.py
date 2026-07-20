@@ -8,7 +8,7 @@ import json
 import logging
 from typing import Dict, Any, Optional, List
 from pathlib import Path
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from threading import Lock
 
 from core.common.paths import get_config_dir, get_user_data_dir
@@ -78,8 +78,9 @@ class AppConfig:
     duckdb_memory_limit: str = "8GB"
     """DuckDB内存使用限制，支持KB/MB/GB单位"""
 
-    duckdb_threads: int = 8
-    """DuckDB 并行查询线程数，建议设置为 CPU 核心数"""
+    duckdb_threads: int = field(default_factory=lambda: os.cpu_count() or 8)
+    """DuckDB 并行查询线程数。默认跟随 CPU 核心数（与 DuckDB 原生默认一致，
+    避免硬编码 8 在 <8 核机上过度订阅、>8 核机上跑不满）；可在配置中显式覆盖。"""
 
     duckdb_temp_directory: str = None
     """DuckDB 临时文件目录，None 时使用系统默认"""
@@ -108,7 +109,8 @@ class AppConfig:
     """是否优先使用范围JOIN，可能影响JOIN性能"""
 
     duckdb_enable_object_cache: bool = True
-    """是否启用对象缓存，提升重复查询性能"""
+    """[DuckDB 1.5.3 起为 legacy no-op] 历史"对象缓存"开关；当前锁定版本执行
+    SET 不报错但无实际效果，仅为兼容旧配置文件保留（勿依赖它提升性能）。"""
 
     duckdb_preserve_insertion_order: bool = False
     """是否保持数据插入顺序，False 可提升查询性能"""
@@ -130,9 +132,6 @@ class AppConfig:
     sqlite_all_varchar / mysql_incomplete_dates_as_nulls / pg_array_as_varchar /
     unsafe_enable_version_guessing。字段名与 DuckDB SET GLOBAL 的 option 名完全一致，
     实际生效逻辑见 core/database/duckdb_engine.py:apply_engine_compat_settings"""
-
-    duckdb_debug_logging: bool = False
-    """是否启用 DuckDB 调试日志（SHOW TABLES / EXPLAIN 等）"""
 
     duckdb_auto_explain_threshold_ms: int = 0
     """慢查询阈值，超过后自动记录 EXPLAIN，0 表示关闭"""
@@ -510,11 +509,6 @@ class ConfigManager:
                         config_data.get("duckdb_extension_directory"),
                     )
                     or None,
-                    "duckdb_debug_logging": os.getenv(
-                        "DUCKDB_DEBUG_LOGGING",
-                        str(config_data.get("duckdb_debug_logging", False)),
-                    ).lower()
-                    == "true",
                     "duckdb_auto_explain_threshold_ms": int(
                         os.getenv(
                             "DUCKDB_AUTO_EXPLAIN_THRESHOLD_MS",
@@ -641,6 +635,11 @@ class ConfigManager:
             # 归一为 no_output,让新默认对已安装用户也生效(Codex P1-12 复审)。
             if config_data.get("duckdb_enable_profiling") == "query_tree":
                 config_data["duckdb_enable_profiling"] = "no_output"
+
+            # duckdb_debug_logging 曾是死开关(无人消费),已移除字段;剥离旧
+            # app-config.json 里的遗留键,否则 AppConfig(**config_data) 会因未知
+            # 关键字参数报错(加载不过滤未知键)。
+            config_data.pop("duckdb_debug_logging", None)
 
             self._app_config = AppConfig(**config_data)
             logger.info("Application configuration loaded successfully")
