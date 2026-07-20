@@ -208,11 +208,11 @@ export function areTypesCompatible(leftType: string, rightType: string): boolean
 /**
  * 获取推荐的 TRY_CAST 目标类型。
  *
- * 一律推荐无损方向:任何含字符串/复杂类型/未知组合 → VARCHAR;
- * 数值×数值 → VARCHAR(文本精确比较;DOUBLE 会丢大整数/高精度小数);
- * 仅当双方都是 date/timestamp 家族 → TIMESTAMP。含 TIME 或 date×time、
- * 大整数/DECIMAL × 浮点等被 areTypesCompatible 收紧判为冲突的组合,一律落到
- * VARCHAR(把 TIME 硬转 TIMESTAMP 是不可行的错误推荐,S-18 复审发现)。
+ * 含字符串/复杂类型/未知组合 → VARCHAR;双方都是 date/timestamp 家族 → TIMESTAMP;
+ * 数值×数值(被 areTypesCompatible 判冲突的只有大整数×浮点)→ DECIMAL(38,6):
+ * 推荐 VARCHAR 会把 1 与 1.0 的字符串形式比成不等而丢掉本可匹配的 JOIN 行
+ * (native 1::BIGINT = 1.0::DOUBLE 为真),DECIMAL 则让整数-值浮点与整数相等、
+ * 且保住大整数精度。含 TIME 或 date×time 等无法互转的组合落到 VARCHAR。
  */
 export function getRecommendedCastType(leftType: string, rightType: string): string {
   const left = normalizeTypeName(leftType);
@@ -224,6 +224,10 @@ export function getRecommendedCastType(leftType: string, rightType: string): str
 
   if (DATE_LIKE_TYPES.has(left) && DATE_LIKE_TYPES.has(right)) {
     return 'TIMESTAMP';
+  }
+
+  if (isNumericType(left) && isNumericType(right)) {
+    return 'DECIMAL(38,6)';
   }
 
   return 'VARCHAR';

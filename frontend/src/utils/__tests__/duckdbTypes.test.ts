@@ -224,17 +224,17 @@ describe('duckdbTypes', () => {
       });
     });
 
-    describe('numeric + numeric → VARCHAR(无损)', () => {
-      // 回归:曾推荐 DOUBLE——大整数(>2^53)/高精度 DECIMAL 经 DOUBLE
-      // 比较会静默丢值;统一推荐 VARCHAR 文本精确比较
-      it('should recommend VARCHAR for integer + float', () => {
-        expect(getRecommendedCastType('INTEGER', 'DOUBLE')).toBe('VARCHAR');
-        expect(getRecommendedCastType('BIGINT', 'FLOAT')).toBe('VARCHAR');
+    describe('numeric + numeric → DECIMAL(38,6)', () => {
+      // 复审修正:曾推荐 VARCHAR,但 '1' != '1.0' 会丢掉 native 1::BIGINT=1.0::DOUBLE
+      // 本可匹配的 JOIN 行;DECIMAL(38,6) 让整数-值浮点与整数相等且保住大整数精度
+      it('should recommend DECIMAL for integer + float', () => {
+        expect(getRecommendedCastType('INTEGER', 'DOUBLE')).toBe('DECIMAL(38,6)');
+        expect(getRecommendedCastType('BIGINT', 'FLOAT')).toBe('DECIMAL(38,6)');
       });
 
-      it('should recommend VARCHAR for integer + decimal', () => {
-        expect(getRecommendedCastType('INTEGER', 'DECIMAL')).toBe('VARCHAR');
-        expect(getRecommendedCastType('DECIMAL(18,4)', 'BIGINT')).toBe('VARCHAR');
+      it('should recommend DECIMAL for integer + decimal', () => {
+        expect(getRecommendedCastType('INTEGER', 'DECIMAL')).toBe('DECIMAL(38,6)');
+        expect(getRecommendedCastType('DECIMAL(18,4)', 'BIGINT')).toBe('DECIMAL(38,6)');
       });
     });
 

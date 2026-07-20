@@ -6,7 +6,7 @@ import type { FilterConfig, PivotConfig, PivotQueryConfig } from '@/types/pivotQ
 import { AggregationFunction } from '@/types/pivotQuery';
 import type { AttachDatabase } from '@/utils/sqlUtils';
 import type { SelectedTable } from '@/types/SelectedTable';
-import { getTableName, normalizeSelectedTable } from '@/utils/tableUtils';
+import { normalizeSelectedTable } from '@/utils/tableUtils';
 import {
     createTableReference,
     generateExternalTableReference,
@@ -104,18 +104,28 @@ export function getPivotQueryKey(
     rows: string[],
     columns: string[],
     values: PivotPanelValueConfig[],
-    filters: FilterConfig[] = []
+    filters: FilterConfig[] = [],
+    maxQueryRows?: number
 ): (string | number | undefined)[] {
-    const name = table ? getTableName(table) : '';
+    // 用限定名(含 schema/连接前缀)而非裸表名,避免不同连接下同名表(如各自的 orders)
+    // 生成同一缓存键、在 staleTime 内互相返回对方的 SQL
+    const ref = table ? buildPivotTableRef(table) : null;
+    const name = ref?.tableName ?? '';
+    const attachKey = (ref?.attachDatabases ?? [])
+        .map((d) => `${d.alias}=${d.connectionId}`)
+        .join(',');
     const filterKey = filters
         .map((f) => `${f.column}:${f.operator}:${String(f.value ?? "")}`)
         .join(";");
     return [
         'pivot-sql',
         name,
+        attachKey,
         rows.join(','),
         columns.join(','),
-        values.map((v) => `${v.column}:${v.aggregation}`).join('|'),
+        // 含 typeConversion:同列同聚合、但一个转 DECIMAL 会生成不同 SQL,不能共用键
+        values.map((v) => `${v.column}:${v.aggregation}:${v.typeConversion ?? ''}`).join('|'),
         filterKey,
+        maxQueryRows ?? '',
     ];
 }

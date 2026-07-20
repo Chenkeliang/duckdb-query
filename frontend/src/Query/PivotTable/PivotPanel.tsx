@@ -115,7 +115,8 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
         rows,
         columns,
         values,
-        apiFilters
+        apiFilters,
+        maxQueryRows
     );
 
     const { data: serverGenerated, isFetching: isGeneratingSql } = useQuery({

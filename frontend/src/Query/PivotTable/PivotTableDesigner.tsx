@@ -288,15 +288,17 @@ export const PivotTableDesigner: React.FC<PivotTableDesignerProps> = ({
     const handleUpdateValueAgg = (idx: number, agg: AggregationFunction) => {
         const newValues = [...values];
         const col = newValues[idx].column;
-        // 文本列显式选 SUM/AVG:自动 TRY_CAST 到 DOUBLE(数字文本正确求和,非数字→NULL 被忽略),
-        // 并提示;其余情况清掉 typeConversion(数值列/COUNT 等无需转换)。
+        // 文本列显式选 SUM/AVG:自动 TRY_CAST 到 DECIMAL(38,6)(数字文本精确求和,非数字→
+        // NULL 被忽略),并提示;其余情况清掉 typeConversion(数值列/COUNT 等无需转换)。
+        // 用 DECIMAL 而非 DOUBLE:DOUBLE 对 >2^53 的大整数会丢精度(9007199254740992+1 仍得
+        // 原值);DECIMAL(38,6) 精确到 6 位小数、整数位可达 32 位,覆盖金额/计数/大 ID。
         const needsNumericCast =
             !isFieldNumeric(col) &&
             (agg === AggregationFunction.SUM || agg === AggregationFunction.AVG);
         newValues[idx] = {
             ...newValues[idx],
             aggregation: agg,
-            typeConversion: needsNumericCast ? "DOUBLE" : undefined,
+            typeConversion: needsNumericCast ? "DECIMAL(38,6)" : undefined,
         };
         onValuesChange(newValues);
         if (needsNumericCast) {

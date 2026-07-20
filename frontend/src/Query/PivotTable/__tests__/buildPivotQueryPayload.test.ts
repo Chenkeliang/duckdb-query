@@ -89,6 +89,22 @@ describe('buildPivotQueryPayload', () => {
             filters
         );
         expect(keyWith).not.toEqual(keyWithout);
-        expect(keyWith[keyWith.length - 1]).toContain('region:=:APAC');
+        // filterKey 现为倒数第二位(末位是 maxQueryRows)
+        expect(keyWith.some((seg) => String(seg).includes('region:=:APAC'))).toBe(true);
+    });
+
+    it('query key covers typeConversion, connection and maxQueryRows', () => {
+        const base = ['region'];
+        const cols = ['year'];
+        const plainVals = [{ column: 'amt', aggregation: AggregationFunction.SUM }];
+        const castVals = [
+            { column: 'amt', aggregation: AggregationFunction.SUM, typeConversion: 'DECIMAL(38,6)' },
+        ];
+        // typeConversion 不同 → 键不同(否则 staleTime 内返回未转换的旧 SQL)
+        expect(getPivotQueryKey(duckdbTable, base, cols, plainVals, [], 500))
+            .not.toEqual(getPivotQueryKey(duckdbTable, base, cols, castVals, [], 500));
+        // maxQueryRows 不同 → 键不同(LIMIT 变了,SQL 不同)
+        expect(getPivotQueryKey(duckdbTable, base, cols, plainVals, [], 500))
+            .not.toEqual(getPivotQueryKey(duckdbTable, base, cols, plainVals, [], 1000));
     });
 });
