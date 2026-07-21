@@ -417,6 +417,9 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
 
   if (useMultiTabGrids) {
     const activeSql = activeTab?.query.sql;
+    // 保存到 DuckDB 用基础 SQL(无系统预览 LIMIT):生成式面板(JOIN/SET/Pivot)的 query.sql
+    // 烤入了预览 LIMIT,"全量"落表会只存预览行数;与服务端导出同一口径(复审 P1)
+    const activeSaveSql = activeTab?.query.baseSql ?? activeSql;
     const activeSource = activeTab?.query.source;
 
     return (
@@ -445,11 +448,11 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
               ))
             : chartViewEl}
         </div>
-        {activeSql && (
+        {activeSaveSql && (
           <ImportToDuckDBDialog
             open={importDialogOpen}
             onOpenChange={setImportDialogOpen}
-            sql={activeSql}
+            sql={activeSaveSql}
             source={activeSource}
           />
         )}
@@ -609,11 +612,12 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
         ) : chartViewEl}
       </div>
 
-      {currentSQL && (
+      {/* 保存到 DuckDB 用基础 SQL(无系统预览 LIMIT),与服务端导出同一口径(复审 P1) */}
+      {(currentBaseSQL ?? currentSQL) && (
         <ImportToDuckDBDialog
           open={importDialogOpen}
           onOpenChange={setImportDialogOpen}
-          sql={currentSQL}
+          sql={(currentBaseSQL ?? currentSQL)!}
           source={source}
         />
       )}
