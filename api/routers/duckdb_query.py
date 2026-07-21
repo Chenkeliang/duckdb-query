@@ -56,7 +56,11 @@ from core.common.exceptions import (
 from fastapi import APIRouter, Body, File, Form, Header, UploadFile
 from models.query_models import FederatedQueryRequest
 from pydantic import BaseModel
-from routers.query_sql_utils import has_top_level_limit, statement_accepts_limit
+from routers.query_sql_utils import (
+    ensure_query_has_limit,
+    has_top_level_limit,
+    statement_accepts_limit,
+)
 from utils.response_helpers import (
     MessageCode,
     create_list_response,
@@ -461,7 +465,7 @@ def execute_duckdb_query(
             from core.common.config_manager import config_manager
 
             limit = config_manager.get_app_config().max_query_rows
-            sql_query = f"{sql_query.rstrip(';')}\nLIMIT {limit}"
+            sql_query = ensure_query_has_limit(sql_query, limit)
             logger.info(f"Preview mode, applied LIMIT {limit}")
 
         logger.info(f"Executing DuckDB query: {sql_query}")
@@ -804,7 +808,7 @@ def execute_federated_query(
     limit = None
     if request.is_preview and statement_accepts_limit(sql_query) and not has_top_level_limit(sql_query):
         limit = config_manager.get_app_config().max_query_rows
-        sql_query = f"{sql_query.rstrip(';')}\nLIMIT {limit}"
+        sql_query = ensure_query_has_limit(sql_query, limit)
         logger.info(f"Preview mode, applied LIMIT {limit}")
 
     logger.info(f"Executing federated query: {sql_query}")

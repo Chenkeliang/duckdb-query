@@ -77,6 +77,13 @@ def handle_non_serializable_data(obj: Any) -> Any:
     return jsonable_encoder(obj)
 
 
+# DuckDB 标识符折叠是 ASCII 级(1.5.3 实测:ß/SS、Ä/ä、İ/i 可共存;STRASSE/strasse 冲突):
+# 只把 A-Z 折到 a-z。Python casefold()/lower() 是 Unicode 折叠,会误合并上述可共存列名。
+_ASCII_FOLD = str.maketrans(
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"
+)
+
+
 def dedupe_column_names(names: List[str]) -> List[str]:
     """重复列名 → id, id_1, id_2…,保序、位置稳定（SELECT 1 AS id, 2 AS id / 未加别名的 JOIN）。
 
@@ -84,24 +91,24 @@ def dedupe_column_names(names: List[str]) -> List[str]:
     records、column_types/cursor_types 三处用【同一口径】,否则去重后的列拿不到（或拿错）类型
     （复审:columns=[id,id_1] 而 column_types=[(id,..),(id,..)] → id_1 无类型、id 被覆盖）。
 
-    冲突键用 casefold(保留原始显示大小写):DuckDB 标识符大小写不敏感——id 与 ID 是同一列名,
+    冲突键用【ASCII-only 小写折叠】(保留原始显示大小写):DuckDB 标识符大小写不敏感——id 与 ID 是同一列名,
     read_csv 会把第二个静默改名(ID→ID_1)而 CREATE TABLE 直接报错;按大小写敏感比较会漏掉这类
     冲突,粘贴路径曾因此仍旧丢第二列数据(复审 P1)。
     """
-    seen: Dict[str, int] = {}  # casefold 键 → 后缀计数
+    seen: Dict[str, int] = {}  # ASCII 折叠键 → 后缀计数
     deduped: List[str] = []
     for name in names:
-        key = name.casefold()
+        key = name.translate(_ASCII_FOLD)
         if key not in seen:
             seen[key] = 0
             deduped.append(name)
         else:
             seen[key] += 1
             candidate = f"{name}_{seen[key]}"
-            while candidate.casefold() in seen:
+            while candidate.translate(_ASCII_FOLD) in seen:
                 seen[key] += 1
                 candidate = f"{name}_{seen[key]}"
-            seen[candidate.casefold()] = 0
+            seen[candidate.translate(_ASCII_FOLD)] = 0
             deduped.append(candidate)
     return deduped
 

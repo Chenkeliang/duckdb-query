@@ -250,10 +250,14 @@ def _build_preview_from_rows(head_rows: List[List[Any]]) -> tuple:
         str(v) if v is not None else f"column_{idx + 1}"
         for idx, v in enumerate(head_rows[0])
     ]
-    # 重复表头去重(与正式导入 line 515 共用 ensure_unique_columns):columns 与 preview_records
-    # 都按 enumerate(header) 位置消费,去重后第 i 个值仍对第 i 个(去重)列名——否则 records 用
-    # 原表头作 dict 键,重名列(id,id)后者覆盖前者、首列值丢失(去 pandas 回归,复审 P2)。
-    header = ensure_unique_columns(header)
+    # 与正式导入【同一条】表头管线:sanitize_identifier + ensure_unique_columns(见导入路径
+    # headers 处理)——预览列名必须与导入落表后的列名一致,不允许两套行为不同的清洗/去重实现
+    # (复审:Excel 规范化)。columns 与 preview_records 都按 enumerate(header) 位置消费,
+    # 第 i 个值恒对第 i 个(清洗去重后)列名;None 表头先落确定性兜底名再进管线。
+    header = ensure_unique_columns([
+        sanitize_identifier(name, allow_leading_digit=True, prefix="col")
+        for name in header
+    ])
     data_rows = head_rows[1:]
     columns = [
         {
@@ -392,25 +396,31 @@ def _repair_excel_coordinates(file_path: str) -> Optional[str]:
     return temp_path
 
 
+_ASCII_FOLD = str.maketrans(
+    "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"
+)
+
+
 def ensure_unique_columns(names: List[str]) -> List[str]:
-    # 冲突键用 casefold(保留显示大小写):DuckDB 列名大小写不敏感,id 与 ID 冲突——
+    # 冲突键用【ASCII-only 折叠】(保留显示大小写):DuckDB 列名大小写不敏感(id/ID 冲突),但折叠是
+    # ASCII 级——实测 ß/SS、Ä/ä 可共存,casefold()/lower() 的 Unicode 折叠会误合并——
     # 大小写敏感比较会漏掉,CREATE TABLE 直接 "Column with name ID already exists"(与
     # core.common.utils.dedupe_column_names 同口径,复审 P1)
     seen: Dict[str, int] = {}
     result: List[str] = []
     for name in names:
         current = name or "column"
-        key = current.casefold()
+        key = current.translate(_ASCII_FOLD)
         if key not in seen:
             seen[key] = 0
             result.append(current)
         else:
             seen[key] += 1
             candidate = f"{current}_{seen[key]}"
-            while candidate.casefold() in seen:
+            while candidate.translate(_ASCII_FOLD) in seen:
                 seen[key] += 1
                 candidate = f"{current}_{seen[key]}"
-            seen[candidate.casefold()] = 0
+            seen[candidate.translate(_ASCII_FOLD)] = 0
             result.append(candidate)
     return result
 

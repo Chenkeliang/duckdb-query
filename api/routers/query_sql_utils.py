@@ -62,6 +62,28 @@ _LIMIT_ACCEPTING_TYPES = (
 _BARE_TABLE_RE = re.compile(r"^TABLE\s+\S+\s*;?\s*$", re.IGNORECASE)
 
 
+def _strip_trailing_semicolon_segment(sql: str) -> str:
+    """剥掉末尾分号(及其后注释段)供 AST 分类/判定使用——tokenizer 定位,字面量安全。
+    `SELECT 1; -- note` 直接 parse_one 会得到 Block(多语句)而被分类拒绝、rstrip(';')
+    又剥不掉注释后的分号;此处按【末 token 是否分号】裁掉该段,其余场景原样返回。"""
+    prev_level = _sqlglot_logger.level
+    _sqlglot_logger.setLevel(logging.ERROR)
+    try:
+        tokens = sqlglot.tokenize(sql, read="duckdb")
+    except Exception:  # pylint: disable=broad-except
+        return sql
+    finally:
+        _sqlglot_logger.setLevel(prev_level)
+    if (
+        tokens
+        and tokens[-1].token_type == sqlglot.TokenType.SEMICOLON
+        and (len(tokens) < 2 or tokens[-2].token_type != sqlglot.TokenType.SEMICOLON)
+    ):
+        # 仅剥【单个】末尾分号段;连续分号(;;)按多语句对待,交由分类拒绝(保持旧行为)
+        return sql[: tokens[-1].start].rstrip()
+    return sql
+
+
 def statement_accepts_limit(query: str) -> bool:
     """该语句能否在末尾追加 LIMIT(SELECT/WITH/VALUES/PIVOT/UNPIVOT/集合运算等可以;
     DDL/扩展管理/PRAGMA 等不行)。
@@ -69,7 +91,7 @@ def statement_accepts_limit(query: str) -> bool:
     用 AST 分类判定,未识别的语句一律判定为"不接受"——宁可不补 LIMIT,也不对
     看不懂的语句盲目追加可能引发语法错误的后缀。
     """
-    stripped = query.strip()
+    stripped = _strip_trailing_semicolon_segment(query.strip())
     if _BARE_TABLE_RE.match(stripped):
         return True
     prev_level = _sqlglot_logger.level
@@ -91,7 +113,7 @@ def has_top_level_limit(query: str) -> bool:
     - 仅子查询内的 LIMIT 属于用户业务 SQL,不算"最外层已有"(外层默认仍可应用);
     - 解析失败 → 保守返回 True(宁可不追加,也不对看不懂的语句盲目改写)。
     """
-    stripped = query.strip().rstrip(";")
+    stripped = _strip_trailing_semicolon_segment(query.strip())
     prev_level = _sqlglot_logger.level
     _sqlglot_logger.setLevel(logging.ERROR)
     try:
@@ -103,6 +125,34 @@ def has_top_level_limit(query: str) -> bool:
     if tree is None:
         return True
     return tree.args.get("limit") is not None
+
+
+def _append_top_level_limit(sql: str, default_limit: int) -> str:
+    """把 `LIMIT n` 插到语句末尾的正确位置——用 sqlglot tokenizer 定位【末尾分号】:
+    - `SELECT 1; -- note`:endswith(';') 为假、rstrip(';') 也剥不掉,直接尾拼会落在分号
+      之后变成第二条语句(语法错误);tokenizer 给出分号的真实下标,LIMIT 插到分号前、
+      分号与其后注释原样保留(复审:分号+注释);
+    - 字面量安全:分号/注释符若在字符串字面量内,属于 STRING token,不会被误认;
+    - 无末尾分号则换行追加(行尾注释只吞到行末,不影响下一行的 LIMIT)。
+    """
+    clause = f"LIMIT {default_limit}"
+    prev_level = _sqlglot_logger.level
+    _sqlglot_logger.setLevel(logging.ERROR)
+    try:
+        tokens = sqlglot.tokenize(sql, read="duckdb")
+    except Exception:  # pylint: disable=broad-except
+        tokens = None
+    finally:
+        _sqlglot_logger.setLevel(prev_level)
+    if (
+        tokens
+        and tokens[-1].token_type == sqlglot.TokenType.SEMICOLON
+        and (len(tokens) < 2 or tokens[-2].token_type != sqlglot.TokenType.SEMICOLON)
+    ):
+        i = tokens[-1].start
+        head = sql[:i].rstrip()
+        return f"{head}\n{clause}{sql[i:]}"
+    return f"{sql.rstrip()}\n{clause}"
 
 
 def ensure_query_has_limit(query: str, default_limit: int = 1000) -> str:
@@ -119,6 +169,4 @@ def ensure_query_has_limit(query: str, default_limit: int = 1000) -> str:
     if has_top_level_limit(query_stripped):
         return query
 
-    if query_stripped.endswith(";"):
-        return f"{query_stripped[:-1]}\nLIMIT {default_limit};"
-    return f"{query_stripped}\nLIMIT {default_limit}"
+    return _append_top_level_limit(query_stripped, default_limit)

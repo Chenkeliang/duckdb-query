@@ -146,6 +146,20 @@ def test_ensure_query_has_limit_sql_boundaries():
     rows = con.execute(out).fetchall()
     assert len(rows) == 100 and rows[0][0] == 19999
 
+    # 分号后跟行注释(复审:分号+注释):endswith(';')/rstrip(';') 都处理不了——
+    # tokenizer 定位分号,LIMIT 插到分号前、注释原样保留
+    out = ensure_query_has_limit("SELECT * FROM range(20000); -- note", 100)
+    assert len(con.execute(out).fetchall()) == 100
+    # 已有最外层 LIMIT + 分号 + 注释 → 原样不动
+    sql = "SELECT * FROM range(20000) LIMIT 7; -- note"
+    assert ensure_query_has_limit(sql, 100) == sql
+    # 字面量里的分号/注释符不被误认(STRING token)
+    out = ensure_query_has_limit("SELECT '; -- x' AS a", 100)
+    assert con.execute(out).fetchall() == [("; -- x",)]
+    # 连续分号(;;)按多语句拒绝,保持原样(旧行为)
+    sql = "SELECT * FROM range(20000);;"
+    assert ensure_query_has_limit(sql, 100) == sql
+
 
 def test_apply_row_limit_choice_full_is_verbatim():
     """复审 P1:全量(apply_limit=False)逐字执行,尊重用户自己写的 LIMIT——绝不再按

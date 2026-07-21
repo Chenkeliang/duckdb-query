@@ -182,10 +182,24 @@ def test_excel_preview_headers_match_import_dedup():
         ensure_unique_columns,
     )
 
+    from core.data.excel_import_manager import sanitize_identifier
+
     headers = ["id", "ID", "name", "id"]
     columns, preview = _build_preview_from_rows([headers, [1, 2, "a", 3]])
     preview_names = [c["name"] for c in columns]
-    # 与导入路径同一函数、同一输出(纯字母数字表头 sanitize 为恒等)
-    assert preview_names == ensure_unique_columns(headers)
-    assert preview_names == ["id", "ID_1", "name", "id_2"]
+    # 与导入路径同一管线(sanitize + 去重)
+    expected = ensure_unique_columns(
+        [sanitize_identifier(h, allow_leading_digit=True, prefix="col") for h in headers]
+    )
+    assert preview_names == expected == ["id", "ID_1", "name", "id_2"]
     assert preview[0] == {"id": 1, "ID_1": 2, "name": "a", "id_2": 3}
+
+    # 特殊字符/空格/前导数字表头:预览列名 == 导入落表列名(同一 sanitize+去重,复审:Excel 规范化)
+    headers2 = ["order id", "order id", "1abc", "总 金额"]
+    columns2, preview2 = _build_preview_from_rows([headers2, [1, 2, 3, 4]])
+    names2 = [c["name"] for c in columns2]
+    expected2 = ensure_unique_columns(
+        [sanitize_identifier(h, allow_leading_digit=True, prefix="col") for h in headers2]
+    )
+    assert names2 == expected2 == ["order_id", "order_id_1", "1abc", "总_金额"]
+    assert preview2[0] == {"order_id": 1, "order_id_1": 2, "1abc": 3, "总_金额": 4}
