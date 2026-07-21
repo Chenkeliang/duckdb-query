@@ -315,6 +315,7 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL, onOp
                   previewLimitApplied={queryResults?.previewLimitApplied}
                   source={lastQuery?.source}
                   currentSQL={lastQuery?.sql}
+                  currentBaseSQL={lastQuery?.baseSql}
                   onRefreshTab={
                     activeResultTabId
                       ? (tabId) => void refreshResultTab(tabId)

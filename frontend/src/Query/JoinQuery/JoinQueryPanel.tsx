@@ -227,6 +227,8 @@ export interface JoinPreviewSqlParams {
   maxQueryRows: number;
   /** 已翻译的“请选择关联条件”注释文案 */
   selectConditionComment: string;
+  /** false = 生成无系统 LIMIT 的基础 SQL(异步/导出用,复审 P1);默认 true(预览) */
+  includeLimit?: boolean;
 }
 
 /**
@@ -245,6 +247,7 @@ export function buildJoinPreviewSql(params: JoinPreviewSqlParams): string | null
     filterTree,
     maxQueryRows,
     selectConditionComment,
+    includeLimit = true,
   } = params;
 
   if (activeTables.length === 0) return null;
@@ -536,8 +539,10 @@ export function buildJoinPreviewSql(params: JoinPreviewSqlParams): string | null
     parts.push(`WHERE ${whereClause}`);
   }
 
-  // 使用配置的 max_query_rows 而不是硬编码的 1000
-  parts.push(`LIMIT ${maxQueryRows}`);
+  // 使用配置的 max_query_rows 而不是硬编码的 1000;基础 SQL(异步/导出)不加
+  if (includeLimit) {
+    parts.push(`LIMIT ${maxQueryRows}`);
+  }
   return parts.join('\n');
 }
 
@@ -545,7 +550,7 @@ export type { TableSource };
 
 interface JoinQueryPanelProps {
   selectedTables?: SelectedTable[];
-  onExecute?: (sql: string, source?: TableSource) => Promise<void>;
+  onExecute?: (sql: string, source?: TableSource, options?: { baseSql?: string }) => Promise<void>;
   onDisplayPreview?: UseQueryWorkspaceReturn['displayQueryPreview'];
   /**
    * 记录到全局查询历史（仅记录，不重跑）。
@@ -1724,7 +1729,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
 
   // 生成 SQL（委托给纯函数 buildJoinPreviewSql，依赖与入参一一对应）
   const generateSQL = React.useCallback(
-    (): string | null =>
+    (includeLimit: boolean = true): string | null =>
       buildJoinPreviewSql({
         activeTables,
         attachDatabases,
@@ -1736,6 +1741,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
         filterTree,
         maxQueryRows,
         selectConditionComment: t('query.join.selectConditionComment', '请选择关联条件'),
+        includeLimit,
       }),
     [
       activeTables,
@@ -1813,7 +1819,8 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
           preview_limit_applied: isPreview ? maxQueryRows : null,
         },
         result.sql,
-        source
+        source,
+        { baseSql: generateSQL(false) ?? undefined }
       );
       // 执行（非预览）成功后补记历史：该分支绕过了 onExecute 的历史包装器
       if (!isPreview && result.sql) {
@@ -1822,7 +1829,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
       return true;
     }
     if (onExecute && result.sql) {
-      await onExecute(result.sql, source);
+      await onExecute(result.sql, source, { baseSql: generateSQL(false) ?? undefined });
       return true;
     }
     return false;
@@ -1854,7 +1861,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
           ? { type: 'federated', attachDatabases }
           : tableSource || { type: 'duckdb' };
 
-      await onExecute(sql, source);
+      await onExecute(sql, source, { baseSql: generateSQL(false) ?? undefined });
     } catch (error) {
       const parsedError = parseFederatedQueryError(error as Error);
       setFederatedError({
@@ -1896,6 +1903,8 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
   }, [onCancel]);
 
   const sql = React.useMemo(() => generateSQL(), [generateSQL]);
+  // 无系统 LIMIT 的基础 SQL:异步/导出必须用它才是真全量(复审 P1)
+  const baseSql = React.useMemo(() => generateSQL(false), [generateSQL]);
 
   const getJoinSnapshot = React.useCallback(
     () =>
@@ -2236,10 +2245,11 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
       />
 
       {/* 异步任务对话框 */}
+      {/* 异步任务提交无系统 LIMIT 的基础 SQL(复审 P1) */}
       <AsyncTaskDialog
         open={asyncDialogOpen}
         onOpenChange={setAsyncDialogOpen}
-        sql={sql?.trim() ?? ''}
+        sql={baseSql?.trim() ?? ''}
         datasource={
           sourceAnalysis.hasExternal && sourceAnalysis.currentSource
             ? {

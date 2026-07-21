@@ -58,7 +58,7 @@ export type { TableSource };
 
 interface SetOperationsPanelProps {
   selectedTables?: SelectedTable[];
-  onExecute?: (sql: string, source?: TableSource) => Promise<void>;
+  onExecute?: (sql: string, source?: TableSource, options?: { baseSql?: string }) => Promise<void>;
   onRemoveTable?: (table: SelectedTable) => void;
 }
 
@@ -552,7 +552,8 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
 
     setIsExecuting(true);
     try {
-      await onExecute(sqlForExecute, tableSource);
+      // baseSql = 无系统 LIMIT 的基础 SQL:异步/导出用它才是真全量(复审 P1)
+      await onExecute(sqlForExecute, tableSource, { baseSql: generatedBaseSql ?? undefined });
     } finally {
       setIsExecuting(false);
     }
@@ -818,11 +819,12 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
         sql={sql || ''}
       />
 
-      {/* 异步任务对话框 */}
+      {/* 异步任务对话框:提交无系统 LIMIT 的基础 SQL——sqlForExecute 把 LIMIT maxQueryRows
+          烤进了文本,后端"全量"会原样保留它、导不出全表(复审 P1) */}
       <AsyncTaskDialog
         open={asyncDialogOpen}
         onOpenChange={setAsyncDialogOpen}
-        sql={sql?.trim() ?? ''}
+        sql={generatedBaseSql?.trim() ?? ''}
         onSuccess={() => {
           setAsyncDialogOpen(false);
         }}

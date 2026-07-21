@@ -8,6 +8,8 @@ export interface QueryResultExportPayload {
     sql: string;
     format: 'parquet' | 'csv';
     attach_databases?: { alias: string; connection_id: string }[];
+    /** 行数范围:false(默认)=全量导出(逐字执行,尊重用户自己的 LIMIT);true=封顶 max_query_rows */
+    apply_row_limit?: boolean;
 }
 
 export interface QueryResultExportResult {

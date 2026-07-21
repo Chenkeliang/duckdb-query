@@ -56,7 +56,11 @@ interface QueryTabsProps {
   activeTab: string;
   onTabChange: (tab: string) => void;
   selectedTables: SelectedTable[];
-  onExecute: (sql: string, source?: TableSource) => Promise<void>;
+  onExecute: (
+    sql: string,
+    source?: TableSource,
+    options?: { baseSql?: string }
+  ) => Promise<void>;
   onDisplayPreview?: UseQueryWorkspaceReturn['displayQueryPreview'];
   onRemoveTable?: (table: SelectedTable) => void;
   /** 取消回调 */
@@ -186,13 +190,13 @@ export const QueryTabs = React.forwardRef<QueryTabsHandle, QueryTabsProps>(({
   // 创建包装后的执行函数，自动记录到全局历史
   const createWrappedExecute = React.useCallback(
     (type: 'join' | 'set' | 'pivot') =>
-      async (sql: string, source?: TableSource) => {
+      async (sql: string, source?: TableSource, options?: { baseSql?: string }) => {
         if (!onExecute) return;
         const startTime = Date.now();
         const joinSnapshot =
           type === 'join' ? joinPersistenceRef.current?.getSnapshot() : undefined;
         try {
-          await onExecute(sql, source);
+          await onExecute(sql, source, options);
           addToHistory({
             type,
             sql,

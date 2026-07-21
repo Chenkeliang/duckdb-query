@@ -335,6 +335,8 @@
       "exportNoSql": "无 SQL 可导出",
       "exportParquetFailed": "Parquet 导出失败",
       "exportParquetServer": "导出 Parquet（服务端）",
+      "exportParquetServerFull": "导出 Parquet（服务端·全量）",
+      "exportParquetServerLimited": "导出 Parquet（服务端·限制行数）",
       "exportHint": "CSV / Excel / JSON 导出表格当前已加载的 {{rows}} 行（受查询行数上限截断，可能不是完整结果）；完整结果请用「Parquet（服务端）」或异步任务下载"
     },
     "filter": {

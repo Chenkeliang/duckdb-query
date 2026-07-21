@@ -44,6 +44,31 @@ describe('isJoinConditionValid', () => {
   });
 });
 
+describe('buildJoinPreviewSql includeLimit(验收 #10:内部无系统 LIMIT,仅预览最外层)', () => {
+  it('includeLimit:false 生成的基础 SQL 全文无系统 LIMIT(异步/导出用)', () => {
+    const sql = buildJoinPreviewSql({
+      ...baseParams(),
+      activeTables: [table('users'), table('orders')],
+      selectedColumns: { users: ['id'], orders: ['amt'] },
+      includeLimit: false,
+    });
+    expect(sql).toBeTruthy();
+    expect(sql!.toUpperCase()).not.toContain('LIMIT');
+  });
+
+  it('默认(预览)仅在最外层出现一次 LIMIT,JOIN 参与表/子查询不含', () => {
+    const sql = buildJoinPreviewSql({
+      ...baseParams(),
+      activeTables: [table('users'), table('orders')],
+      selectedColumns: { users: ['id'], orders: ['amt'] },
+    });
+    expect(sql).toBeTruthy();
+    const upper = sql!.toUpperCase();
+    expect(upper.match(/LIMIT/g)?.length).toBe(1);
+    expect(sql!.trimEnd().endsWith('LIMIT 1000')).toBe(true); // 最外层(末尾)
+  });
+});
+
 describe('buildJoinPreviewSql (characterization)', () => {
   it('returns null when no tables', () => {
     expect(buildJoinPreviewSql({ ...baseParams(), activeTables: [] })).toBeNull();

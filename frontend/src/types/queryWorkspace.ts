@@ -17,6 +17,9 @@ export interface TableSource {
 export interface LastQuery {
   sql: string;
   source: TableSource;
+  /** 无系统 LIMIT 的基础 SQL(生成式面板把 LIMIT maxQueryRows 烤进了 sql 文本;异步/导出
+   *  必须提交 baseSql 才能真全量,复审 P1)。缺省 = sql 本身就是基础(如 SQL 编辑器原始输入)。 */
+  baseSql?: string;
 }
 
 export interface DuckdbColumnType {

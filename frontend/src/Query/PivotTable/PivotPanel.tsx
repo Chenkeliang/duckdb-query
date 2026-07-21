@@ -48,7 +48,7 @@ import { AiChatDrawer, ChatToggleButton } from "@/Query/SQLQuery/ai/AiChatDrawer
 
 interface PivotPanelProps {
     selectedTables: SelectedTable[];
-    onExecute: (sql: string, source?: TableSource) => Promise<void>;
+    onExecute: (sql: string, source?: TableSource, options?: { baseSql?: string }) => Promise<void>;
 }
 
 export const PivotPanel: React.FC<PivotPanelProps> = ({
@@ -268,7 +268,6 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
             parts.push(`  GROUP BY ${rowColumns.join(", ")}`);
             parts.push(")");
             if (whereClause) parts.push(whereClause);
-            parts.push(`LIMIT ${maxQueryRows}`);
             return parts.join("\n");
         }
 
@@ -286,9 +285,8 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
         if (whereClause) parts.push(whereClause);
         parts.push(`GROUP BY ${rowColumns.join(", ")}`);
         parts.push(`ORDER BY ${rowColumns.join(", ")}`);
-        parts.push(`LIMIT ${maxQueryRows}`);
         return parts.join("\n");
-    }, [selectedTable, rows, columns, values, maxQueryRows, buildLocalWhereClause]);
+    }, [selectedTable, rows, columns, values, buildLocalWhereClause]);
 
     // 有值的 cast 仍在推断中 / 无法安全推断 → 阻断服务端与本地两条路径(不静默用有损默认出结果)
     const castPending = hasPendingValueCast(values);
@@ -296,11 +294,19 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
     // 服务端路径激活时 SQL 只来自服务端生成:加载中/出错都为 null,绝不回退到无列上限保护的
     // 本地 PIVOT(否则后端刚拒绝的超限查询会被本地 SQL 原样执行——复审 P1)。本地路径仅用于
     // useServerPivot 为 false(如多列/含特殊字符列走 shouldUseLocalPivotSql)的情形。
-    const sql = castPending
+    // baseSql = 无系统 LIMIT 的基础 SQL(异步/导出用它才是真全量,复审 P1):
+    // 服务端 final_sql 本就不含 LIMIT;本地 generateLocalSQL 现只产基础 SQL,预览再补 LIMIT
+    // (执行走 /api/duckdb/execute 预览模式,缺 LIMIT 时服务端也会补,双保险)。
+    const baseSql = castPending
         ? null
         : useServerPivot
           ? serverGenerated?.final_sql?.trim() || null
           : generateLocalSQL() || null;
+    const sql = baseSql
+        ? useServerPivot
+            ? baseSql
+            : `${baseSql}\nLIMIT ${maxQueryRows}`
+        : null;
 
     const tableSource = selectedTable
         ? getSourceFromSelectedTable(selectedTable)
@@ -313,7 +319,7 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
         if (!sql) return;
         setIsExecuting(true);
         try {
-            await onExecute(sql, tableSource);
+            await onExecute(sql, tableSource, { baseSql: baseSql ?? undefined });
         } finally {
             setIsExecuting(false);
         }
@@ -449,7 +455,7 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
             <AsyncTaskDialog
                 open={asyncDialogOpen}
                 onOpenChange={setAsyncDialogOpen}
-                sql={sql?.trim() ?? ""}
+                sql={baseSql?.trim() ?? ""}
                 datasource={
                     tableSource?.type === "federated" && tableSource.connectionId
                         ? {

@@ -13,6 +13,8 @@ export interface QueryRunnerExecuteOptions {
   requestId?: string;
   signal?: AbortSignal;
   isPreview?: boolean;
+  /** 无系统 LIMIT 的基础 SQL(异步/导出用它才是真全量);见 LastQuery.baseSql */
+  baseSql?: string;
 }
 
 export function useQueryRunner() {
@@ -22,9 +24,9 @@ export function useQueryRunner() {
     async (
       sql: string,
       source?: TableSource,
-      _options?: QueryRunnerExecuteOptions
+      options?: QueryRunnerExecuteOptions
     ) => {
-      await workspace.handleQueryExecute(sql, source);
+      await workspace.handleQueryExecute(sql, source, { baseSql: options?.baseSql });
     },
     [workspace.handleQueryExecute]
   );
