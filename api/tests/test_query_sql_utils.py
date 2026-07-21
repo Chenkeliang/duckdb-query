@@ -9,9 +9,15 @@ VACUUM 等 DuckDB 专有语句均如此)一律判定为"不接受"——未识�
 LIMIT,而不是默认接受再冒语法错误的风险。
 """
 
+from unittest.mock import Mock, patch
+
 import pytest
 
-from routers.query_sql_utils import ensure_query_has_limit, statement_accepts_limit
+from routers.query_sql_utils import (
+    apply_row_limit_choice,
+    ensure_query_has_limit,
+    statement_accepts_limit,
+)
 
 
 @pytest.mark.parametrize(
@@ -95,6 +101,26 @@ def test_ensure_query_has_limit_appends_for_select():
     assert ensure_query_has_limit("SELECT * FROM t", 100) == "SELECT * FROM t LIMIT 100"
     # 已有 LIMIT 不重复补
     assert ensure_query_has_limit("SELECT * FROM t LIMIT 5", 100) == "SELECT * FROM t LIMIT 5"
+
+
+def test_apply_row_limit_choice_full_is_verbatim():
+    """复审 P1:全量(apply_limit=False)逐字执行,尊重用户自己写的 LIMIT——绝不再按
+    'LIMIT 值==上限' 猜测删除(旧 remove_auto_added_limit 会把 LIMIT 10000 静默删成全表)。"""
+    # 无 LIMIT → 保持无 LIMIT(全量)
+    assert apply_row_limit_choice("SELECT * FROM range(20000)", False) == "SELECT * FROM range(20000)"
+    # 用户手写的 LIMIT(即便等于常见上限)→ 原样保留
+    assert (
+        apply_row_limit_choice("SELECT * FROM range(20000) LIMIT 10000", False)
+        == "SELECT * FROM range(20000) LIMIT 10000"
+    )
+
+
+def test_apply_row_limit_choice_limited_appends_when_missing():
+    """限制(apply_limit=True):缺 LIMIT 补 max_query_rows;已有则保留。"""
+    with patch("core.common.config_manager.config_manager") as mgr:
+        mgr.get_app_config.return_value = Mock(max_query_rows=500)
+        assert apply_row_limit_choice("SELECT * FROM t", True) == "SELECT * FROM t LIMIT 500"
+        assert apply_row_limit_choice("SELECT * FROM t LIMIT 5", True) == "SELECT * FROM t LIMIT 5"
 
 
 def test_double_semicolon_left_untouched():

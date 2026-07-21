@@ -240,6 +240,8 @@ export interface CreateTaskRequest {
   datasource?: DataSource;
   attach_databases?: Array<{ alias: string; connection_id: string }>;
   output_format?: "csv" | "parquet";
+  /** 行数范围:false(默认)=全量,逐字执行尊重用户 LIMIT;true=缺 LIMIT 时补 max_query_rows */
+  apply_row_limit?: boolean;
 }
 
 // ==================== Table Types ====================

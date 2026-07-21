@@ -12,25 +12,24 @@ logger = logging.getLogger(__name__)
 _sqlglot_logger = logging.getLogger("sqlglot")
 
 
-def remove_auto_added_limit(sql: str) -> str:
-    """Remove system-added LIMIT (equals max_query_rows), keep user LIMIT."""
+def apply_row_limit_choice(sql: str, apply_limit: bool) -> str:
+    """按用户【显式选择】决定异步/导出/保存的行数范围,不再从 SQL 文本猜测系统是否追加过 LIMIT。
+
+    - apply_limit=False(全量):逐字执行,尊重用户自己写的 LIMIT,不加不删;
+    - apply_limit=True(限制):缺 LIMIT 时追加 max_query_rows(有则保留)。
+
+    旧的 remove_auto_added_limit 仅凭 "LIMIT 值 == max_query_rows" 就判为系统追加并删除,会误删
+    用户手写的等值 LIMIT(SELECT ... LIMIT 10000 被静默删成全表,复审 P1)。行数范围本是用户意图,
+    应由请求显式携带,不能靠文本+数值反推。"""
+    if not apply_limit:
+        return sql.strip()
     from core.common.config_manager import config_manager
 
     try:
         max_rows = config_manager.get_app_config().max_query_rows
-    except Exception:
+    except Exception:  # pylint: disable=broad-except
         max_rows = 10000
-
-    sql_cleaned = sql.rstrip("; \t\n\r")
-    limit_pattern = rf"\s+LIMIT\s+{max_rows}$"
-
-    if re.search(limit_pattern, sql_cleaned, re.IGNORECASE):
-        sql_cleaned = re.sub(limit_pattern, "", sql_cleaned, flags=re.IGNORECASE)
-        logger.info("Removed system-added LIMIT %s, restored user original SQL", max_rows)
-    else:
-        logger.info("Keeping user original SQL LIMIT clause")
-
-    return sql_cleaned.strip()
+    return ensure_query_has_limit(sql, max_rows)
 
 
 def get_join_type_sql(join_type: str) -> str:

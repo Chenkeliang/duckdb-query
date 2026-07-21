@@ -60,7 +60,7 @@ from utils.response_helpers import (
 from routers.query_sql_utils import (
     ensure_query_has_limit,
     get_join_type_sql,
-    remove_auto_added_limit,
+    apply_row_limit_choice,
 )
 
 # Setup logging
@@ -809,6 +809,10 @@ def save_query_to_duckdb(request: dict = Body(...)):
         sql_query = request.get("sql") or request.get("sqlQuery", "")
         table_alias = request.get("table_alias") or request.get("tableAlias", "")
         query_data = request.get("query_data")  # 直接传递的查询结果数据
+        # 行数范围显式选择(默认全量落表);False=逐字执行尊重用户 LIMIT,True=缺则补 max_query_rows
+        apply_row_limit = bool(
+            request.get("apply_row_limit", request.get("applyRowLimit", False))
+        )
 
         # 确保datasource是字典类型
         if not isinstance(datasource, dict):
@@ -866,16 +870,16 @@ def save_query_to_duckdb(request: dict = Body(...)):
                 ]
             )
 
-        # 对于保存功能，始终重新执行SQL以确保数据完整性
-        # 智能移除系统自动添加的LIMIT，保留用户原始的所有SQL逻辑
-        logger.info("Re-executing SQL to get complete data, intelligently handling LIMIT")
+        # 对于保存功能，重新执行 SQL 以确保数据完整性;行数范围按【显式选择】(默认全量),
+        # 不再按 "LIMIT==上限" 猜测删除(会误删用户手写等值 LIMIT,复审 P1)。
+        logger.info("Re-executing SQL to persist (apply_row_limit=%s)", apply_row_limit)
 
         try:
             # reject_empty=True: 空结果只清理内部临时表、绝不触碰 table_alias 下
             # 已有的数据——同名重存(overwrite)时新查询意外返回 0 行,不能把旧的
             # 有效数据换成空表再删掉,必须让旧数据原封不动地留在原地。
             metadata_snapshot = execute_sql_and_persist(
-                remove_auto_added_limit(sql_query), table_alias, attach_list,
+                apply_row_limit_choice(sql_query, apply_row_limit), table_alias, attach_list,
                 reject_empty=True,
             )
         except Exception as exec_error:

@@ -12,6 +12,7 @@ import { Loader2, AlertCircle, Info, Database } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
+import { Checkbox } from '@/components/ui/checkbox';
 import {
   Dialog,
   DialogContent,
@@ -116,15 +117,18 @@ export const AsyncTaskDialog: React.FC<AsyncTaskDialogProps> = ({
   // 表单状态
   const [customTableName, setCustomTableName] = useState('');
   const [tableNameError, setTableNameError] = useState<string | undefined>();
+  // 行数范围:默认全量(异步任务本就用于导全表);勾选则限制到系统上限。始终保留用户自己写的 LIMIT。
+  const [applyRowLimit, setApplyRowLimit] = useState(false);
 
   // 是否为联邦查询
   const isFederatedQuery = attachDatabases && attachDatabases.length > 0;
 
-  // 重置表单
+  // 重置表单(组件常驻挂载,重开须显式复位;否则上次勾的"限制行数"会残留到下个查询,复审)
   useEffect(() => {
     if (open) {
       setCustomTableName('');
       setTableNameError(undefined);
+      setApplyRowLimit(false);
     }
   }, [open]);
 
@@ -141,6 +145,7 @@ export const AsyncTaskDialog: React.FC<AsyncTaskDialogProps> = ({
       const payload: CreateTaskRequest = {
         sql,
         task_type: 'query',
+        apply_row_limit: applyRowLimit,
       };
 
       if (customTableName.trim()) {
@@ -270,6 +275,24 @@ export const AsyncTaskDialog: React.FC<AsyncTaskDialogProps> = ({
             <p className="text-xs text-muted-foreground">
               {t('async.dialog.tableNameHint', '表名只能包含字母、数字和下划线，不能以数字开头')}
             </p>
+          </div>
+
+          {/* 行数范围:默认全量;勾选限制到系统上限。任何情况下都保留用户自己写的 LIMIT */}
+          <div className="flex items-start gap-2">
+            <Checkbox
+              id="applyRowLimit"
+              checked={applyRowLimit}
+              onCheckedChange={(v) => setApplyRowLimit(v === true)}
+              className="mt-0.5"
+            />
+            <div className="space-y-0.5">
+              <Label htmlFor="applyRowLimit" className="cursor-pointer">
+                {t('async.dialog.limitRows', '限制行数')}
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                {t('async.dialog.limitRowsHint', '默认导出全部行;勾选则限制到系统预览上限。无论如何都保留你在 SQL 里写的 LIMIT')}
+              </p>
+            </div>
           </div>
         </div>
 
