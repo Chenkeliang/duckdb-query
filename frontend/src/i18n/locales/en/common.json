@@ -547,6 +547,13 @@
       "priorityHint": "Tip: Sort priority decreases from top to bottom"
     },
     "join": {
+      "inferCastUnsafe": "\"{{label}}.{{column}}\" can't be safely inferred to a common numeric type; pick a cast type manually or match as text",
+      "inferCastUnsafeNonNumeric": "\"{{label}}.{{column}}\" has non-numeric values; pick a type manually or match as text (VARCHAR)",
+      "inferCastUnsafeBinaryFloat": "\"{{label}}.{{column}}\" is floating-point; auto-quantizing would distort values. Pick a type manually or match as text",
+      "inferCastUnsafeScientific": "\"{{label}}.{{column}}\" contains scientific notation; scale can't be inferred reliably. Pick a type manually",
+      "inferCastUnsafeOverflow": "\"{{label}}.{{column}}\" has more digits than DECIMAL(38) capacity; pick a type manually",
+      "inferCastOverflowCombined": "Combined digits of both sides exceed DECIMAL(38) capacity; pick a type manually or match as text",
+      "inferCastFailed": "Type inference failed; check the connection or pick a cast type manually",
       "selectTableFirst": "Please select a main table first",
       "title": "Join Query",
       "mainTable": "Main table",
@@ -682,6 +689,8 @@
       "castInferring": "inferring…",
       "castPickType": "pick type",
       "castBlockedHint": "A value's type is still being inferred or needs a manual choice; execution is paused",
+      "columnLimitHint": "Pivot column \"{{column}}\" has more than the {{cap}}-value limit (at least {{observed}}); add filters to narrow the range, use fewer categories, or lower the cardinality and retry",
+      "generateFailed": "Failed to generate the pivot query; check the configuration or try again",
       "selectTableHint": "Please select a data table first",
       "allFieldsConfigured": "All fields have been configured",
       "rows": "Row Fields",

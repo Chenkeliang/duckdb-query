@@ -547,6 +547,13 @@
       "priorityHint": "提示：排序按从上到下的顺序优先级递减"
     },
     "join": {
+      "inferCastUnsafe": "「{{label}}.{{column}}」无法安全推断为公共数值类型,请手动选择转换类型或用文本匹配",
+      "inferCastUnsafeNonNumeric": "「{{label}}.{{column}}」含无法转成数字的值,请手动选择类型或用文本(VARCHAR)匹配",
+      "inferCastUnsafeBinaryFloat": "「{{label}}.{{column}}」是浮点数,自动量化会失真,请手动选择类型或用文本匹配",
+      "inferCastUnsafeScientific": "「{{label}}.{{column}}」含科学计数法,无法可靠推断精度,请手动选择类型",
+      "inferCastUnsafeOverflow": "「{{label}}.{{column}}」数值位数超出 DECIMAL(38) 容量,请手动选择类型",
+      "inferCastOverflowCombined": "两侧合并后数值位数超出 DECIMAL(38) 容量,请手动选择类型或用文本匹配",
+      "inferCastFailed": "类型推断失败,请检查连接或手动选择转换类型",
       "selectTableFirst": "请先选择一个主表",
       "title": "关联查询",
       "mainTable": "主表",
@@ -682,6 +689,8 @@
       "castInferring": "推断中…",
       "castPickType": "请选类型",
       "castBlockedHint": "有聚合值的类型还在推断或需手动选择,已暂停执行",
+      "columnLimitHint": "透视列「{{column}}」的取值超过 {{cap}} 个上限(至少 {{observed}} 个),请增加筛选缩小范围、减少分类,或调低分类基数后重试",
+      "generateFailed": "透视查询生成失败,请检查配置或稍后重试",
       "selectTableHint": "请先选择数据表",
       "allFieldsConfigured": "所有字段已配置",
       "rows": "行字段",

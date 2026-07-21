@@ -23,7 +23,7 @@ import { useTableColumns } from "@/hooks/useTableColumns";
 import { useAppConfig } from "@/hooks/useAppConfig";
 import type { SelectedTable } from "@/types/SelectedTable";
 import type { TableSource } from "@/hooks/useQueryWorkspace";
-import { generatePivotQuery, toAttachDatabasesPayload, inferColumnCast, type InferCastResult } from "@/api";
+import { generatePivotQuery, toAttachDatabasesPayload, inferColumnCast, getApiErrorCode, type InferCastResult, type ApiError } from "@/api";
 import { getTableName, normalizeSelectedTable } from "@/utils/tableUtils";
 import {
     quoteIdent,
@@ -158,7 +158,12 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
         pivotMaxColumns
     );
 
-    const { data: serverGenerated, isFetching: isGeneratingSql } = useQuery({
+    const {
+        data: serverGenerated,
+        isFetching: isGeneratingSql,
+        isError: isGenerateError,
+        error: generateError,
+    } = useQuery({
         queryKey: pivotQueryKey,
         queryFn: async () => {
             if (!pivotPayload) return null;
@@ -172,6 +177,22 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
         enabled: Boolean(pivotPayload),
         staleTime: 30_000,
     });
+
+    // 服务端生成失败:据结构化 code/details 提示(不解析消息文本)。列超限时给出可操作建议。
+    const generateErrorInfo = React.useMemo(() => {
+        if (!isGenerateError || !generateError) return null;
+        const code = getApiErrorCode(generateError, "OPERATION_FAILED");
+        const details = (generateError as ApiError).details ?? {};
+        if (code === "PIVOT_COLUMN_LIMIT_EXCEEDED") {
+            return {
+                code,
+                column: String(details.column ?? ""),
+                cap: Number(details.cap ?? 0),
+                observed: Number(details.observed_at_least ?? 0),
+            };
+        }
+        return { code, column: "", cap: 0, observed: 0 };
+    }, [isGenerateError, generateError]);
 
     const buildLocalWhereClause = React.useCallback(
         (dialect: ReturnType<typeof getDialectFromSource>): string | null => {
@@ -245,11 +266,14 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
     // 有值的 cast 仍在推断中 / 无法安全推断 → 阻断服务端与本地两条路径(不静默用有损默认出结果)
     const castPending = hasPendingValueCast(values);
 
+    // 服务端路径激活时 SQL 只来自服务端生成:加载中/出错都为 null,绝不回退到无列上限保护的
+    // 本地 PIVOT(否则后端刚拒绝的超限查询会被本地 SQL 原样执行——复审 P1)。本地路径仅用于
+    // useServerPivot 为 false(如多列/含特殊字符列走 shouldUseLocalPivotSql)的情形。
     const sql = castPending
         ? null
-        : (useServerPivot && serverGenerated?.final_sql?.trim()) ||
-          generateLocalSQL() ||
-          null;
+        : useServerPivot
+          ? serverGenerated?.final_sql?.trim() || null
+          : generateLocalSQL() || null;
 
     const tableSource = selectedTable
         ? getSourceFromSelectedTable(selectedTable)
@@ -361,6 +385,18 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
                     onChange={setFilterRows}
                     disabled={columnsLoading || !selectedTable}
                 />
+
+                {generateErrorInfo && (
+                    <div className="bg-destructive/10 border border-destructive/40 rounded-xl p-3 text-sm text-destructive">
+                        {generateErrorInfo.code === "PIVOT_COLUMN_LIMIT_EXCEEDED"
+                            ? t("query.pivot.columnLimitHint", {
+                                  column: generateErrorInfo.column,
+                                  cap: generateErrorInfo.cap,
+                                  observed: generateErrorInfo.observed,
+                              })
+                            : t("query.pivot.generateFailed", "透视查询生成失败,请检查配置或稍后重试")}
+                    </div>
+                )}
 
                 {sql && (
                     <div className="bg-muted/30 border border-border rounded-xl p-4">

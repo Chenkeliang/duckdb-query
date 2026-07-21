@@ -50,6 +50,8 @@ import { useAppConfig } from '@/hooks/useAppConfig';
 import { useTypeConflict, type ColumnPair, type TypeConflict, type ResolvedCast } from '@/hooks/useTypeConflict';
 import { TypeConflictDialog } from '@/Query/components/TypeConflictDialog';
 import { SQLHighlight } from '@/components/SQLHighlight';
+import { showErrorToast } from '@/utils/toastHelpers';
+import { decideConflictCast } from '@/Query/JoinQuery/conflictCast';
 import { generateConflictKey } from '@/utils/duckdbTypes';
 import type { SelectedTable } from '@/types/SelectedTable';
 import {
@@ -1591,6 +1593,17 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
   // 会把 T 只套到与 T 不同的那一侧(后端 left_cast/right_cast)。
   const inferConflictCast = React.useCallback(
     async (conflict: TypeConflict): Promise<string | null> => {
+      // 无安全公共类型时按后端 reason 给出可操作提示——与透视页一致,避免"点了推断却无任何反馈"。
+      const reasonKey: Record<string, string> = {
+        non_numeric: "query.join.inferCastUnsafeNonNumeric",
+        binary_float: "query.join.inferCastUnsafeBinaryFloat",
+        scientific: "query.join.inferCastUnsafeScientific",
+        overflow: "query.join.inferCastUnsafeOverflow",
+      };
+      const warnUnsafe = (label: string, column: string, reason: string | null | undefined) => {
+        const key = (reason && reasonKey[reason]) || "query.join.inferCastUnsafe";
+        showErrorToast(t, undefined, t(key, { label, column }));
+      };
       const payloadFor = (label: string, column: string) => {
         const table = activeTables.find((tb) => getTableName(tb) === label);
         if (!table) return null;
@@ -1607,20 +1620,27 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
       if (!lp || !rp) return null;
       try {
         const [lr, rr] = await Promise.all([inferColumnCast(lp), inferColumnCast(rp)]);
-        // 任一侧不可安全量化(有非数字行 / 二进制浮点源 / 科学计数法 / 超 DECIMAL(38) 容量)
-        // → 无安全公共数值类型,交用户显式选(如 VARCHAR 文本匹配)。二进制浮点走此分支正是
-        // "JOIN 分侧转换、别把浮点统一量化成 DECIMAL"的落地(safe_decimal_cast 已含该判定)。
-        if (!lr.safe_decimal_cast || !rr.safe_decimal_cast) return null;
-        const scale = Math.max(lr.max_frac_digits, rr.max_frac_digits);
-        const intDigits = Math.max(lr.max_int_digits, rr.max_int_digits);
-        if (intDigits + scale > 38) return null;
-        if (scale === 0) return intDigits <= 18 ? 'BIGINT' : 'DECIMAL(38,0)';
-        return `DECIMAL(38,${scale})`;
+        const decision = decideConflictCast(lr, rr);
+        if (decision.unsafe) {
+          const side = decision.unsafe.side === 'left'
+            ? { label: conflict.leftLabel, column: conflict.leftColumn }
+            : { label: conflict.rightLabel, column: conflict.rightColumn };
+          warnUnsafe(side.label, side.column, decision.unsafe.reason);
+          return null;
+        }
+        if (decision.overflow) {
+          // 合并溢出:两侧各自安全、合并后超容量——用不点单列名的文案(单列超 38 位走上面
+          // reason='overflow' 分支,那里才点具体列名)
+          showErrorToast(t, undefined, t("query.join.inferCastOverflowCombined"));
+          return null;
+        }
+        return decision.cast;
       } catch {
+        showErrorToast(t, undefined, t("query.join.inferCastFailed"));
         return null;
       }
     },
-    [activeTables, attachDatabases]
+    [activeTables, attachDatabases, t]
   );
 
   // 检查是否所有 JOIN 配置都有有效的关联列

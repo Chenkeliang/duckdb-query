@@ -56,6 +56,8 @@ function Harness({
             <div data-testid="tc">{values.map((v) => v.typeConversion ?? '').join('|')}</div>
             <div data-testid="src">{values.map((v) => v.castSource ?? '').join('|')}</div>
             <div data-testid="ctxk">{values.map((v) => v.castContextKey ?? '').join('|')}</div>
+            <div data-testid="status">{values.map((v) => v.castStatus ?? '').join('|')}</div>
+            <button data-testid="removeFirst" onClick={() => setValues((v) => v.slice(1))}>x</button>
             <PivotTableDesigner
                 availableFields={[{ name: 'price', type: 'VARCHAR' }, { name: 'region', type: 'VARCHAR' }]}
                 rows={['region']}
@@ -172,5 +174,29 @@ describe('PivotTableDesigner cast 推断(挂载)', () => {
         await act(async () => { d1.resolve(okResult('DECIMAL(38,1)')); });
         await act(async () => { await Promise.resolve(); });
         expect(screen.getByTestId('tc').textContent).toBe('DECIMAL(38,7)');
+    });
+
+    it('推断在途时删除前置值:幸存值按 castSeq 重定位并落地,不永卡 pending', async () => {
+        // [A=COUNT(region) 不推断, B=SUM(price) 待推断]。挂载时仅 B 派发(idx=1)。
+        const d = deferred<InferCastResult>();
+        const onInferCast = vi.fn().mockReturnValue(d.promise);
+        const seed = (): SeedValue[] => [
+            { column: 'region', aggregation: AggregationFunction.COUNT },
+            { column: 'price', aggregation: AggregationFunction.SUM, castSource: 'inferred', castContextKey: 'old' },
+        ];
+
+        render(<Harness ctx="ctxA" onInferCast={onInferCast} seed={seed()} />);
+        await waitFor(() => expect(onInferCast).toHaveBeenCalledWith('price'));
+        // B 进入 pending(idx 仍为 1)
+        await waitFor(() => expect(screen.getByTestId('status').textContent).toBe('|pending'));
+
+        // 删除前置值 A → B 左移到 idx 0(派发时下标 1 已失效)
+        await act(async () => { screen.getByTestId('removeFirst').click(); });
+        expect(screen.getByTestId('status').textContent).toBe('pending'); // 仅剩 B,仍 pending
+
+        // 推断回填:按 castSeq 在最新数组重定位到 idx 0(而非旧 idx 1),B 落地、脱离 pending
+        await act(async () => { d.resolve(okResult('DECIMAL(38,3)')); });
+        await waitFor(() => expect(screen.getByTestId('tc').textContent).toBe('DECIMAL(38,3)'));
+        expect(screen.getByTestId('status').textContent).toBe(''); // 不再 pending
     });
 });

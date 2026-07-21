@@ -209,6 +209,7 @@ export {
 export {
     inferColumnCast,
     type InferCastResult,
+    type InferCastReason,
     type InferColumnCastPayload,
 } from './columnAnalysisApi';
 

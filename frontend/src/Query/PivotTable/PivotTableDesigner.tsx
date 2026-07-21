@@ -340,18 +340,19 @@ export const PivotTableDesigner: React.FC<PivotTableDesignerProps> = ({
             return;
         }
         void onInferCast(col).then((res) => {
-            // 丢弃 stale,任一条件不满足即丢:
-            //  - 有更晚的同值派发(castSeq 不再匹配)——防 A→B→A 同 forKey 的旧派发迟到覆盖新解;
-            //  - 值已增删/换列、上下文已变(forKey 过期)、已不再需要 cast(切回 COUNT/数值列);
-            //  - 已被用户手填覆盖(castSource!=='inferred')——防迟到推断覆盖用户手填。
-            const cur = valuesRef.current[idx];
-            if (!cur || cur.castSeq !== seq) return;
+            // 按【稳定派发号 castSeq】在最新数组里重定位目标,而非信任派发时下标 idx:推断在途时删除
+            // 前置值会让目标值下标左移,按旧 idx 回填会写错槽/落空,导致幸存值永卡 pending(复审 P2)。
+            // castSeq 全局单调唯一,只有本次派发的那个值带它;更晚派发会覆盖其 castSeq,故 findIndex 落空即丢。
+            const at = valuesRef.current.findIndex((v) => v.castSeq === seq);
+            if (at < 0) return; // 值已删除,或已被更晚派发取代
+            const cur = valuesRef.current[at];
+            // 再校验:换列、上下文已变(forKey 过期)、被用户手填覆盖、已不再需要 cast(切回 COUNT/数值列)
             if (cur.column !== col) return;
             if (forKey !== (contextKeyRef.current ?? '')) return;
             if (cur.castSource !== 'inferred') return;
             if (!needsTextCast(cur)) return;
             if (res && res.recommended) {
-                updateValueAt(idx, {
+                updateValueAt(at, {
                     typeConversion: res.recommended, castStatus: undefined,
                     castSource: 'inferred', castContextKey: forKey,
                 });
@@ -361,7 +362,7 @@ export const PivotTableDesigner: React.FC<PivotTableDesignerProps> = ({
             } else {
                 // 无法安全推断:要求显式选择。按后端 reason 给出【可操作】提示——
                 // 二进制浮点/科学计数法/超容量各有不同处置,通用文案(还带 count=0)会误导。
-                updateValueAt(idx, {
+                updateValueAt(at, {
                     typeConversion: undefined, castStatus: 'unsafe',
                     castSource: 'inferred', castContextKey: forKey,
                 });
