@@ -8,7 +8,7 @@
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { Play, Trash2, Table2, Timer } from "lucide-react";
+import { Check, Copy, Play, Trash2, Table2, Timer } from "lucide-react";
 import { AsyncTaskDialog } from "../AsyncTasks/AsyncTaskDialog";
 import {
     Tooltip,
@@ -78,6 +78,7 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
     const [manualColumnValues, setManualColumnValues] = React.useState<string[]>([]);
     const [isExecuting, setIsExecuting] = React.useState(false);
     const [asyncDialogOpen, setAsyncDialogOpen] = React.useState(false);
+    const [copied, setCopied] = React.useState(false);
 
     const { columns: tableColumns, isLoading: columnsLoading } = useTableColumns(
         selectedTable ? normalizeSelectedTable(selectedTable) : null
@@ -308,6 +309,16 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
             : `${baseSql}\nLIMIT ${maxQueryRows}`
         : null;
 
+    React.useEffect(() => {
+        setCopied(false);
+    }, [sql]);
+
+    const handleCopySql = React.useCallback(async () => {
+        if (!sql) return;
+        await navigator.clipboard.writeText(sql);
+        setCopied(true);
+    }, [sql]);
+
     const tableSource = selectedTable
         ? getSourceFromSelectedTable(selectedTable)
         : undefined;
@@ -439,14 +450,40 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
 
                 {sql && (
                     <div className="bg-muted/30 border border-border rounded-xl p-4">
-                        <h3 className="text-sm font-semibold mb-3">
-                            {t("query.sqlPreview", "SQL 预览")}
-                            {isGeneratingSql ? (
-                                <span className="text-muted-foreground font-normal ml-2">
-                                    {t("query.generating", "生成中…")}
-                                </span>
-                            ) : null}
-                        </h3>
+                        <div className="flex items-center justify-between mb-3">
+                            <h3 className="text-sm font-semibold">
+                                {t("query.sqlPreview", "SQL 预览")}
+                                {isGeneratingSql ? (
+                                    <span className="text-muted-foreground font-normal ml-2">
+                                        {t("query.generating", "生成中…")}
+                                    </span>
+                                ) : null}
+                            </h3>
+                            <TooltipProvider>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-8 w-8"
+                                            onClick={handleCopySql}
+                                            aria-label={copied
+                                                ? t("common.copied", "已复制")
+                                                : t("common.copy", "复制")}
+                                        >
+                                            {copied
+                                                ? <Check className="h-4 w-4" />
+                                                : <Copy className="h-4 w-4" />}
+                                        </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                        <p>{copied
+                                            ? t("common.copied", "已复制")
+                                            : t("common.copy", "复制")}</p>
+                                    </TooltipContent>
+                                </Tooltip>
+                            </TooltipProvider>
+                        </div>
                         <SQLHighlight sql={sql} minHeight="80px" maxHeight="200px" scrollable />
                     </div>
                 )}

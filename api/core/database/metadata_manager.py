@@ -16,6 +16,10 @@ from utils.encryption_utils import encrypt_json, decrypt_json, json_needs_key_mi
 
 logger = logging.getLogger(__name__)
 
+_REBUILD_CONNECTION_INDEXES_MIGRATION = (
+    "rebuild_database_connection_indexes_20260721"
+)
+
 
 class MetadataManager:
     """统一的元数据管理器 - 使用泛型接口简化管理"""
@@ -80,7 +84,39 @@ class MetadataManager:
                 )
             """)
 
-            # 创建索引
+            migration_status = conn.execute(
+                """
+                SELECT status
+                FROM system_migration_status
+                WHERE migration_name = ?
+                """,
+                [_REBUILD_CONNECTION_INDEXES_MIGRATION],
+            ).fetchone()
+            if not migration_status or migration_status[0] != "completed":
+                logger.info("Rebuilding database connection indexes")
+                conn.execute("DROP INDEX IF EXISTS idx_db_conn_type")
+                conn.execute("DROP INDEX IF EXISTS idx_db_conn_status")
+                conn.execute(
+                    "CREATE INDEX idx_db_conn_type ON system_database_connections(type)"
+                )
+                conn.execute(
+                    "CREATE INDEX idx_db_conn_status ON system_database_connections(status)"
+                )
+                conn.execute(
+                    """
+                    INSERT INTO system_migration_status (
+                        migration_name, status, started_at, completed_at
+                    )
+                    VALUES (?, 'completed', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    ON CONFLICT (migration_name) DO UPDATE SET
+                        status = EXCLUDED.status,
+                        completed_at = EXCLUDED.completed_at,
+                        error_message = NULL
+                    """,
+                    [_REBUILD_CONNECTION_INDEXES_MIGRATION],
+                )
+
+            # Keep indexes present if they are removed after the one-time rebuild.
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_db_conn_type ON system_database_connections(type)"
             )

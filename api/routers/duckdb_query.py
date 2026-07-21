@@ -250,11 +250,11 @@ def list_duckdb_tables_summary():
             # 避免逐表 DESCRIBE + COUNT(*)（N+1，且 COUNT 是全表扫描）
             table_rows = con.execute(
                 """
-                SELECT table_name AS name, estimated_size, column_count
+                SELECT table_name AS name, estimated_size, column_count, table_oid
                 FROM duckdb_tables()
                 WHERE NOT internal AND database_name = current_database()
                   AND schema_name = 'main'
-                ORDER BY table_name
+                ORDER BY table_oid DESC
                 """
             ).fetchall()
 
@@ -268,7 +268,7 @@ def list_duckdb_tables_summary():
 
             # 获取每个表的概要信息
             table_info = []
-            for table_name, est, col_count in table_rows:
+            for table_name, est, col_count, _table_oid in table_rows:
                 if table_name.lower().startswith("system_"):
                     continue
                 # 行数估计 + 列数直接来自 duckdb_tables()（无逐表扫描）
@@ -292,29 +292,6 @@ def list_duckdb_tables_summary():
                         "created_at": created_at,
                     }
                 )
-
-            # 按创建时间排序：最新的在前，没有创建时间的在最后
-            from dateutil import parser as date_parser
-
-            def sort_key(table):
-                created_at = table.get("created_at")
-                if created_at is None:
-                    return datetime(1900, 1, 1)
-                # 如果是字符串，转换为 datetime
-                if isinstance(created_at, str):
-                    try:
-                        parsed = date_parser.parse(created_at)
-                        return parsed.replace(tzinfo=None)
-                    except Exception:
-                        return datetime(1900, 1, 1)
-                # 如果已经是 datetime，移除时区信息
-                if hasattr(created_at, "replace"):
-                    return (
-                        created_at.replace(tzinfo=None) if created_at.tzinfo else created_at
-                    )
-                return datetime(1900, 1, 1)
-
-            table_info.sort(key=sort_key, reverse=True)  # 降序排列，最新的在前
 
             return create_list_response(
                 items=table_info,
