@@ -15,7 +15,6 @@ export enum AggregationFunction {
 export interface PivotValueConfig {
     column: string;
     aggregation: AggregationFunction;
-    alias?: string;
     typeConversion?: string;
 }
 

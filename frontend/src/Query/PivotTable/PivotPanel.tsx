@@ -72,6 +72,9 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
     const [columns, setColumns] = React.useState<string[]>([]);
     const [values, setValues] = React.useState<PivotPanelValueConfig[]>([]);
     const [filterRows, setFilterRows] = React.useState<PivotFilterRow[]>([]);
+    const [includeSubtotals, setIncludeSubtotals] = React.useState(false);
+    const [includeGrandTotals, setIncludeGrandTotals] = React.useState(false);
+    const [manualColumnValues, setManualColumnValues] = React.useState<string[]>([]);
     const [isExecuting, setIsExecuting] = React.useState(false);
     const [asyncDialogOpen, setAsyncDialogOpen] = React.useState(false);
 
@@ -84,6 +87,9 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
         setColumns([]);
         setValues([]);
         setFilterRows([]);
+        setIncludeSubtotals(false);
+        setIncludeGrandTotals(false);
+        setManualColumnValues([]);
     }, []);
 
     // 表身份(限定名 + attach/连接,不含筛选):切换到不同连接的【同名表】时裸表名相同、不会重置,
@@ -96,6 +102,12 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
     React.useEffect(() => {
         resetConfig();
     }, [tableIdentity, resetConfig]);
+
+    // 手选列值绑定当前【单一透视列】:透视列变更/移除时清空,避免把旧列的值套到新列上。
+    const pivotColumnKey = columns.length === 1 ? columns[0] : "";
+    React.useEffect(() => {
+        setManualColumnValues([]);
+    }, [pivotColumnKey]);
 
     const apiFilters = React.useMemo(
         () => pivotFiltersToApi(filterRows),
@@ -132,6 +144,9 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
     const useServerPivot = canUseServerPivotPath(selectedTable, rows, values)
         && !shouldUseLocalPivotSql(columns);
 
+    // 小计仅在【行维度≥2】时有意义(单行维度小计=基础粒度,后端已修为不产生行);总计需列维度。
+    const effectiveSubtotals = includeSubtotals && rows.length >= 2;
+
     const pivotPayload = React.useMemo(
         () =>
             selectedTable && useServerPivot
@@ -143,9 +158,13 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
                       maxQueryRows,
                       pivotMaxColumns,
                       filters: apiFilters,
+                      includeSubtotals: effectiveSubtotals,
+                      includeGrandTotals,
+                      manualColumnValues,
                   })
                 : null,
-        [selectedTable, useServerPivot, rows, columns, values, maxQueryRows, pivotMaxColumns, apiFilters]
+        [selectedTable, useServerPivot, rows, columns, values, maxQueryRows, pivotMaxColumns,
+         apiFilters, effectiveSubtotals, includeGrandTotals, manualColumnValues]
     );
 
     const pivotQueryKey = getPivotQueryKey(
@@ -155,7 +174,10 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
         values,
         apiFilters,
         maxQueryRows,
-        pivotMaxColumns
+        pivotMaxColumns,
+        effectiveSubtotals,
+        includeGrandTotals,
+        manualColumnValues
     );
 
     const {
@@ -377,6 +399,12 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
                     isLoading={columnsLoading}
                     onInferCast={handleInferCast}
                     inferenceContextKey={inferenceContextKey}
+                    includeSubtotals={includeSubtotals}
+                    onIncludeSubtotalsChange={setIncludeSubtotals}
+                    includeGrandTotals={includeGrandTotals}
+                    onIncludeGrandTotalsChange={setIncludeGrandTotals}
+                    manualColumnValues={manualColumnValues}
+                    onManualColumnValuesChange={setManualColumnValues}
                 />
 
                 <PivotFilters

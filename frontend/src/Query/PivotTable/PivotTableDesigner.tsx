@@ -28,6 +28,7 @@ import { createPortal } from "react-dom";
 import { GripVertical, X, ChevronDown, Rows3, Columns3, Calculator } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -69,6 +70,13 @@ interface PivotTableDesignerProps {
     /** 当前推断上下文键(表身份+筛选,由 PivotPanel 提供)。变化时对"系统推断"的值重新推断,并作为
      *  异步结果的上下文标识:回来时若键已变则丢弃 stale 结果。手填(manual)的值不受其变化影响。 */
     inferenceContextKey?: string;
+    /** 小计(需行维度≥2)。总计。手选列值(仅单透视列时;非空则绕过列上限只展开这些值)。 */
+    includeSubtotals?: boolean;
+    onIncludeSubtotalsChange?: (v: boolean) => void;
+    includeGrandTotals?: boolean;
+    onIncludeGrandTotalsChange?: (v: boolean) => void;
+    manualColumnValues?: string[];
+    onManualColumnValuesChange?: (v: string[]) => void;
 }
 
 // Draggable Field Badge (from palette)
@@ -227,6 +235,12 @@ export const PivotTableDesigner: React.FC<PivotTableDesignerProps> = ({
     isLoading,
     onInferCast,
     inferenceContextKey,
+    includeSubtotals = false,
+    onIncludeSubtotalsChange,
+    includeGrandTotals = false,
+    onIncludeGrandTotalsChange,
+    manualColumnValues = [],
+    onManualColumnValuesChange,
 }) => {
     const { t } = useTranslation("common");
     const [activeId, setActiveId] = React.useState<string | null>(null);
@@ -558,6 +572,55 @@ export const PivotTableDesigner: React.FC<PivotTableDesignerProps> = ({
                         ))}
                     </DropZone>
                 </div>
+
+                {/* 透视列选项:小计/总计/手选列值——仅在有透视列维度时相关 */}
+                {columns.length >= 1 && (
+                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-1 py-1 text-sm">
+                        <label
+                            className={"flex items-center gap-2 " +
+                                (rows.length >= 2 ? "cursor-pointer" : "opacity-50 cursor-not-allowed")}
+                            title={rows.length >= 2 ? undefined
+                                : t("query.pivot.subtotalsNeedTwoRows", "小计需至少 2 个行维度")}
+                        >
+                            <Checkbox
+                                // 如实显示存储态(不 && rows>=2):行维度<2 时置灰但保留勾选,
+                                // 加回行维度即复用,避免"变灰=看着关了、实则悄悄弹回"的可见态撒谎(复审)。
+                                // 实际是否发送由 PivotPanel 的 effectiveSubtotals(=includeSubtotals && rows>=2)门控。
+                                checked={includeSubtotals}
+                                disabled={rows.length < 2}
+                                onCheckedChange={(v) => onIncludeSubtotalsChange?.(v === true)}
+                            />
+                            <span>{t("query.pivot.subtotals", "小计")}</span>
+                        </label>
+                        <label className="flex items-center gap-2 cursor-pointer">
+                            <Checkbox
+                                checked={includeGrandTotals}
+                                onCheckedChange={(v) => onIncludeGrandTotalsChange?.(v === true)}
+                            />
+                            <span>{t("query.pivot.grandTotals", "总计")}</span>
+                        </label>
+                        {columns.length === 1 && (
+                            <div className="flex items-center gap-2 flex-1 min-w-[220px]">
+                                <span className="text-muted-foreground whitespace-nowrap">
+                                    {t("query.pivot.manualColumnValues", "手选列值")}
+                                </span>
+                                <input
+                                    key={`mcv-${manualColumnValues.join(',')}`}
+                                    className="flex-1 text-xs px-2 py-1 rounded border border-border bg-background text-foreground"
+                                    defaultValue={manualColumnValues.join(', ')}
+                                    placeholder={t("query.pivot.manualColumnValuesHint", "逗号分隔,如 2022, 2023;留空=自动")}
+                                    title={t("query.pivot.manualColumnValuesTitle", "只展开这些列值(绕过列上限);留空则自动展开全部")}
+                                    onBlur={(e) => onManualColumnValuesChange?.(
+                                        e.target.value.split(',').map((s) => s.trim()).filter(Boolean)
+                                    )}
+                                    onKeyDown={(e) => {
+                                        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                                    }}
+                                />
+                            </div>
+                        )}
+                    </div>
+                )}
 
                 {/* Preview Table - 更好地体现三个配置区域 */}
                 {hasConfig && (

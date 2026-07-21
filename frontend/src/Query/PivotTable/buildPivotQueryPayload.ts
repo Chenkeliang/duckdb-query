@@ -110,8 +110,14 @@ export function buildPivotQueryPayload(params: {
     maxQueryRows: number;
     pivotMaxColumns: number;
     filters?: FilterConfig[];
+    includeSubtotals?: boolean;
+    includeGrandTotals?: boolean;
+    manualColumnValues?: string[];
 }): { config: PivotQueryConfig; pivotConfig: PivotConfig; attachDatabases: AttachDatabase[] } | null {
-    const { table, rows, columns, values, maxQueryRows, pivotMaxColumns, filters = [] } = params;
+    const {
+        table, rows, columns, values, maxQueryRows, pivotMaxColumns, filters = [],
+        includeSubtotals = false, includeGrandTotals = false, manualColumnValues = [],
+    } = params;
     if (!canUseServerPivotPath(table, rows, values) || shouldUseLocalPivotSql(columns)) {
         return null;
     }
@@ -136,6 +142,10 @@ export function buildPivotQueryPayload(params: {
         // 列数上限用后端下发的 pivot_max_columns(经 useAppConfig/features),不复用行数上限
         // maxQueryRows,也不前端硬编码;后端超限会报 PIVOT_COLUMN_LIMIT_EXCEEDED
         column_value_limit: pivotMaxColumns,
+        ...(includeSubtotals ? { include_subtotals: true } : {}),
+        ...(includeGrandTotals ? { include_grand_totals: true } : {}),
+        // 手选列值(去空):非空时【绕过列上限】只展开这些值——列超限的用户解;须为字符串数组
+        ...(manualColumnValues.length ? { manual_column_values: manualColumnValues } : {}),
     };
 
     return { config, pivotConfig, attachDatabases };
@@ -148,7 +158,10 @@ export function getPivotQueryKey(
     values: PivotPanelValueConfig[],
     filters: FilterConfig[] = [],
     maxQueryRows?: number,
-    pivotMaxColumns?: number
+    pivotMaxColumns?: number,
+    includeSubtotals?: boolean,
+    includeGrandTotals?: boolean,
+    manualColumnValues?: string[]
 ): (string | number | undefined)[] {
     // 用限定名(含 schema/连接前缀)而非裸表名,避免不同连接下同名表(如各自的 orders)
     // 生成同一缓存键、在 staleTime 内互相返回对方的 SQL
@@ -170,5 +183,9 @@ export function getPivotQueryKey(
         maxQueryRows ?? '',
         // column_value_limit(=pivotMaxColumns)进入请求体、影响生成 SQL,须进键
         pivotMaxColumns ?? '',
+        // 小计/总计/手选列值都改变生成 SQL,须进键(否则只改这些时会命中旧缓存)
+        includeSubtotals ? '1' : '',
+        includeGrandTotals ? '1' : '',
+        (manualColumnValues ?? []).join(','),
     ];
 }

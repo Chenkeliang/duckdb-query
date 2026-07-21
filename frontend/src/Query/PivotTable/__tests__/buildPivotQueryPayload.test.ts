@@ -110,6 +110,47 @@ describe('buildPivotQueryPayload', () => {
         });
         expect(payload?.config.table_name).toBe('sales');
         expect(payload?.pivotConfig.rows).toEqual(['region']);
+        // 默认不带小计/总计/手选列值
+        expect(payload?.pivotConfig.include_subtotals).toBeUndefined();
+        expect(payload?.pivotConfig.include_grand_totals).toBeUndefined();
+        expect(payload?.pivotConfig.manual_column_values).toBeUndefined();
+    });
+
+    it('threads subtotals / grand-totals / manual column values into pivotConfig', () => {
+        const payload = buildPivotQueryPayload({
+            table: duckdbTable,
+            rows: ['region', 'city'],
+            columns: ['year'],
+            values: [{ column: 'amount', aggregation: AggregationFunction.SUM }],
+            maxQueryRows: 500,
+            pivotMaxColumns: 300,
+            includeSubtotals: true,
+            includeGrandTotals: true,
+            manualColumnValues: ['2022', '2023'],
+        });
+        expect(payload?.pivotConfig.include_subtotals).toBe(true);
+        expect(payload?.pivotConfig.include_grand_totals).toBe(true);
+        expect(payload?.pivotConfig.manual_column_values).toEqual(['2022', '2023']);
+    });
+
+    it('omits empty manual column values (auto expansion)', () => {
+        const payload = buildPivotQueryPayload({
+            table: duckdbTable, rows: ['region'], columns: ['year'],
+            values: [{ column: 'amount', aggregation: AggregationFunction.SUM }],
+            maxQueryRows: 500, pivotMaxColumns: 300, manualColumnValues: [],
+        });
+        expect(payload?.pivotConfig.manual_column_values).toBeUndefined();
+    });
+
+    it('query key covers subtotals / grand-totals / manual values (else stale cache)', () => {
+        const base = ['region']; const cols = ['year'];
+        const vals = [{ column: 'amt', aggregation: AggregationFunction.SUM }];
+        const k = (st?: boolean, gt?: boolean, mv?: string[]) =>
+            getPivotQueryKey(duckdbTable, base, cols, vals, [], 500, 300, st, gt, mv);
+        expect(k()).not.toEqual(k(true));
+        expect(k()).not.toEqual(k(false, true));
+        expect(k()).not.toEqual(k(false, false, ['2022']));
+        expect(k(false, false, ['2022'])).not.toEqual(k(false, false, ['2022', '2023']));
     });
 
     it('passes typeConversion through so text columns can sum as numbers', () => {
