@@ -29,6 +29,7 @@ import { GripVertical, X, ChevronDown, Rows3, Columns3, Calculator } from "lucid
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -243,6 +244,22 @@ export const PivotTableDesigner: React.FC<PivotTableDesignerProps> = ({
     onManualColumnValuesChange,
 }) => {
     const { t } = useTranslation("common");
+    // 手选列值标签输入的暂存文本(回车提交为一个标签)
+    const [manualInput, setManualInput] = React.useState("");
+    // 透视列变更时清空【未提交的暂存文本】:否则旧列输一半没回车的文本会残留、再切回单列时
+    // 复现并可能被 blur/回车提交成新列的标签(复审 low)。已提交的 manualColumnValues 由 PivotPanel 清。
+    const pivotColKey = columns.length === 1 ? columns[0] : "";
+    React.useEffect(() => {
+        setManualInput("");
+    }, [pivotColKey]);
+    const addManualValue = () => {
+        const v = manualInput.trim();
+        // 保序去重:重复值会让后端 PIVOT IN 报 "specified multiple times"
+        if (v && !manualColumnValues.includes(v)) {
+            onManualColumnValuesChange?.([...manualColumnValues, v]);
+        }
+        setManualInput("");
+    };
     const [activeId, setActiveId] = React.useState<string | null>(null);
     const [activeData, setActiveData] = React.useState<any>(null);
 
@@ -573,8 +590,9 @@ export const PivotTableDesigner: React.FC<PivotTableDesignerProps> = ({
                     </DropZone>
                 </div>
 
-                {/* 透视列选项:小计/总计/手选列值——仅在有透视列维度时相关 */}
-                {columns.length >= 1 && (
+                {/* 透视列选项:小计/总计/手选列值——仅在【恰好一个】透视列(服务端原生 PIVOT 路径)
+                    时相关。多列走本地 GROUP BY,不消费这些开关,显示出来会是"勾了没用"的哑控件(复审)。 */}
+                {columns.length === 1 && (
                     <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-1 py-1 text-sm">
                         <label
                             className={"flex items-center gap-2 " +
@@ -599,26 +617,42 @@ export const PivotTableDesigner: React.FC<PivotTableDesignerProps> = ({
                             />
                             <span>{t("query.pivot.grandTotals", "总计")}</span>
                         </label>
-                        {columns.length === 1 && (
-                            <div className="flex items-center gap-2 flex-1 min-w-[220px]">
+                        {/* 手选列值(外层已保证恰好一个透视列):标签输入,回车逐个添加,
+                            可整体含逗号的值(如 "ACME, Inc"),不再按逗号切分 */}
+                        <div className="flex items-center gap-1.5 flex-wrap flex-1 min-w-56">
                                 <span className="text-muted-foreground whitespace-nowrap">
                                     {t("query.pivot.manualColumnValues", "手选列值")}
                                 </span>
-                                <input
-                                    key={`mcv-${manualColumnValues.join(',')}`}
-                                    className="flex-1 text-xs px-2 py-1 rounded border border-border bg-background text-foreground"
-                                    defaultValue={manualColumnValues.join(', ')}
-                                    placeholder={t("query.pivot.manualColumnValuesHint", "逗号分隔,如 2022, 2023;留空=自动")}
-                                    title={t("query.pivot.manualColumnValuesTitle", "只展开这些列值(绕过列上限);留空则自动展开全部")}
-                                    onBlur={(e) => onManualColumnValuesChange?.(
-                                        e.target.value.split(',').map((s) => s.trim()).filter(Boolean)
-                                    )}
+                                {manualColumnValues.map((val) => (
+                                    <Badge key={val} variant="outline" className="gap-1 max-w-48">
+                                        <span className="truncate">{val}</span>
+                                        <button
+                                            type="button"
+                                            className="shrink-0 hover:text-destructive"
+                                            aria-label={t("common.remove", "移除")}
+                                            onClick={() => onManualColumnValuesChange?.(
+                                                manualColumnValues.filter((v) => v !== val)
+                                            )}
+                                        >
+                                            <X className="h-3 w-3" />
+                                        </button>
+                                    </Badge>
+                                ))}
+                                <Input
+                                    value={manualInput}
+                                    onChange={(e) => setManualInput(e.target.value)}
                                     onKeyDown={(e) => {
-                                        if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                                        if (e.key === "Enter") { e.preventDefault(); addManualValue(); }
+                                        else if (e.key === "Backspace" && !manualInput && manualColumnValues.length) {
+                                            onManualColumnValuesChange?.(manualColumnValues.slice(0, -1));
+                                        }
                                     }}
+                                    onBlur={addManualValue}
+                                    placeholder={t("query.pivot.manualColumnValuesHint", "输入后回车添加;留空=自动")}
+                                    title={t("query.pivot.manualColumnValuesTitle", "只展开这些列值(绕过列上限);留空则自动展开全部")}
+                                    className="h-7 text-xs w-32"
                                 />
-                            </div>
-                        )}
+                        </div>
                     </div>
                 )}
 

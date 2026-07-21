@@ -191,6 +191,20 @@ describe('buildPivotQueryPayload', () => {
         })).toBeNull();
     });
 
+    it('复审 P1:零透视列(普通聚合模式)走本地 GROUP BY,不发服务端(否则 Native PIVOT 报错)', () => {
+        // 服务端只支持恰好 1 个透视列;0 列必须走本地,否则删了 local 回退后该模式彻底不可用
+        expect(shouldUseLocalPivotSql([])).toBe(true);
+        expect(shouldUseLocalPivotSql(['year'])).toBe(false); // 恰好 1 列才走服务端
+        expect(buildPivotQueryPayload({
+            table: duckdbTable,
+            rows: ['region'],
+            columns: [],
+            values: [{ column: 'amount', aggregation: AggregationFunction.SUM }],
+            maxQueryRows: 500,
+            pivotMaxColumns: 300,
+        })).toBeNull(); // 返回 null → PivotPanel 用 generateLocalSQL 出 GROUP BY
+    });
+
     it('includes filters in config and query key', () => {
         const filters = [{ column: 'region', operator: '=', value: 'APAC' }];
         const payload = buildPivotQueryPayload({

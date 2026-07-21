@@ -695,7 +695,7 @@
       "grandTotals": "Grand totals",
       "subtotalsNeedTwoRows": "Subtotals need at least 2 row dimensions",
       "manualColumnValues": "Manual column values",
-      "manualColumnValuesHint": "comma-separated, e.g. 2022, 2023; empty = auto",
+      "manualColumnValuesHint": "type and press Enter to add; empty = auto",
       "manualColumnValuesTitle": "Expand only these column values (bypasses the column limit); empty = auto-expand all",
       "selectTableHint": "Please select a data table first",
       "allFieldsConfigured": "All fields have been configured",

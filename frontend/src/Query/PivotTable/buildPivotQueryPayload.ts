@@ -84,7 +84,10 @@ export function canUseServerPivotPath(
 
 /** 多透视列等场景仍用本地 DuckDB PIVOT 语法 */
 export function shouldUseLocalPivotSql(columns: string[]): boolean {
-    return columns.length > 1;
+    // 服务端原生 PIVOT 仅支持【恰好一个】透视列维度。零列(普通聚合模式)与多列都走本地 SQL:
+    // 零列 → 普通 GROUP BY;否则发到只支持单列的后端会报 "Native PIVOT conditions not met",
+    // 且服务端出错已不再回退本地(复审 P1),该模式会彻底不可用。
+    return columns.length !== 1;
 }
 
 
@@ -186,6 +189,7 @@ export function getPivotQueryKey(
         // 小计/总计/手选列值都改变生成 SQL,须进键(否则只改这些时会命中旧缓存)
         includeSubtotals ? '1' : '',
         includeGrandTotals ? '1' : '',
-        (manualColumnValues ?? []).join(','),
+        // JSON 编码而非 join(',')——否则 ['A,B'] 与 ['A','B'] 会碰撞成同一键(复审 P2)
+        JSON.stringify(manualColumnValues ?? []),
     ];
 }

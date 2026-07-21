@@ -695,7 +695,7 @@
       "grandTotals": "总计",
       "subtotalsNeedTwoRows": "小计需至少 2 个行维度",
       "manualColumnValues": "手选列值",
-      "manualColumnValuesHint": "逗号分隔,如 2022, 2023;留空=自动",
+      "manualColumnValuesHint": "输入后回车添加;留空=自动",
       "manualColumnValuesTitle": "只展开这些列值(绕过列上限);留空则自动展开全部",
       "selectTableHint": "请先选择数据表",
       "allFieldsConfigured": "所有字段已配置",
