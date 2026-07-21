@@ -642,6 +642,8 @@ export const PivotTableDesigner: React.FC<PivotTableDesignerProps> = ({
                                     value={manualInput}
                                     onChange={(e) => setManualInput(e.target.value)}
                                     onKeyDown={(e) => {
+                                        // 中文输入法组合态:Enter 是"确认候选词"而非"提交标签",此时提交会落半成品。
+                                        if (e.nativeEvent.isComposing) return;
                                         if (e.key === "Enter") { e.preventDefault(); addManualValue(); }
                                         else if (e.key === "Backspace" && !manualInput && manualColumnValues.length) {
                                             onManualColumnValuesChange?.(manualColumnValues.slice(0, -1));

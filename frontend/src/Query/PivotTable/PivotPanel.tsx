@@ -33,6 +33,7 @@ import {
 import { sqlStringLiteral } from "@/utils/sqlLiteral";
 import {
     buildPivotQueryPayload,
+    buildLocalAggExpr,
     buildPivotTableRef,
     canUseServerPivotPath,
     hasPendingValueCast,
@@ -249,9 +250,10 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
             : quoteIdent(normalized.name, dialect);
 
         const rowColumns = rows.map((r) => quoteIdent(r, dialect));
-        const aggExpressions = values
-            .map((v) => `${v.aggregation}(${quoteIdent(v.column, dialect)})`)
-            .join(", ");
+        // 本地 SQL 最终在 DuckDB 执行(本机/联邦 ATTACH 皆然),cast 恒用 TRY_CAST(见 buildLocalAggExpr)
+        const localAgg = (v: PivotPanelValueConfig) =>
+            buildLocalAggExpr(v.aggregation, quoteIdent(v.column, dialect), v.typeConversion);
+        const aggExpressions = values.map(localAgg).join(", ");
 
         if (columns.length === 1) {
             const pivotColumn = quoteIdent(columns[0], dialect);
@@ -271,7 +273,7 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
         rows.forEach((r) => selectParts.push(quoteIdent(r, dialect)));
         values.forEach((v) => {
             selectParts.push(
-                `${v.aggregation}(${quoteIdent(v.column, dialect)}) AS ${quoteIdent(`${v.aggregation}_${v.column}`, dialect)}`
+                `${localAgg(v)} AS ${quoteIdent(`${v.aggregation}_${v.column}`, dialect)}`
             );
         });
 

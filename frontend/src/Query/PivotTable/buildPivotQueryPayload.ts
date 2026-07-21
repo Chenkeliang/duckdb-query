@@ -66,6 +66,28 @@ export function mapPivotAggregation(agg: AggregationFunction): string {
     return AGG_TO_API[agg] ?? 'SUM';
 }
 
+/** 本地(前端生成)SQL 的聚合表达式,统一处理两处枚举/类型细节(复审 P1):
+ *  - COUNT_DISTINCT 的枚举值是 "count_distinct",不是 DuckDB 函数(会 Catalog Error)——展开为
+ *    count(DISTINCT expr);
+ *  - typeConversion:文本列按数值聚合前须转换,否则 sum(VARCHAR) → Binder Error。用 TRY_CAST(无效值
+ *    转 NULL 被聚合忽略,这正是本能力的目的)。本地 SQL 无论表来源都最终在 DuckDB 执行(本机表走
+ *    executeDuckDBSQL、联邦表走 executeFederatedQuery 的 ATTACH),故 TRY_CAST 恒有效——与后端生成器
+ *    一致;若按方言退回 CAST,联邦脏文本会硬报错反而毁掉优雅转换。
+ *  quotedColumn 须已按方言转义。 */
+export function buildLocalAggExpr(
+    aggregation: AggregationFunction,
+    quotedColumn: string,
+    typeConversion?: string
+): string {
+    const expr =
+        typeConversion && typeConversion !== 'auto'
+            ? `TRY_CAST(${quotedColumn} AS ${typeConversion})`
+            : quotedColumn;
+    return aggregation === AggregationFunction.COUNT_DISTINCT
+        ? `count(DISTINCT ${expr})`
+        : `${aggregation}(${expr})`;
+}
+
 /** 可走服务端 generate/preview（DuckDB 或联邦 ATTACH） */
 export function canUseServerPivotPath(
     table: SelectedTable | null,

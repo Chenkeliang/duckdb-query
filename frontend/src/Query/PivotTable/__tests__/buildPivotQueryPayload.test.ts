@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
     buildPivotQueryPayload,
+    buildLocalAggExpr,
     canUseServerPivotPath,
     getPivotQueryKey,
     getInferenceContextKey,
@@ -10,6 +11,33 @@ import {
 } from '../buildPivotQueryPayload';
 import { AggregationFunction } from '@/types/pivotQuery';
 import type { FilterConfig } from '@/types/pivotQuery';
+
+describe('buildLocalAggExpr (本地聚合表达式:复审 P1 COUNT_DISTINCT + typeConversion)', () => {
+    it('COUNT_DISTINCT 展开为 count(DISTINCT ...)——枚举 count_distinct 不是 DuckDB 函数(Catalog Error)', () => {
+        expect(buildLocalAggExpr(AggregationFunction.COUNT_DISTINCT, '"pid"'))
+            .toBe('count(DISTINCT "pid")');
+    });
+
+    it('普通聚合用枚举函数名', () => {
+        expect(buildLocalAggExpr(AggregationFunction.SUM, '"amt"')).toBe('sum("amt")');
+        expect(buildLocalAggExpr(AggregationFunction.MAX, '"amt"')).toBe('max("amt")');
+    });
+
+    it('typeConversion:文本列聚合前 TRY_CAST(否则 sum(VARCHAR) Binder Error;本地 SQL 恒在 DuckDB 执行)', () => {
+        expect(buildLocalAggExpr(AggregationFunction.SUM, '"t"', 'DOUBLE'))
+            .toBe('sum(TRY_CAST("t" AS DOUBLE))');
+    });
+
+    it('COUNT_DISTINCT 与 typeConversion 组合', () => {
+        expect(buildLocalAggExpr(AggregationFunction.COUNT_DISTINCT, '"t"', 'DECIMAL(38,2)'))
+            .toBe('count(DISTINCT TRY_CAST("t" AS DECIMAL(38,2)))');
+    });
+
+    it("'auto' 哨兵与空 typeConversion 不加 cast", () => {
+        expect(buildLocalAggExpr(AggregationFunction.SUM, '"amt"', 'auto')).toBe('sum("amt")');
+        expect(buildLocalAggExpr(AggregationFunction.SUM, '"amt"', undefined)).toBe('sum("amt")');
+    });
+});
 
 describe('normalizeFiltersKey (cast 推断上下文键 / 缓存键共用口径)', () => {
     const f = (over: Partial<FilterConfig>): FilterConfig => ({
