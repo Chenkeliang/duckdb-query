@@ -767,6 +767,18 @@ if __name__ == "__main__":
     pytest.main([__file__])
 
 
+def test_manual_column_values_dedup_order_preserving():
+    """复审 P2:重复列值会让 DuckDB PIVOT ... IN (...) 报 'specified multiple times
+    in the IN clause';模型层入口保序去重(并去空白)。"""
+    pc = PivotConfig(
+        rows=["region"],
+        columns=["cat"],
+        values=[PivotValueConfig(column="amt", aggregation=AggregationFunction.SUM)],
+        manual_column_values=["A", "B", "A", " B ", "", "C"],
+    )
+    assert pc.manual_column_values == ["A", "B", "C"]  # 保序 + 去重 + 去空白
+
+
 class TestCountDistinctAggregation:
     """回归：COUNT_DISTINCT 是 UI 枚举名而非 DuckDB 函数。曾直接拼成
     COUNT_DISTINCT(col) 下发，DuckDB 报 "Aggregate Function with name
@@ -819,8 +831,36 @@ class TestCountDistinctAggregation:
         rows = con.execute(result.final_sql.rstrip(";")).fetchall()
         by_region = {r[0]: r for r in rows}
         assert by_region["华北"][1] == 2      # 1月两个不同商品
-        # 总计行 = 各行单元格之和(与 COUNT 合计口径一致),非全局去重
-        assert by_region["总计"][1] == 3
+        # 复审 P1:总计须【从 base 重算原聚合】= 全局去重,而非对各单元格再 SUM。
+        # 1月全部行 product_id = {1(华北),2(华北),2(华东)} → 去重 2(旧错口径 SUM(2,1)=3)
+        assert by_region["总计"][1] == 2
+        # 2月仅 华北 product_id=1 → 去重 1
+        assert by_region["总计"][2] == 1
+
+    def test_totals_reaggregate_avg_min_max_from_base(self):
+        """复审 P1:小计/总计对 AVG/MIN/MAX 不能对已聚合单元格再 SUM(SUM(AVG)≠AVG 等),
+        须从 base 用原聚合按分组层级重算。2 个 region 让总计≠各组值之和,能区分新旧口径。"""
+        import duckdb
+
+        con = duckdb.connect()
+        con.execute(
+            "CREATE TABLE sales AS SELECT * FROM (VALUES "
+            "('A','X',0),('A','X',100),('B','X',200)) t(region, month, product_id)"
+        )
+
+        def grand_total(agg):
+            result = self._generate(PivotConfig(
+                rows=["region"], columns=["month"],
+                values=[PivotValueConfig(column="product_id", aggregation=agg)],
+                manual_column_values=["X"], include_grand_totals=True,
+            ))
+            rows = con.execute(result.final_sql.rstrip(";")).fetchall()
+            return {r[0]: r[1] for r in rows}["总计"]
+
+        # X 全部值 = [0,100,200]
+        assert grand_total(AggregationFunction.AVG) == 100.0   # AVG(0,100,200);旧错 SUM(50,200)=250
+        assert grand_total(AggregationFunction.MIN) == 0        # MIN 全局;旧错 SUM(0,200)=200
+        assert grand_total(AggregationFunction.MAX) == 200      # MAX 全局;旧错 SUM(100,200)=300
 
     def test_count_distinct_multi_agg_alias_matches_duckdb_naming(self):
         import duckdb

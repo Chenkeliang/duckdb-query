@@ -260,9 +260,8 @@ def _generate_pivot_transformation_sql(
             # 当需要小计/总计时，构建额外结果集
             if pivot_config.include_subtotals or pivot_config.include_grand_totals:
                 if not manual_values:
-                    # 动态透视的列名在执行期才确定，_derive_pivot_value_aliases 无法
-                    # 预知（会引用不存在的列 → Binder Error），故降级为不注入并告警。
-                    # 需要小计请提供 manual_column_values 或 column_value_limit。
+                    # 动态透视的列值在执行期才确定,无从据此从 base 重算合计口径,
+                    # 故降级为不注入并告警。需要小计请提供 manual_column_values 或 column_value_limit。
                     native_candidate["warnings"].append(
                         "Subtotals/grand totals require explicit column values "
                         "(manual_column_values or column_value_limit); skipped for dynamic pivot"
@@ -271,6 +270,7 @@ def _generate_pivot_transformation_sql(
                     native_candidate = _inject_pivot_totals(
                         native_candidate,
                         row_dimensions,
+                        _quote_identifier(pivot_config.columns[0]),
                         pivot_config.values,
                         manual_values,
                         include_subtotals=pivot_config.include_subtotals,
@@ -305,6 +305,7 @@ def _generate_pivot_transformation_sql(
                     native_candidate = _inject_pivot_totals(
                         native_candidate,
                         row_dimensions,
+                        _quote_identifier(pivot_config.columns[0]),
                         pivot_config.values,
                         sampled,
                         include_subtotals=pivot_config.include_subtotals,
@@ -416,94 +417,67 @@ def _aggregation_alias_suffix(aggregation: AggregationFunction, column: str) -> 
     return f"{aggregation.value.lower()}({column})"
 
 
-def _derive_pivot_value_aliases(
+def _totals_value_exprs(
+    col_dim: str,
+    column_values: List[str],
     values: List[PivotValueConfig],
-    manual_values: Optional[List[str]],
 ) -> List[str]:
-    """Derive the exact column names DuckDB's native PIVOT emits, so the
-    totals/subtotal SELECTs reference columns that actually exist (otherwise
-    UNION ALL fails with a Binder Error).
+    """每个透视输出列的【条件聚合】表达式,从 base 用原聚合函数重算(而非对已聚合单元格再 SUM)。
 
-    Verified against the DuckDB build used here — for ``PIVOT(<aggs> FOR col
-    IN (<values>))`` with unaliased aggregates (which is what
-    ``_try_generate_native_pivot`` emits):
-      - single aggregate   -> bare pivot value, e.g. ``Q1``
-      - multiple aggregates -> ``{value}_{agg}({column})``, e.g.
-        ``Q1_sum(amount)`` / ``Q1_count(amount)`` — ordered value-outer,
-        aggregate-inner (matching PIVOT's output column order for UNION ALL).
-
-    Totals require explicit column values, so ``manual_values`` is
-    authoritative; without them the caller skips totals entirely.
+    关键:小计/总计不能对透视结果再 SUM——只有 SUM/COUNT 这样恰好正确,AVG/MIN/MAX/COUNT_DISTINCT
+    全错(SUM(AVG)≠AVG、SUM(MIN)≠MIN、SUM(count(distinct))≠count(distinct))。用
+    ``<原agg>(CASE WHEN col_dim = 值 THEN 源列 END)`` 从 base 复现每个透视列的原口径:非匹配行为
+    NULL,被所有这些聚合忽略。顺序为【列值外层 × 值配置内层】,与 _derive_pivot_value_aliases /
+    PIVOT 输出列顺序一致(UNION ALL 按位置对齐)。
     """
-    manual = manual_values or []
-    if not manual or not values:
-        return []
     single = len(values) == 1
-    aliases: List[str] = []
-    for manual_val in manual:
-        for value in values:
-            if single:
-                aliases.append(str(manual_val))
-            else:
-                aliases.append(
-                    f"{manual_val}_"
-                    f"{_aggregation_alias_suffix(value.aggregation, value.column)}"
-                )
-    return aliases
+    exprs: List[str] = []
+    for cv in column_values:
+        for v in values:
+            column_expr = _quote_identifier(v.column)
+            if v.typeConversion and v.typeConversion != "auto":
+                column_expr = f"TRY_CAST({column_expr} AS {v.typeConversion})"
+            cond = f"CASE WHEN {col_dim} = {_format_literal(cv)} THEN {column_expr} END"
+            agg_expr = _aggregation_sql_expr(v.aggregation, cond)
+            alias = str(cv) if single else f"{cv}_{_aggregation_alias_suffix(v.aggregation, v.column)}"
+            exprs.append(f"{agg_expr} AS {_quote_identifier(alias)}")
+    return exprs
 
 
 def _build_totals_selects(
     row_dimensions: List[str],
-    value_aliases: List[str],
-    pivot_alias: str = "pivot",
+    col_dim: str,
+    column_values: List[str],
+    values: List[PivotValueConfig],
+    base_alias: str = "base",
     include_subtotals: bool = False,
     include_grand_totals: bool = False,
 ) -> List[str]:
-    """Construct SELECT statements for subtotal and grand-total rows."""
+    """小计/总计的 SELECT——从 base CTE 用原聚合函数按分组层级重算(见 _totals_value_exprs)。"""
+    value_exprs = _totals_value_exprs(col_dim, column_values, values)
+    if not value_exprs:
+        return []
+
     selects: List[str] = []
 
     if include_subtotals and row_dimensions:
-        # 小计 = 对行维度【真前缀】的卷积(深度 N-1 → 1)。深度=N(全部行维度)就是基础 pivot
-        # 本身、粒度相同,若纳入会把每条基础行原样再发一次(重复行 bug);单行维度则无真前缀、
-        # 无小计(总计已覆盖其汇总)。
+        # 小计 = 对行维度【真前缀】的卷积(深度 N-1 → 1)。深度=N(全部行维度)即基础粒度,
+        # 不是小计;单行维度无真前缀、无小计(总计已覆盖其汇总)。
         for depth in range(len(row_dimensions) - 1, 0, -1):
             prefix = row_dimensions[:depth]
             remaining = row_dimensions[depth:]
-
-            select_parts: List[str] = []
-            group_by_parts: List[str] = []
-
-            for dim in prefix:
-                select_parts.append(f"{pivot_alias}.{dim} AS {dim}")
-                group_by_parts.append(f"{pivot_alias}.{dim}")
-
-            # Fill remaining row dimensions with label '全部' (All)
-            select_parts.extend([f"'全部' AS {dim}" for dim in remaining])
-
-            select_parts.extend(
-                [
-                    f"SUM({pivot_alias}.{_quote_identifier(alias)}) AS {_quote_identifier(alias)}"
-                    for alias in value_aliases
-                ]
+            select_parts = [f"{base_alias}.{dim} AS {dim}" for dim in prefix]
+            # 卷掉的尾部维度填 '全部'(All)
+            select_parts += [f"'全部' AS {dim}" for dim in remaining]
+            select_parts += value_exprs
+            group_by = ", ".join(f"{base_alias}.{dim}" for dim in prefix)
+            selects.append(
+                f"SELECT {', '.join(select_parts)} FROM {base_alias} GROUP BY {group_by}"
             )
 
-            subtotal_select = f"SELECT {', '.join(select_parts)} FROM {pivot_alias}"
-            if group_by_parts:
-                subtotal_select = (
-                    f"{subtotal_select} GROUP BY {', '.join(group_by_parts)}"
-                )
-            selects.append(subtotal_select)
-
     if include_grand_totals:
-        all_dim_aliases = [f"'总计' AS {dim}" for dim in row_dimensions]
-        total_values = [
-            f"SUM({pivot_alias}.{_quote_identifier(alias)}) AS {_quote_identifier(alias)}"
-            for alias in value_aliases
-        ]
-        grand_total_select = (
-            f"SELECT {', '.join(all_dim_aliases + total_values)} FROM {pivot_alias}"
-        )
-        selects.append(grand_total_select)
+        select_parts = [f"'总计' AS {dim}" for dim in row_dimensions] + value_exprs
+        selects.append(f"SELECT {', '.join(select_parts)} FROM {base_alias}")
 
     return selects
 
@@ -511,12 +485,17 @@ def _build_totals_selects(
 def _inject_pivot_totals(
     native_candidate: Dict[str, Any],
     row_dimensions: List[str],
+    col_dim: str,
     values: List[PivotValueConfig],
     manual_values: List[str],
     include_subtotals: bool,
     include_grand_totals: bool,
 ) -> Dict[str, Any]:
-    """Augment native pivot SQL to include subtotal / grand-total rows."""
+    """Augment native pivot SQL to include subtotal / grand-total rows.
+
+    合计行从 base CTE 用【原聚合函数】重算(见 _totals_value_exprs),不对已聚合的透视单元格
+    再 SUM——后者只有 SUM/COUNT 恰好正确,AVG/MIN/MAX/COUNT_DISTINCT 全错(复审 P1)。
+    """
 
     if not include_subtotals and not include_grand_totals:
         return native_candidate
@@ -529,14 +508,16 @@ def _inject_pivot_totals(
     if not pivot_sql or not base_cte or not pivot_cte:
         return native_candidate
 
-    value_aliases = _derive_pivot_value_aliases(values, manual_values)
-    if not value_aliases:
+    # 需显式列值(manual / 自动采样)才能重算 totals;动态透视的列值执行期才定,无从重算 → 跳过
+    if not manual_values or not values:
         return native_candidate
 
     totals_selects = _build_totals_selects(
         row_dimensions=row_dimensions,
-        value_aliases=value_aliases,
-        pivot_alias=pivot_alias,
+        col_dim=col_dim,
+        column_values=manual_values,
+        values=values,
+        base_alias="base",
         include_subtotals=include_subtotals,
         include_grand_totals=include_grand_totals,
     )

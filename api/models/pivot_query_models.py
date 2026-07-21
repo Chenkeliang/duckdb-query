@@ -180,12 +180,16 @@ class PivotConfig(BaseModel):
         ]
 
         if self.manual_column_values is not None:
-            cleaned_values = []
+            # 保序去重:去空白 + 丢重复。重复值会让 DuckDB 的 PIVOT ... IN (...) 报
+            # "specified multiple times in the IN clause"(复审 P2),须在入口收口。
+            cleaned_values: List[str] = []
+            seen: set = set()
             for value in self.manual_column_values:
                 if value is None:
                     continue
                 value_str = str(value).strip()
-                if value_str:
+                if value_str and value_str not in seen:
+                    seen.add(value_str)
                     cleaned_values.append(value_str)
             self.manual_column_values = cleaned_values or None
 
