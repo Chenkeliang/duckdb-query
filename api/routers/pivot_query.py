@@ -19,6 +19,7 @@ from core.database.federated_attach import (
     resolve_attach_configs,
 )
 from core.services.pivot_query_generator import (
+    PivotColumnLimitError,
     generate_pivot_query_sql,
     validate_query_config,
 )
@@ -120,6 +121,19 @@ def _generate_pivot_query(request: PivotQueryRequest):
             message_code=MessageCode.PIVOT_QUERY_GENERATED,
         )
 
+    except PivotColumnLimitError as exc:
+        # 专用契约:400 + 结构化 details,前端据字段提示(增加筛选/减少分类),不解析中文消息。
+        # 须在通用 except 之前——它是 ValueError 子类,否则会落到 classify_exception → 500。
+        return error_json_response(
+            400,
+            MessageCode.PIVOT_COLUMN_LIMIT_EXCEEDED,
+            f"Pivot column '{exc.column}' exceeds the {exc.cap}-value limit",
+            details={
+                "column": exc.column,
+                "cap": exc.cap,
+                "observed_at_least": exc.observed_at_least,
+            },
+        )
     except Exception as exc:
         logger.error("Failed to generate pivot query: %s", exc, exc_info=True)
         code, status = classify_exception(str(exc))
@@ -247,6 +261,18 @@ def _preview_pivot_query(
             MessageCode.QUERY_CANCELLED,
             "Query cancelled by client",
             details={"query_id": query_id},
+        )
+    except PivotColumnLimitError as exc:
+        # 专用契约:400 + 结构化 details(见 generate 路由),须在通用 except 前
+        return error_json_response(
+            400,
+            MessageCode.PIVOT_COLUMN_LIMIT_EXCEEDED,
+            f"Pivot column '{exc.column}' exceeds the {exc.cap}-value limit",
+            details={
+                "column": exc.column,
+                "cap": exc.cap,
+                "observed_at_least": exc.observed_at_least,
+            },
         )
     except Exception as exc:
         logger.error("Failed to preview pivot query: %s", exc, exc_info=True)

@@ -521,10 +521,17 @@ def fetch_query_records(connection, query):
     desc = res.description or []
     # cursor_types 优先用 DESCRIBE 的原始类型(NS 列仍报 TIMESTAMP_NS,与旧行为一致);
     # DESCRIBE 失败/写查询时退回实际游标 description
-    cursor_types = describe_types if describe_types is not None else [
+    raw_types = describe_types if describe_types is not None else [
         (str(col[0]), str(col[1])) for col in desc
     ]
     columns, records = records_from_cursor(res, desc)
+    # 列名去重后 columns 已是 id, id_1…;cursor_types 的名字必须同步(否则前端按名建类型 Map
+    # 键碰撞:id_1 拿不到类型、id 被后者覆盖——复审 P2)。类型按【位置】对齐去重后的 columns。
+    cursor_types = (
+        [(columns[i], t) for i, (_, t) in enumerate(raw_types)]
+        if len(raw_types) == len(columns)
+        else raw_types
+    )
     return columns, records, cursor_types
 
 

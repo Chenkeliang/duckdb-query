@@ -157,7 +157,7 @@
 
 | 方法 | 路径 | 成功体 | 前端入口 |
 |------|------|--------|----------|
-| POST | `/api/pivot-query/generate` | 对象 | `generatePivotQuery`（`pivot_config` 必填；可选 `attach_databases`；`pivot_config.values[].typeConversion`=聚合前 TRY_CAST 目标，走白名单校验）；列维度去重值超过 app `pivot_max_columns` 时 `OPERATION_FAILED`，消息以 `PIVOT_COLUMN_LIMIT_EXCEEDED` 开头；400 `PIVOT_QUERY_INVALID` |
+| POST | `/api/pivot-query/generate` | 对象 | `generatePivotQuery`（`pivot_config` 必填；可选 `attach_databases`；`pivot_config.values[].typeConversion`=聚合前 TRY_CAST 目标，走白名单校验）；列维度去重值超过 app `pivot_max_columns` 时 **400 `PIVOT_COLUMN_LIMIT_EXCEEDED`**，`error.details={column,cap,observed_at_least}`（前端据结构化字段提示，勿解析消息文本）；配置无效 400 `PIVOT_QUERY_INVALID`。**服务端路径出错时前端不回退本地 PIVOT**（本地 SQL 无列上限保护） |
 | POST | `/api/pivot-query/preview` | 对象 | `previewPivotQuery`（`pivot_config` 必填；可选 `attach_databases`；可选顶层 `limit`=预览行数上限，缺省回退 app `max_query_rows`，响应 `row_count`=透视后总行数、`returned_rows`=实际返回行数；MCP 工具 `pivot` 预览默认传 `limit=100`）；400 `PIVOT_QUERY_INVALID`；499 `QUERY_CANCELLED`；500 `OPERATION_FAILED` |
 | GET | `/api/sql-favorites` | **列表** | `listSqlFavorites` |
 | GET | `/api/sql-favorites/{id}` | 对象 | `getSqlFavorite`（`data.favorite`）；404 `FAVORITE_NOT_FOUND` |
@@ -166,7 +166,7 @@
 | DELETE | `/api/sql-favorites/{id}` | 对象 | `deleteSqlFavorite`；404 `FAVORITE_NOT_FOUND` |
 | POST | `/api/sql-favorites/{id}/use` | 对象 | `incrementFavoriteUsage`；404 `FAVORITE_NOT_FOUND` |
 | GET | `/api/app-config/features` | 对象 | `getAppConfig`；含 `json_import_column_type`, `remote_storage_configured`（是否配置 `duckdb_remote_settings`）, `pivot_max_columns`（透视结果列数上限，默认 300；前端据此发 `column_value_limit`） |
-| POST | `/api/columns/infer-cast` | 对象 | `inferColumnCast`（`columnAnalysisApi.ts`）；入参 `{table_name, column, filters?, attach_databases?}`；在筛选后真实数据上刻画一列作为数值 cast 目标：`{recommended: 'BIGINT'\|'DECIMAL(38,s)'\|null, total, numeric, non_numeric, max_int_digits, max_frac_digits, safe_decimal_cast, reason}`；DECIMAL scale 取自实际数据。`safe_decimal_cast`=是否可**安全自动量化**（`recommended` 非 null 时恒 true；语义非"数学上能否放进 DECIMAL(38)"——二进制浮点源即便数值能放进也为 false，量化有损）。`reason`∈ `null\|empty\|non_numeric\|binary_float\|scientific\|overflow`（不安全原因）：`binary_float`=源列本就是 FLOAT/DOUBLE（`CAST(AS VARCHAR)` 是最短往返串，量化会让 `19.99→19.98999999999999744` 失真，交 JOIN 分侧转换/用户显式选）；`scientific`=含科学计数法文本无法可靠定标度；`overflow`=整数位+小数位超 38。任一不安全 → `recommended=null`，不静默丢数据。供透视文本聚合与 JOIN 类型冲突的数据感知安全推荐 |
+| POST | `/api/columns/infer-cast` | 对象 | `inferColumnCast`（`columnAnalysisApi.ts`）；入参 `{table_name, column, filters?, attach_databases?}`；在筛选后真实数据上刻画一列作为数值 cast 目标：`{recommended: 'BIGINT'\|'DECIMAL(38,s)'\|null, total, numeric, non_numeric, max_int_digits, max_frac_digits, safe_decimal_cast, reason}`；DECIMAL scale 取自实际数据。`safe_decimal_cast`=是否可**安全自动量化**（`recommended` 非 null 时恒 true；语义非"数学上能否放进 DECIMAL(38)"——二进制浮点源即便数值能放进也为 false，量化有损）。`reason`∈ `null\|empty\|non_numeric\|binary_float\|scientific\|overflow`（不安全原因）：`binary_float`=源列本就是 FLOAT/DOUBLE（`CAST(AS VARCHAR)` 是最短往返串，量化会让 `19.99→19.98999999999999744` 失真，交 JOIN 分侧转换/用户显式选；此分支跳过 O(n) 文本扫描，但 `total`/`numeric` 仍以轻量 `count(*)`+`isfinite` 如实统计，`max_int_digits`/`max_frac_digits`=0）；`scientific`=含科学计数法文本无法可靠定标度；`overflow`=整数位+小数位超 38。任一不安全 → `recommended=null`，不静默丢数据。供透视文本聚合与 JOIN 类型冲突的数据感知安全推荐 |
 
 ## 8. 设置（`settingsShortcutsApi.ts`）
 

@@ -157,15 +157,18 @@ def _conn_ctx(connection):
 
 
 class PivotColumnLimitError(ValueError):
-    """透视列维度去重值超过 pivot_max_columns 上限。作为 ValueError 子类,路由现有
-    except ValueError 会直接把消息回传给用户(消息含 PIVOT_COLUMN_LIMIT_EXCEEDED 标记)。"""
+    """透视列维度去重值超过 pivot_max_columns 上限。路由显式捕获它 → 400 +
+    PIVOT_COLUMN_LIMIT_EXCEEDED + 结构化 details{column,cap,observed_at_least},
+    前端据结构化字段提示(不解析中文消息)。observed_at_least:探到的去重值数
+    (受探测 LIMIT cap+1 限制,实际恒为 cap+1)。"""
 
-    def __init__(self, column: str, cap: int):
+    def __init__(self, column: str, cap: int, observed_at_least: int | None = None):
         self.column = column
         self.cap = cap
+        self.observed_at_least = observed_at_least if observed_at_least is not None else cap + 1
         super().__init__(
             f"PIVOT_COLUMN_LIMIT_EXCEEDED: 透视列「{column}」的去重值超过上限 {cap}"
-            f"(至少 {cap + 1} 个分类)。请增加筛选缩小范围,或手动选择要展开的列值后重试。"
+            f"(至少 {self.observed_at_least} 个分类)。请增加筛选缩小范围,或手动选择要展开的列值后重试。"
         )
 
 
@@ -198,7 +201,7 @@ def _enforce_pivot_column_cap(base_sql: str, target_col: str, connection=None) -
     except Exception:  # pylint: disable=broad-except
         return
     if distinct_n > cap:
-        raise PivotColumnLimitError(target_col, cap)
+        raise PivotColumnLimitError(target_col, cap, observed_at_least=distinct_n)
 
 
 def _generate_pivot_transformation_sql(

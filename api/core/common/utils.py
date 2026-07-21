@@ -77,6 +77,32 @@ def handle_non_serializable_data(obj: Any) -> Any:
     return jsonable_encoder(obj)
 
 
+def dedupe_column_names(names: List[str]) -> List[str]:
+    """重复列名 → id, id_1, id_2…,保序、位置稳定（SELECT 1 AS id, 2 AS id / 未加别名的 JOIN）。
+
+    dict 记录会静默丢前值,前端按列名建类型 Map 也会键碰撞——列名去重必须在 columns、
+    records、column_types/cursor_types 三处用【同一口径】,否则去重后的列拿不到（或拿错）类型
+    （复审:columns=[id,id_1] 而 column_types=[(id,..),(id,..)] → id_1 无类型、id 被覆盖）。
+    """
+    if len(set(names)) == len(names):
+        return list(names)
+    seen: Dict[str, int] = {}
+    deduped: List[str] = []
+    for name in names:
+        if name not in seen:
+            seen[name] = 0
+            deduped.append(name)
+        else:
+            seen[name] += 1
+            candidate = f"{name}_{seen[name]}"
+            while candidate in seen:
+                seen[name] += 1
+                candidate = f"{name}_{seen[name]}"
+            seen[candidate] = 0
+            deduped.append(candidate)
+    return deduped
+
+
 def describe_query_column_types(con: Any, sql: str) -> List[Dict[str, str]]:
     """对查询 SQL 执行 DESCRIBE 得到列类型；失败（多语句/PRAGMA 等）返回空。"""
     cleaned = (sql or "").strip().rstrip(";")
@@ -85,7 +111,11 @@ def describe_query_column_types(con: Any, sql: str) -> List[Dict[str, str]]:
     try:
         rows = con.execute(f"DESCRIBE ({cleaned})").fetchall()
         if rows:
-            return [{"name": str(row[0]), "duckdb_type": str(row[1])} for row in rows]
+            names = dedupe_column_names([str(row[0]) for row in rows])
+            return [
+                {"name": name, "duckdb_type": str(row[1])}
+                for name, row in zip(names, rows)
+            ]
     except Exception:
         pass
     return []
@@ -125,25 +155,8 @@ def records_from_cursor(res: Any, desc: Optional[List[Any]] = None) -> tuple:
     """
     if desc is None:
         desc = res.description or []
-    names = [str(col[0]) for col in desc]
-    if len(set(names)) != len(names):
-        # 重复列名（SELECT 1 AS id, 2 AS id / 未加别名的 JOIN）：dict 记录会
-        # 静默丢前值，按旧 pandas 语义去重为 id, id_1, id_2…（值全保留）
-        seen: Dict[str, int] = {}
-        deduped: List[str] = []
-        for name in names:
-            if name not in seen:
-                seen[name] = 0
-                deduped.append(name)
-            else:
-                seen[name] += 1
-                candidate = f"{name}_{seen[name]}"
-                while candidate in seen:
-                    seen[name] += 1
-                    candidate = f"{name}_{seen[name]}"
-                seen[candidate] = 0
-                deduped.append(candidate)
-        names = deduped
+    # 重复列名去重（id, id_1…）：columns / records 键 / column_types 三处共用 dedupe_column_names
+    names = dedupe_column_names([str(col[0]) for col in desc])
     is_dt = [
         (t == "DATE" or t.startswith("TIMESTAMP"))
         for t in (str(col[1]).upper() for col in desc)

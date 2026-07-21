@@ -136,9 +136,30 @@ def test_binary_float_double_column_not_quantized():
         data = _infer("qa_ic_dblmix")
         assert data["recommended"] is None
         assert data["reason"] == "binary_float"
+        # 复审 P3:短路仍如实统计,不返回虚假的 total=0
+        assert data["total"] == 3
+        assert data["numeric"] == 3
         assert data["non_numeric"] == 0
     finally:
         _drop("qa_ic_dblmix")
+
+
+def test_binary_float_stats_honest_with_non_finite():
+    # 复审 P3:含 inf 的 DOUBLE 列,total/numeric 如实(inf 不计 numeric),仍 binary_float 不量化
+    with with_duckdb_connection() as con:
+        con.execute(
+            'CREATE OR REPLACE TABLE "qa_ic_dblinf" AS '
+            "SELECT * FROM (VALUES (1.5::DOUBLE), (2.5::DOUBLE), ('Infinity'::DOUBLE)) v(a)"
+        )
+    try:
+        data = _infer("qa_ic_dblinf")
+        assert data["reason"] == "binary_float"
+        assert data["recommended"] is None
+        assert data["total"] == 3
+        assert data["numeric"] == 2   # inf 非有限
+        assert data["non_numeric"] == 1
+    finally:
+        _drop("qa_ic_dblinf")
 
 
 def test_reason_field_covers_each_unsafe_cause():

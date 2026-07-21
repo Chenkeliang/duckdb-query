@@ -242,11 +242,24 @@ def analyze_numeric_cast(
     except Exception:  # pylint: disable=broad-exception-caught
         src_type = ""
     if src_type in {"FLOAT", "DOUBLE", "REAL"}:
-        # 二进制浮点源恒不量化(见上)——typeof(LIMIT 1 下推,亚毫秒)已足以定论,直接短路,
-        # 不再跑下面 O(n) 的逐行 trim+regex+TRY_CAST 全表扫描(亿级 DOUBLE 列曾白扫 ~2s;
-        # 该端点在 JOIN 冲突/透视文本聚合里对两侧反复调用,省下这次扫描是实打实的每请求收益)。
+        # 二进制浮点源恒不量化(见上)——typeof(LIMIT 1 下推,亚毫秒)已足以定论,直接短路 recommendation,
+        # 不跑下面 O(n) 的逐行 trim+regex+TRY_CAST 文本扫描(亿级 DOUBLE 列曾白扫 ~2s)。
+        # 但 total/numeric 仍如实统计:只用 count(*)+isfinite(单遍向量化数值判定,不做任何字符串转换,
+        # 远比正则/CAST-VARCHAR 便宜),避免返回 total=0 与契约里"统计"语义矛盾(复审 P3);
+        # max_int/frac 保持 0(文本标度对不会量化的浮点列无意义,算它反而要 CAST-VARCHAR)。
+        count_row = connection.execute(
+            f"""
+            SELECT count(*) AS total,
+                   count(*) FILTER (WHERE isfinite({qcol})) AS numeric_n
+            FROM {quoted_table}
+            WHERE {qcol} IS NOT NULL
+            """
+        ).fetchone()
+        total = int(count_row[0]) if count_row else 0
+        numeric = int(count_row[1]) if count_row and count_row[1] is not None else 0
         return {
-            "recommended": None, "total": 0, "numeric": 0, "non_numeric": 0,
+            "recommended": None, "total": total, "numeric": numeric,
+            "non_numeric": total - numeric,
             "max_int_digits": 0, "max_frac_digits": 0,
             "safe_decimal_cast": False, "reason": "binary_float",
         }
