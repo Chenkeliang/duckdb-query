@@ -17,6 +17,7 @@ from core.data.file_datasource_manager import (
     file_datasource_manager,
 )
 from core.common.timezone_utils import get_current_time_iso  # 导入时区工具
+from core.common.utils import dedupe_column_names
 from utils.response_helpers import (
     create_success_response,
     MessageCode,
@@ -224,8 +225,12 @@ def save_paste_data(request: PasteDataRequest):
         ]
 
         clean_table_name = _sanitize_table_name(request.table_name)
+        # 按位置去重列名(id,id → id,id_1),再与 column_types 按【索引】重新配对。重复列名会让底层
+        # read_csv 静默把第二列重命名,而 Python 侧仍按原名引用 → 两列都取到第一列值、第二列数据丢失
+        # (复审 P1)。types 是位置对齐的数组,只去重名字、按索引重配,绝不按(可能被改的)名字回查类型。
+        deduped_names = dedupe_column_names(list(request.column_names))
         column_definitions: List[Tuple[str, str]] = list(
-            zip(request.column_names, request.column_types)
+            zip(deduped_names, request.column_types)
         )
 
         if not column_definitions:
@@ -235,7 +240,7 @@ def save_paste_data(request: PasteDataRequest):
             metadata = _persist_pasted_rows(
                 connection,
                 clean_table_name,
-                list(request.column_names),
+                deduped_names,
                 cleaned_rows,
                 column_definitions,
             )
@@ -257,7 +262,7 @@ def save_paste_data(request: PasteDataRequest):
             "file_type": "pasted",
             "row_count": saved_rows,
             "column_count": metadata.get("column_count", len(request.column_names)),
-            "columns": metadata.get("columns", request.column_names),
+            "columns": metadata.get("columns", deduped_names),
             "column_profiles": metadata.get("column_profiles"),
             "schema_version": metadata.get("schema_version", 2),
             "created_at": created_at_value,

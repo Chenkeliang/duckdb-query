@@ -77,6 +77,33 @@ def test_paste_data_creates_typed_table():
         _cleanup_table(table_name)
 
 
+def test_paste_data_dedupes_duplicate_column_names():
+    """复审 P1:重复列名会让底层 read_csv 静默重命名第二列,而 Python 侧仍按原名引用,
+    两列都取第一列值、第二列数据丢失。现按位置去重列名(id,id → id,id_1),两列数据都保留。"""
+    table_name = f"paste_dup_{uuid4().hex[:8]}"
+    payload = {
+        "table_name": table_name,
+        "column_names": ["id", "id"],
+        "column_types": ["VARCHAR", "VARCHAR"],
+        "data_rows": [["left1", "right1"], ["left2", "right2"]],
+        "delimiter": ",",
+        "has_header": False,
+    }
+    response = client.post("/api/paste-data", json=payload)
+    body = response.json()
+    try:
+        assert response.status_code == 200, response.text
+        assert body["success"] is True
+        with with_duckdb_connection() as con:
+            names = [r[1] for r in con.execute(f'PRAGMA table_info("{table_name}")').fetchall()]
+            assert names == ["id", "id_1"]  # 去重
+            rows = con.execute(f'SELECT * FROM "{table_name}" ORDER BY id').fetchall()
+            # 第二列的 right1/right2 未丢失(不是 left1/left2)
+            assert rows == [("left1", "right1"), ("left2", "right2")]
+    finally:
+        _cleanup_table(table_name)
+
+
 def test_paste_data_defaults_for_empty_cells():
     table_name = f"paste_unit_{uuid4().hex[:8]}"
     payload = {

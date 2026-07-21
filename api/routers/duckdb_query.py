@@ -121,13 +121,17 @@ def assert_no_dangerous_write(sql_upper_cleaned: str, save_as_table: Optional[st
             )
 
 
-def _run_query_maybe_save(conn, sql_query, save_as_table, limit):
+def _run_query_maybe_save(conn, sql_query, save_as_table, limit, original_sql=None):
     """执行查询;若指定 save_as_table 则先 CTAS 物化(原查询只执行这一次),
     预览行改从已建的表读取——既避免为预览重跑昂贵/有副作用的查询,也保证预览行
     与落库数据一致(非确定性查询如 random()/now() 不再"预览≠落库",Codex P1-11)。
     保存失败不再静默:save_error 带回,由调用方放进响应,前端据 saved_table 决定提示。
     返回 (columns, records, cursor_types, column_types, saved_table, save_error)。
     execute 与其两条连接路径共用,消除历史两处重复块。
+
+    CTAS 用【原始查询 original_sql】(未被追加预览 LIMIT 的版本),而非从带 LIMIT 的文本里
+    replace 反推——后者是全局子串替换,会误删字符串字面量内的 " LIMIT n"(如 'keep LIMIT 5'
+    被改成 'keep',静默改数据,复审 P1)。落库即全量(不带预览 LIMIT),与联邦路由一致。
     """
     def _types(cur_types, describe_sql):
         return describe_query_column_types(conn, describe_sql) or [
@@ -136,9 +140,7 @@ def _run_query_maybe_save(conn, sql_query, save_as_table, limit):
 
     table_name = (save_as_table or "").strip()
     if table_name:
-        save_sql = sql_query.rstrip(";")
-        if limit:
-            save_sql = save_sql.replace(f" LIMIT {limit}", "")
+        save_sql = (original_sql if original_sql is not None else sql_query).strip().rstrip(";")
         try:
             conn.execute(
                 f"CREATE OR REPLACE TABLE {quote_identifier(table_name)} AS ({save_sql})"
@@ -472,7 +474,7 @@ def execute_duckdb_query(
             with interruptible_connection(query_id, sql_query) as conn:
                 (result_columns, result_records, _cursor_types, query_column_types,
                  saved_table, save_error) = _run_query_maybe_save(
-                    conn, sql_query, request.save_as_table, limit)
+                    conn, sql_query, request.save_as_table, limit, original_sql=request.sql)
                 execution_time = _log_query_metrics_in_conn(
                     conn, sql_query, start_time, len(result_records)
                 )
@@ -480,7 +482,7 @@ def execute_duckdb_query(
             with with_duckdb_connection() as con:
                 (result_columns, result_records, _cursor_types, query_column_types,
                  saved_table, save_error) = _run_query_maybe_save(
-                    con, sql_query, request.save_as_table, limit)
+                    con, sql_query, request.save_as_table, limit, original_sql=request.sql)
                 execution_time = _log_query_metrics_in_conn(
                     con, sql_query, start_time, len(result_records)
                 )

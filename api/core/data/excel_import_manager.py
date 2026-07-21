@@ -250,6 +250,10 @@ def _build_preview_from_rows(head_rows: List[List[Any]]) -> tuple:
         str(v) if v is not None else f"column_{idx + 1}"
         for idx, v in enumerate(head_rows[0])
     ]
+    # 重复表头去重(与正式导入 line 515 共用 ensure_unique_columns):columns 与 preview_records
+    # 都按 enumerate(header) 位置消费,去重后第 i 个值仍对第 i 个(去重)列名——否则 records 用
+    # 原表头作 dict 键,重名列(id,id)后者覆盖前者、首列值丢失(去 pandas 回归,复审 P2)。
+    header = ensure_unique_columns(header)
     data_rows = head_rows[1:]
     columns = [
         {
