@@ -74,18 +74,21 @@ export function mapPivotAggregation(agg: AggregationFunction): string {
  *    (隐性 DECIMAL(18,3) 静默舍入)、AS AUTO(Catalog Error)、非法串都不会落进 SQL,避免"同一配置
  *    仅因有无透视列就产生不同语义"。TRY_CAST(无效值转 NULL 被聚合忽略)——本地 SQL 无论本机/联邦都
  *    最终在 DuckDB 执行(联邦走 ATTACH),故 TRY_CAST 恒有效,与后端生成器一致。手填非法值本应在
- *    designer 入口就被挡为 unsafe;这里是纵深防御,不放行未校验值。
+ *    designer 入口就被挡为 unsafe;这里是纵深防御。
+ *  返回 null 表示【给了 typeConversion 但校验不过】——显式失败而非静默退回无 cast,避免未来新增调用方
+ *  误以为转换已生效(调用方应据 null 阻断本地 SQL 生成)。正常 UI 路径入口已挡非法值,此分支不可达。
  *  quotedColumn 须已按方言转义。 */
 export function buildLocalAggExpr(
     aggregation: AggregationFunction,
     quotedColumn: string,
     typeConversion?: string
-): string {
+): string | null {
     let expr = quotedColumn;
     if (typeConversion) {
         const v = validateCastType(typeConversion);
-        // 仅在校验通过且非 'auto' 哨兵时套 TRY_CAST,并用【规范拼写】(与后端一致)
-        if (v.ok && v.normalized && v.normalized !== 'auto') {
+        if (!v.ok) return null; // 非法转换:显式失败
+        // 'auto' 哨兵 = 有意不转换;其余合法类型用【规范拼写】套 TRY_CAST(与后端一致)
+        if (v.normalized && v.normalized !== 'auto') {
             expr = `TRY_CAST(${quotedColumn} AS ${v.normalized})`;
         }
     }

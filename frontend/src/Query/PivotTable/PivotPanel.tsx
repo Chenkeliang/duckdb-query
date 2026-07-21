@@ -250,10 +250,13 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
             : quoteIdent(normalized.name, dialect);
 
         const rowColumns = rows.map((r) => quoteIdent(r, dialect));
-        // 本地 SQL 最终在 DuckDB 执行(本机/联邦 ATTACH 皆然),cast 恒用 TRY_CAST(见 buildLocalAggExpr)
-        const localAgg = (v: PivotPanelValueConfig) =>
-            buildLocalAggExpr(v.aggregation, quoteIdent(v.column, dialect), v.typeConversion);
-        const aggExpressions = values.map(localAgg).join(", ");
+        // 本地 SQL 最终在 DuckDB 执行(本机/联邦 ATTACH 皆然),cast 恒用 TRY_CAST(见 buildLocalAggExpr)。
+        // buildLocalAggExpr 遇非法 typeConversion 返回 null(入口已挡,此为纵深防御)→ 整体不生成、阻断执行。
+        const aggExprList = values.map((v) =>
+            buildLocalAggExpr(v.aggregation, quoteIdent(v.column, dialect), v.typeConversion));
+        if (aggExprList.some((e) => e === null)) return null;
+        const aggExprs = aggExprList as string[]; // 已排除 null
+        const aggExpressions = aggExprs.join(", ");
 
         if (columns.length === 1) {
             const pivotColumn = quoteIdent(columns[0], dialect);
@@ -271,9 +274,9 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
 
         const selectParts: string[] = [];
         rows.forEach((r) => selectParts.push(quoteIdent(r, dialect)));
-        values.forEach((v) => {
+        values.forEach((v, i) => {
             selectParts.push(
-                `${localAgg(v)} AS ${quoteIdent(`${v.aggregation}_${v.column}`, dialect)}`
+                `${aggExprs[i]} AS ${quoteIdent(`${v.aggregation}_${v.column}`, dialect)}`
             );
         });
 

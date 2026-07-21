@@ -39,10 +39,10 @@ describe('buildLocalAggExpr (本地聚合表达式:复审 P1 COUNT_DISTINCT + ty
         expect(buildLocalAggExpr(AggregationFunction.SUM, '"amt"', undefined)).toBe('sum("amt")');
     });
 
-    it('纵深防御:裸 DECIMAL / 非法类型不拼进 SQL(避免隐性 DECIMAL(18,3) 静默舍入)', () => {
-        // 裸 DECIMAL 未通过 validateCastType → 不套 TRY_CAST(而非 sum(TRY_CAST(.. AS DECIMAL)))
-        expect(buildLocalAggExpr(AggregationFunction.SUM, '"amt"', 'DECIMAL')).toBe('sum("amt")');
-        expect(buildLocalAggExpr(AggregationFunction.SUM, '"amt"', 'DROP TABLE')).toBe('sum("amt")');
+    it('纵深防御:裸 DECIMAL / 非法类型显式返回 null(不静默退回无 cast,防误以为已转换)', () => {
+        // 裸 DECIMAL(隐性 DECIMAL(18,3) 有损)/ 注入串未过校验 → null(调用方据此阻断生成)
+        expect(buildLocalAggExpr(AggregationFunction.SUM, '"amt"', 'DECIMAL')).toBeNull();
+        expect(buildLocalAggExpr(AggregationFunction.SUM, '"amt"', 'DROP TABLE')).toBeNull();
         // 合法完整 DECIMAL 用规范拼写
         expect(buildLocalAggExpr(AggregationFunction.SUM, '"amt"', 'decimal(38,6)'))
             .toBe('sum(TRY_CAST("amt" AS DECIMAL(38,6)))');
