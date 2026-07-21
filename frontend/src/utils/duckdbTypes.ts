@@ -154,6 +154,62 @@ export function normalizeTypeName(type: string | null | undefined): string {
 }
 
 /**
+ * TRY_CAST 合法目标(与后端 core.common.duckdb_types._CAST_TARGET_TYPES 逐字镜像)。
+ * 白名单管"是不是合法 DuckDB 类型",DUCKDB_CAST_TYPES 管"推荐给用户什么",两层分离——
+ * 故 INTEGER 等未在 UI 推荐列表的规范类型在此仍合法。
+ */
+const CAST_TARGET_TYPES = new Set<string>([
+  'BOOLEAN',
+  'TINYINT', 'SMALLINT', 'INTEGER', 'BIGINT', 'HUGEINT',
+  'UTINYINT', 'USMALLINT', 'UINTEGER', 'UBIGINT', 'UHUGEINT',
+  'FLOAT', 'DOUBLE', 'BIGNUM',
+  'VARCHAR',
+  'DATE', 'TIME', 'TIMESTAMP',
+  'TIMESTAMP WITH TIME ZONE', 'TIME WITH TIME ZONE',
+  'TIMESTAMP_S', 'TIMESTAMP_MS', 'TIMESTAMP_NS',
+  'INTERVAL', 'BLOB', 'UUID', 'JSON', 'BIT',
+]);
+
+// DECIMAL/NUMERIC/DEC 必须带完整 (precision, scale)
+const DECIMAL_FORM = /^(?:DECIMAL|NUMERIC|DEC)\s*\(\s*(\d{1,2})\s*,\s*(\d{1,2})\s*\)$/;
+
+export type CastTypeReason = 'empty' | 'bare_decimal' | 'decimal_range' | 'unsupported';
+
+export interface CastTypeValidation {
+  ok: boolean;
+  /** 通过时的规范拼写(如 'DECIMAL(38,6)'、'BIGINT'、'auto' 哨兵) */
+  normalized?: string;
+  reason?: CastTypeReason;
+}
+
+/**
+ * 校验 TRY_CAST 目标类型,返回规范拼写或拒绝原因——与后端 validate_cast_type 逐字一致,
+ * 避免"同一透视配置仅因有无透视列(服务端 vs 本地)就产生不同语义"(复审 P1):
+ * - 'auto'(任意大小写)→ 哨兵 'auto'(不转换);
+ * - DECIMAL(p,s):p∈[1,38] 且 s≤p;裸 DECIMAL 拒绝(隐性 DECIMAL(18,3) 有损);
+ * - 其余走规范标量白名单(别名先归一,如 int8→BIGINT)。
+ */
+export function validateCastType(raw: string | null | undefined): CastTypeValidation {
+  const cleaned = (raw ?? '').trim().toUpperCase().replace(/\s+/g, ' ');
+  if (!cleaned) return { ok: false, reason: 'empty' };
+  if (cleaned === 'AUTO') return { ok: true, normalized: 'auto' };
+
+  const m = cleaned.match(DECIMAL_FORM);
+  if (m) {
+    const precision = parseInt(m[1], 10);
+    const scale = parseInt(m[2], 10);
+    if (precision < 1 || precision > 38) return { ok: false, reason: 'decimal_range' };
+    if (scale > precision) return { ok: false, reason: 'decimal_range' };
+    return { ok: true, normalized: `DECIMAL(${precision},${scale})` };
+  }
+
+  const normalized = normalizeTypeName(cleaned);
+  if (normalized === 'DECIMAL') return { ok: false, reason: 'bare_decimal' };
+  if (CAST_TARGET_TYPES.has(normalized)) return { ok: true, normalized };
+  return { ok: false, reason: 'unsupported' };
+}
+
+/**
  * 检查两个类型是否兼容(可以直接比较,无需 TRY_CAST)。
  *
  * 输入可为任何来路的类型名(先归一再判定)。兼容语义尽量镜像 DuckDB

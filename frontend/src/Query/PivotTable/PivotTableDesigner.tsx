@@ -37,7 +37,7 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { AggregationFunction } from "@/types/pivotQuery";
-import { isNumericType } from "@/utils/duckdbTypes";
+import { isNumericType, validateCastType } from "@/utils/duckdbTypes";
 import { showSuccessToast, showErrorToast } from "@/utils/toastHelpers";
 import type { InferCastResult } from "@/api";
 
@@ -444,18 +444,11 @@ export const PivotTableDesigner: React.FC<PivotTableDesignerProps> = ({
         // eslint-disable-next-line react-hooks/exhaustive-deps
     }, [inferenceContextKey]);
 
-    // 值 chip 上的可编辑 cast 输入:用户手填即 manual 显式选择(清除 pending/unsafe,筛选变化不再覆盖)。
-    // 清空时:文本列仍是 SUM/AVG 则须保持 unsafe 挡住——否则后端收到没有 TRY_CAST 的文本 SUM/AVG,
-    // 生成 SUM(VARCHAR) 触发 Binder Error(Codex P2)。仅当聚合无需数值转换时才可真正清空放行。
-    const handleUpdateValueCast = (idx: number, cast: string) => {
-        const trimmed = cast.trim();
-        if (trimmed) {
-            updateValueAt(idx, {
-                typeConversion: trimmed, castStatus: undefined,
-                castSource: 'manual', castContextKey: undefined,
-            });
-            return;
-        }
+    // 值 chip 上的可编辑 cast 输入:用户手填即 manual 显式选择。手填值须过 validateCastType(与后端
+    // 同一口径)——裸 DECIMAL(隐性 DECIMAL(18,3) 静默舍入)、AS AUTO、非法串一律挡为 unsafe 不放行,
+    // 避免"同一配置仅因有无透视列就产生不同语义"(复审 P1)。合法则存【规范拼写】。
+    // 空 / 'auto'(=无转换):文本列仍是 SUM/AVG 则保持 unsafe 挡住(否则 SUM(VARCHAR) Binder Error)。
+    const blockAsUnsafe = (idx: number) => {
         const cur = valuesRef.current[idx];
         const stillNeeds = !!cur && needsTextCast(cur);
         updateValueAt(idx, {
@@ -463,6 +456,29 @@ export const PivotTableDesigner: React.FC<PivotTableDesignerProps> = ({
             castStatus: stillNeeds ? 'unsafe' : undefined,
             castSource: undefined, castContextKey: undefined,
         });
+    };
+    const handleUpdateValueCast = (idx: number, cast: string) => {
+        const trimmed = cast.trim();
+        if (!trimmed) { blockAsUnsafe(idx); return; }
+        const v = validateCastType(trimmed);
+        if (v.ok && v.normalized && v.normalized !== 'auto') {
+            updateValueAt(idx, {
+                typeConversion: v.normalized, castStatus: undefined,
+                castSource: 'manual', castContextKey: undefined,
+            });
+            return;
+        }
+        if (!v.ok) {
+            // 非法转换类型:不放行,报可操作错误
+            blockAsUnsafe(idx);
+            const key = v.reason === 'bare_decimal'
+                ? "query.pivot.castInvalidBareDecimal"
+                : "query.pivot.castInvalid";
+            showErrorToast(t, undefined, t(key, { type: trimmed }));
+            return;
+        }
+        // v.normalized === 'auto':等价于不转换,文本列仍需 cast → unsafe
+        blockAsUnsafe(idx);
     };
 
     const dropAnimation: DropAnimation = {

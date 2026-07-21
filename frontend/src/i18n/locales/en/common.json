@@ -689,6 +689,8 @@
       "castInferring": "inferring…",
       "castPickType": "pick type",
       "castBlockedHint": "A value's type is still being inferred or needs a manual choice; execution is paused",
+      "castInvalid": "Invalid cast type \"{{type}}\"; enter a valid DuckDB type (e.g. DOUBLE, DECIMAL(38,2))",
+      "castInvalidBareDecimal": "Bare DECIMAL is implicitly DECIMAL(18,3) and lossy; use a full form like DECIMAL(38,6)",
       "columnLimitHint": "Pivot column \"{{column}}\" has more than the {{cap}}-value limit (at least {{observed}}); add filters to narrow the range, or list the exact column values to expand in \"Manual column values\" below",
       "generateFailed": "Failed to generate the pivot query; check the configuration or try again",
       "subtotals": "Subtotals",

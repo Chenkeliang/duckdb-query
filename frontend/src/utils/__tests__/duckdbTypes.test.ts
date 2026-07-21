@@ -19,8 +19,43 @@ import {
   isStringType,
   isDateTimeType,
   isComplexType,
+  validateCastType,
   DUCKDB_CAST_TYPES,
 } from '../duckdbTypes';
+
+describe('validateCastType (与后端 validate_cast_type 逐字镜像:复审 P1)', () => {
+  it("'auto' 任意大小写 → 哨兵 'auto'(不转换)", () => {
+    for (const v of ['auto', 'AUTO', 'Auto', ' auto ']) {
+      expect(validateCastType(v)).toEqual({ ok: true, normalized: 'auto' });
+    }
+  });
+
+  it('裸 DECIMAL 拒绝(隐性 DECIMAL(18,3) 静默舍入)', () => {
+    const r = validateCastType('DECIMAL');
+    expect(r.ok).toBe(false);
+    expect(r.reason).toBe('bare_decimal');
+    expect(validateCastType('numeric').reason).toBe('bare_decimal'); // 别名同拒
+  });
+
+  it('DECIMAL(p,s):p∈[1,38] 且 s≤p', () => {
+    expect(validateCastType('decimal(38,6)')).toEqual({ ok: true, normalized: 'DECIMAL(38,6)' });
+    expect(validateCastType('DECIMAL(40,2)').reason).toBe('decimal_range'); // p>38
+    expect(validateCastType('DECIMAL(10,20)').reason).toBe('decimal_range'); // s>p
+  });
+
+  it('规范标量类型通过并归一(别名 int8→BIGINT、text→VARCHAR)', () => {
+    expect(validateCastType('double')).toEqual({ ok: true, normalized: 'DOUBLE' });
+    expect(validateCastType('int8')).toEqual({ ok: true, normalized: 'BIGINT' });
+    expect(validateCastType('BIGINT')).toEqual({ ok: true, normalized: 'BIGINT' });
+  });
+
+  it('空串与注入形串拒绝', () => {
+    expect(validateCastType('').reason).toBe('empty');
+    expect(validateCastType('   ').reason).toBe('empty');
+    expect(validateCastType('VARCHAR),(1').ok).toBe(false);
+    expect(validateCastType('DROP TABLE').ok).toBe(false);
+  });
+});
 
 describe('duckdbTypes', () => {
   /**

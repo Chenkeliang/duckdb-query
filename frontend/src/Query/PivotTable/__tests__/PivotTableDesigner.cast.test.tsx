@@ -7,10 +7,11 @@
  */
 import React from 'react';
 import { describe, it, expect, vi } from 'vitest';
-import { render, screen, waitFor, act } from '@testing-library/react';
+import { render, screen, waitFor, act, fireEvent } from '@testing-library/react';
 
 import { PivotTableDesigner } from '../PivotTableDesigner';
 import { AggregationFunction } from '@/types/pivotQuery';
+import { showErrorToast } from '@/utils/toastHelpers';
 import type { InferCastResult } from '@/api';
 
 vi.mock('react-i18next', () => ({
@@ -198,5 +199,35 @@ describe('PivotTableDesigner cast 推断(挂载)', () => {
         await act(async () => { d.resolve(okResult('DECIMAL(38,3)')); });
         await waitFor(() => expect(screen.getByTestId('tc').textContent).toBe('DECIMAL(38,3)'));
         expect(screen.getByTestId('status').textContent).toBe(''); // 不再 pending
+    });
+
+    it('手填非法 cast(裸 DECIMAL)→ 保持 unsafe 不放行 + 报错(复审 P1:与后端同口径)', () => {
+        const onInferCast = vi.fn();
+        vi.mocked(showErrorToast).mockClear();
+        // 文本 SUM + castStatus=unsafe → 值 chip 上显示 cast 输入(占位"请选类型")
+        const seed = (): SeedValue[] => [
+            { column: 'price', aggregation: AggregationFunction.SUM, castStatus: 'unsafe' },
+        ];
+        render(<Harness ctx="c" onInferCast={onInferCast} seed={seed()} />);
+        const input = screen.getByPlaceholderText('请选类型') as HTMLInputElement;
+        fireEvent.change(input, { target: { value: 'DECIMAL' } }); // 裸 DECIMAL
+        fireEvent.blur(input);
+        expect(screen.getByTestId('status').textContent).toBe('unsafe'); // 仍挡住
+        expect(screen.getByTestId('tc').textContent).toBe('');            // 未存
+        expect(showErrorToast).toHaveBeenCalled();
+    });
+
+    it('手填合法 cast(小写 decimal(38,6))→ 存规范拼写并放行', () => {
+        const onInferCast = vi.fn();
+        const seed = (): SeedValue[] => [
+            { column: 'price', aggregation: AggregationFunction.SUM, castStatus: 'unsafe' },
+        ];
+        render(<Harness ctx="c" onInferCast={onInferCast} seed={seed()} />);
+        const input = screen.getByPlaceholderText('请选类型') as HTMLInputElement;
+        fireEvent.change(input, { target: { value: 'decimal(38,6)' } });
+        fireEvent.blur(input);
+        expect(screen.getByTestId('tc').textContent).toBe('DECIMAL(38,6)'); // 规范拼写
+        expect(screen.getByTestId('src').textContent).toBe('manual');
+        expect(screen.getByTestId('status').textContent).toBe('');
     });
 });

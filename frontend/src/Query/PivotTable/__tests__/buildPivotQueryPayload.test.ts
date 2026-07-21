@@ -33,9 +33,19 @@ describe('buildLocalAggExpr (本地聚合表达式:复审 P1 COUNT_DISTINCT + ty
             .toBe('count(DISTINCT TRY_CAST("t" AS DECIMAL(38,2)))');
     });
 
-    it("'auto' 哨兵与空 typeConversion 不加 cast", () => {
+    it("'auto'(任意大小写)与空 typeConversion 不加 cast", () => {
         expect(buildLocalAggExpr(AggregationFunction.SUM, '"amt"', 'auto')).toBe('sum("amt")');
+        expect(buildLocalAggExpr(AggregationFunction.SUM, '"amt"', 'AUTO')).toBe('sum("amt")'); // 不再 AS AUTO
         expect(buildLocalAggExpr(AggregationFunction.SUM, '"amt"', undefined)).toBe('sum("amt")');
+    });
+
+    it('纵深防御:裸 DECIMAL / 非法类型不拼进 SQL(避免隐性 DECIMAL(18,3) 静默舍入)', () => {
+        // 裸 DECIMAL 未通过 validateCastType → 不套 TRY_CAST(而非 sum(TRY_CAST(.. AS DECIMAL)))
+        expect(buildLocalAggExpr(AggregationFunction.SUM, '"amt"', 'DECIMAL')).toBe('sum("amt")');
+        expect(buildLocalAggExpr(AggregationFunction.SUM, '"amt"', 'DROP TABLE')).toBe('sum("amt")');
+        // 合法完整 DECIMAL 用规范拼写
+        expect(buildLocalAggExpr(AggregationFunction.SUM, '"amt"', 'decimal(38,6)'))
+            .toBe('sum(TRY_CAST("amt" AS DECIMAL(38,6)))');
     });
 });
 

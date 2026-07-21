@@ -7,6 +7,7 @@ import { AggregationFunction } from '@/types/pivotQuery';
 import type { AttachDatabase } from '@/utils/sqlUtils';
 import type { SelectedTable } from '@/types/SelectedTable';
 import { normalizeSelectedTable } from '@/utils/tableUtils';
+import { validateCastType } from '@/utils/duckdbTypes';
 import {
     createTableReference,
     generateExternalTableReference,
@@ -69,20 +70,25 @@ export function mapPivotAggregation(agg: AggregationFunction): string {
 /** 本地(前端生成)SQL 的聚合表达式,统一处理两处枚举/类型细节(复审 P1):
  *  - COUNT_DISTINCT 的枚举值是 "count_distinct",不是 DuckDB 函数(会 Catalog Error)——展开为
  *    count(DISTINCT expr);
- *  - typeConversion:文本列按数值聚合前须转换,否则 sum(VARCHAR) → Binder Error。用 TRY_CAST(无效值
- *    转 NULL 被聚合忽略,这正是本能力的目的)。本地 SQL 无论表来源都最终在 DuckDB 执行(本机表走
- *    executeDuckDBSQL、联邦表走 executeFederatedQuery 的 ATTACH),故 TRY_CAST 恒有效——与后端生成器
- *    一致;若按方言退回 CAST,联邦脏文本会硬报错反而毁掉优雅转换。
+ *  - typeConversion 经 validateCastType 与后端【同一口径】校验归一后才拼进 TRY_CAST:裸 DECIMAL
+ *    (隐性 DECIMAL(18,3) 静默舍入)、AS AUTO(Catalog Error)、非法串都不会落进 SQL,避免"同一配置
+ *    仅因有无透视列就产生不同语义"。TRY_CAST(无效值转 NULL 被聚合忽略)——本地 SQL 无论本机/联邦都
+ *    最终在 DuckDB 执行(联邦走 ATTACH),故 TRY_CAST 恒有效,与后端生成器一致。手填非法值本应在
+ *    designer 入口就被挡为 unsafe;这里是纵深防御,不放行未校验值。
  *  quotedColumn 须已按方言转义。 */
 export function buildLocalAggExpr(
     aggregation: AggregationFunction,
     quotedColumn: string,
     typeConversion?: string
 ): string {
-    const expr =
-        typeConversion && typeConversion !== 'auto'
-            ? `TRY_CAST(${quotedColumn} AS ${typeConversion})`
-            : quotedColumn;
+    let expr = quotedColumn;
+    if (typeConversion) {
+        const v = validateCastType(typeConversion);
+        // 仅在校验通过且非 'auto' 哨兵时套 TRY_CAST,并用【规范拼写】(与后端一致)
+        if (v.ok && v.normalized && v.normalized !== 'auto') {
+            expr = `TRY_CAST(${quotedColumn} AS ${v.normalized})`;
+        }
+    }
     return aggregation === AggregationFunction.COUNT_DISTINCT
         ? `count(DISTINCT ${expr})`
         : `${aggregation}(${expr})`;
