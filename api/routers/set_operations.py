@@ -319,12 +319,10 @@ def execute_set_operation(
         limit = config_manager.get_app_config().max_query_rows
 
         with _set_operation_connection(request, query_id) as (con, alias_set):
-            if request.preview or (not request.save_as_table):
-                sql = generate_set_operation_sql(
-                    config, preview_limit=limit, attach_aliases=alias_set
-                )
-            else:
-                sql = generate_set_operation_sql(config, attach_aliases=alias_set)
+            # 基础 SQL 统一不带系统 LIMIT(分支/整体都不带):预览时只在最外层追加一次。
+            # 旧写法既让生成器按 preview_limit 加、下面又拼一层,分支截断还会改变
+            # EXCEPT/INTERSECT 的结果(复审验收 #11)。
+            sql = generate_set_operation_sql(config, attach_aliases=alias_set)
 
             if request.preview:
                 # 预览模式：使用配置的max_query_rows限制

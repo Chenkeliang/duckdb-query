@@ -13,14 +13,16 @@ _sqlglot_logger = logging.getLogger("sqlglot")
 
 
 def apply_row_limit_choice(sql: str, apply_limit: bool) -> str:
-    """按用户【显式选择】决定异步/导出/保存的行数范围,不再从 SQL 文本猜测系统是否追加过 LIMIT。
+    """按用户【显式选择】决定异步/导出/保存的行数范围,不从 SQL 文本猜测来源。
 
-    - apply_limit=False(全量):逐字执行,尊重用户自己写的 LIMIT,不加不删;
-    - apply_limit=True(限制):缺 LIMIT 时追加 max_query_rows(有则保留)。
+    - apply_limit=False(全量):逐字执行——"全量"的准确含义是【不应用系统自动 LIMIT】,
+      不是删除用户写的 LIMIT;用户自带的 LIMIT 原样生效;
+    - apply_limit=True(限制):最外层缺 LIMIT 时补默认 max_query_rows;用户已写(5000/12000)
+      则用用户值——默认值是"未写时的兜底",不是硬上限,绝不把 12000 压成 10000。
+      判定走 has_top_level_limit(AST),不用正则/replace/数值猜测。
 
     旧的 remove_auto_added_limit 仅凭 "LIMIT 值 == max_query_rows" 就判为系统追加并删除,会误删
-    用户手写的等值 LIMIT(SELECT ... LIMIT 10000 被静默删成全表,复审 P1)。行数范围本是用户意图,
-    应由请求显式携带,不能靠文本+数值反推。"""
+    用户手写的等值 LIMIT(复审 P1)。行数范围是用户意图,由请求显式携带。"""
     if not apply_limit:
         return sql.strip()
     from core.common.config_manager import config_manager
@@ -29,7 +31,7 @@ def apply_row_limit_choice(sql: str, apply_limit: bool) -> str:
         max_rows = config_manager.get_app_config().max_query_rows
     except Exception:  # pylint: disable=broad-except
         max_rows = 10000
-    return ensure_query_has_limit(sql, max_rows)
+    return ensure_query_has_limit(sql.strip(), max_rows)
 
 
 def get_join_type_sql(join_type: str) -> str:
@@ -81,15 +83,42 @@ def statement_accepts_limit(query: str) -> bool:
     return isinstance(tree, _LIMIT_ACCEPTING_TYPES)
 
 
+def has_top_level_limit(query: str) -> bool:
+    """最外层语句是否已带 LIMIT——按 sqlglot AST 判定,不用文本正则(复审 P2:
+    末尾数字正则会把 `LIMIT 5 -- comment` 误判为无 LIMIT、再追加出双 LIMIT 语法错误)。
+
+    - CTE(WITH…SELECT…LIMIT)/UNION 等集合运算的 LIMIT 归属由 AST 决定;
+    - 仅子查询内的 LIMIT 属于用户业务 SQL,不算"最外层已有"(外层默认仍可应用);
+    - 解析失败 → 保守返回 True(宁可不追加,也不对看不懂的语句盲目改写)。
+    """
+    stripped = query.strip().rstrip(";")
+    prev_level = _sqlglot_logger.level
+    _sqlglot_logger.setLevel(logging.ERROR)
+    try:
+        tree = sqlglot.parse_one(stripped, read="duckdb")
+    except Exception:  # pylint: disable=broad-except
+        return True
+    finally:
+        _sqlglot_logger.setLevel(prev_level)
+    if tree is None:
+        return True
+    return tree.args.get("limit") is not None
+
+
 def ensure_query_has_limit(query: str, default_limit: int = 1000) -> str:
-    """Append LIMIT when missing (skip DDL/DESCRIBE/SHOW etc.)."""
+    """最外层缺 LIMIT 时追加默认值(仅对可接受 LIMIT 的语句)。
+
+    默认值语义:用户【未写】最外层 LIMIT 时的兜底,不是硬上限——用户写了 12000 就用 12000,
+    绝不压缩。追加用换行分隔(`\\nLIMIT n`):原 SQL 以行尾注释结尾时,同行拼接会把 LIMIT
+    吞进注释里。判定走 has_top_level_limit(AST),不用正则。
+    """
     query_stripped = query.strip()
 
     if not statement_accepts_limit(query_stripped):
         return query
+    if has_top_level_limit(query_stripped):
+        return query
 
-    if not re.search(r"\sLIMIT\s+\d+\s*($|;)", query, re.IGNORECASE):
-        if query_stripped.endswith(";"):
-            return f"{query_stripped[:-1]} LIMIT {default_limit};"
-        return f"{query_stripped} LIMIT {default_limit}"
-    return query
+    if query_stripped.endswith(";"):
+        return f"{query_stripped[:-1]}\nLIMIT {default_limit};"
+    return f"{query_stripped}\nLIMIT {default_limit}"

@@ -78,7 +78,7 @@
 | POST | `/api/duckdb/execute` | 对象 | `executeDuckDBSQL`；`data`: `columns`, `column_types[]`（`{name, duckdb_type}`；来自 `DESCRIBE (<sql>)`，PRAGMA/EXPLAIN/多语句等不可 DESCRIBE 时由同一次执行的游标 description 类型兜底）, `data`, `row_count`, `preview_limit_applied?`；499 / 500 |
 | POST | `/api/duckdb/federated-query` | 对象 | `executeFederatedQuery`；同上含 `column_types`；额外 `optimized_sql`（半连接下推改写后 SQL）、`suggestions[]`（审计列时间界建议，**不自动改结果**）；404 `connection_id`；503 ATTACH；499 / 500 / **504 超时** |
 | POST | `/api/query/cancel/{request_id}` | 对象 | `cancelSyncQuery`；404 `QUERY_NOT_FOUND`（无活跃同步查询） |
-| POST | `/api/save_query_to_duckdb` | 对象 | 保存结果表元数据（依请求） | `saveQueryToDuckDB` |
+| POST | `/api/save_query_to_duckdb` | 对象 | 保存结果表元数据（依请求）；`apply_row_limit`（默认 `false`，兼容 `applyRowLimit`）语义与 `/api/async-tasks` 相同 | `saveQueryToDuckDB` |
 | GET | `/api/duckdb/tables` | **列表** | `items[]`: `table_name`, `row_count`, `column_count`, `created_at` | `getDuckDBTables` |
 | GET | `/api/duckdb/tables/{name}` | 对象 | 表详情 / `table` 包装 | `getDuckDBTableDetail` |
 | DELETE | `/api/duckdb/tables/{name}` | 对象 | `deleted_table` | `deleteDuckDBTable` |
@@ -143,7 +143,7 @@
 |------|------|--------|----------|
 | GET | `/api/async-tasks` | **列表** | `listAsyncTasks`（`limit`, `offset`, `order_by`） |
 | GET | `/api/async-tasks/{id}` | 对象 | `getAsyncTask`；404 `RESOURCE_NOT_FOUND` |
-| POST | `/api/async-tasks` | 对象 | `submitAsyncQuery`（`task_id`；可 `attach_databases` 或由 `datasource` 推导）；400 空 SQL / attach 校验 |
+| POST | `/api/async-tasks` | 对象 | `submitAsyncQuery`（`task_id`；可 `attach_databases` 或由 `datasource` 推导）；`apply_row_limit`（默认 `false`）＝行数范围显式选择：`false`＝全量（逐字执行提交的 SQL，不加系统 LIMIT、尊重用户自带 LIMIT），`true`＝最外层缺 LIMIT 时补默认 `max_query_rows`（用户已写则用用户值，**默认值不是硬上限**）；判定走 sqlglot AST（`has_top_level_limit`），禁止按 LIMIT 数值猜来源；**前端须提交 base_sql（无系统预览 LIMIT）**；retry 保留原任务选择；400 空 SQL / attach 校验 |
 | POST | `/api/async-tasks/{id}/cancel` | 对象 | `cancelAsyncTask`；404 任务不存在；400 `TASK_CANCEL_NOT_ALLOWED` |
 | POST | `/api/async-tasks/{id}/retry` | 对象 | `retryAsyncTask`；404 / 400 缺 SQL |
 | POST | `/api/async-tasks/{id}/download` | **blob** 或 JSON 错误体 | `downloadAsyncResult`（体：`format`）；400 格式；404 文件 |
@@ -193,7 +193,7 @@ BY NAME、LIMIT、预览 vs 执行语义见 [QUERY_BEHAVIOR_ZH.md](QUERY_BEHAVIO
 
 | 方法 | 路径 | 成功 `data` | 前端 |
 |------|------|-------------|------|
-| POST | `/api/query-results/export` | `file_id`, `download_url`, `format`, `row_count_estimate?` | `exportQueryResults` |
+| POST | `/api/query-results/export` | `file_id`, `download_url`, `format`, `row_count_estimate?` | `exportQueryResults`；`apply_row_limit`（默认 `false`）语义与 `/api/async-tasks` 相同（全量＝不加系统 LIMIT；限制＝缺则补默认，不封顶用户值）；前端提交 base_sql |
 | GET | `/api/query-results/export/{file_id}/download` | 文件流 | `getQueryExportDownloadUrl` + 浏览器下载 |
 | POST | `/api/query-results/export/{file_id}/save-to-path` | `path`, `size_bytes` | `saveQueryExportToPath`（体：`target_path`）；**桌面模式专用**（同 async export-to-path 门控，非桌面 403）；400 路径非法；404 文件不存在 |
 

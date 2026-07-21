@@ -19,6 +19,15 @@ def test_dedupe_column_names_stable_and_ordered():
     assert dedupe_column_names(["id", "id_1", "id"]) == ["id", "id_1", "id_2"]
 
 
+def test_dedupe_column_names_case_insensitive_conflicts():
+    """复审 P1:DuckDB 标识符大小写不敏感——id 与 ID 是同一列名(read_csv 静默改名、
+    CREATE TABLE 直接报错)。冲突键按 casefold 判定,显示大小写保留。"""
+    assert dedupe_column_names(["id", "ID"]) == ["id", "ID_1"]
+    assert dedupe_column_names(["ID", "id", "Id"]) == ["ID", "id_1", "Id_2"]
+    # 生成的后缀名也按 casefold 避让已有名(ID_1 与 id_1 冲突)
+    assert dedupe_column_names(["id", "id_1", "ID"]) == ["id", "id_1", "ID_2"]
+
+
 def test_fetch_query_records_dedupes_columns_and_types_in_sync():
     sql = "SELECT * FROM (VALUES (1, 'x')) AS t(id, id)"
     with with_duckdb_connection() as con:

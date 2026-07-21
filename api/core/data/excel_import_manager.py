@@ -393,21 +393,24 @@ def _repair_excel_coordinates(file_path: str) -> Optional[str]:
 
 
 def ensure_unique_columns(names: List[str]) -> List[str]:
+    # 冲突键用 casefold(保留显示大小写):DuckDB 列名大小写不敏感,id 与 ID 冲突——
+    # 大小写敏感比较会漏掉,CREATE TABLE 直接 "Column with name ID already exists"(与
+    # core.common.utils.dedupe_column_names 同口径,复审 P1)
     seen: Dict[str, int] = {}
     result: List[str] = []
     for name in names:
         current = name or "column"
-        base = current
-        if base not in seen:
-            seen[base] = 0
-            result.append(base)
+        key = current.casefold()
+        if key not in seen:
+            seen[key] = 0
+            result.append(current)
         else:
-            seen[base] += 1
-            candidate = f"{base}_{seen[base]}"
-            while candidate in seen:
-                seen[base] += 1
-                candidate = f"{base}_{seen[base]}"
-            seen[candidate] = 0
+            seen[key] += 1
+            candidate = f"{current}_{seen[key]}"
+            while candidate.casefold() in seen:
+                seen[key] += 1
+                candidate = f"{current}_{seen[key]}"
+            seen[candidate.casefold()] = 0
             result.append(candidate)
     return result
 

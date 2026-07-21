@@ -104,6 +104,29 @@ def test_paste_data_dedupes_duplicate_column_names():
         _cleanup_table(table_name)
 
 
+def test_paste_data_dedupes_case_insensitive_duplicates():
+    """复审 P1:id 与 ID 在 DuckDB 里是同一列名(大小写不敏感),大小写敏感去重会漏掉,
+    底层 read_csv 静默把 ID 改成 ID_1 而 Python 侧仍按原名引用 → 第二列数据丢失。"""
+    table_name = f"paste_ci_{uuid4().hex[:8]}"
+    payload = {
+        "table_name": table_name,
+        "column_names": ["id", "ID"],
+        "column_types": ["VARCHAR", "VARCHAR"],
+        "data_rows": [["left", "right"]],
+        "delimiter": ",",
+        "has_header": False,
+    }
+    response = client.post("/api/paste-data", json=payload)
+    try:
+        assert response.status_code == 200, response.text
+        with with_duckdb_connection() as con:
+            names = [r[1] for r in con.execute(f'PRAGMA table_info("{table_name}")').fetchall()]
+            assert names == ["id", "ID_1"]
+            assert con.execute(f'SELECT * FROM "{table_name}"').fetchall() == [("left", "right")]
+    finally:
+        _cleanup_table(table_name)
+
+
 def test_paste_data_defaults_for_empty_cells():
     table_name = f"paste_unit_{uuid4().hex[:8]}"
     payload = {

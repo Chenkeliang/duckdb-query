@@ -83,22 +83,25 @@ def dedupe_column_names(names: List[str]) -> List[str]:
     dict 记录会静默丢前值,前端按列名建类型 Map 也会键碰撞——列名去重必须在 columns、
     records、column_types/cursor_types 三处用【同一口径】,否则去重后的列拿不到（或拿错）类型
     （复审:columns=[id,id_1] 而 column_types=[(id,..),(id,..)] → id_1 无类型、id 被覆盖）。
+
+    冲突键用 casefold(保留原始显示大小写):DuckDB 标识符大小写不敏感——id 与 ID 是同一列名,
+    read_csv 会把第二个静默改名(ID→ID_1)而 CREATE TABLE 直接报错;按大小写敏感比较会漏掉这类
+    冲突,粘贴路径曾因此仍旧丢第二列数据(复审 P1)。
     """
-    if len(set(names)) == len(names):
-        return list(names)
-    seen: Dict[str, int] = {}
+    seen: Dict[str, int] = {}  # casefold 键 → 后缀计数
     deduped: List[str] = []
     for name in names:
-        if name not in seen:
-            seen[name] = 0
+        key = name.casefold()
+        if key not in seen:
+            seen[key] = 0
             deduped.append(name)
         else:
-            seen[name] += 1
-            candidate = f"{name}_{seen[name]}"
-            while candidate in seen:
-                seen[name] += 1
-                candidate = f"{name}_{seen[name]}"
-            seen[candidate] = 0
+            seen[key] += 1
+            candidate = f"{name}_{seen[key]}"
+            while candidate.casefold() in seen:
+                seen[key] += 1
+                candidate = f"{name}_{seen[key]}"
+            seen[candidate.casefold()] = 0
             deduped.append(candidate)
     return deduped
 
