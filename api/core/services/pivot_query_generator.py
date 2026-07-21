@@ -463,8 +463,10 @@ def _build_totals_selects(
     selects: List[str] = []
 
     if include_subtotals and row_dimensions:
-        # Generate subtotal for each prefix of the row dimensions (bottom-up)
-        for depth in range(len(row_dimensions), 0, -1):
+        # 小计 = 对行维度【真前缀】的卷积(深度 N-1 → 1)。深度=N(全部行维度)就是基础 pivot
+        # 本身、粒度相同,若纳入会把每条基础行原样再发一次(重复行 bug);单行维度则无真前缀、
+        # 无小计(总计已覆盖其汇总)。
+        for depth in range(len(row_dimensions) - 1, 0, -1):
             prefix = row_dimensions[:depth]
             remaining = row_dimensions[depth:]
 

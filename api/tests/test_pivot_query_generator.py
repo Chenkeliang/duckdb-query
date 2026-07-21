@@ -417,6 +417,77 @@ class TestPivotQueryModeGeneration:
         rows = conn.execute(result.final_sql).fetchall()  # 不应抛 Binder Error
         assert len(rows) == 2
 
+    def test_subtotals_single_row_dim_no_duplicate_base_rows(self):
+        """回归: 小计的深度范围曾含【深度=N】(全部行维度=基础粒度),把每条基础行原样
+        再发一次。单行维度尤甚:开 include_subtotals 后每条基础行重复两次。修复后单行维度
+        无真前缀 → 无小计行,基础行仅一次;总计仍在。"""
+        import duckdb
+
+        config = PivotQueryConfig(table_name="sales", filters=[])
+        pivot_config = PivotConfig(
+            rows=["region"],
+            columns=["year"],
+            values=[PivotValueConfig(column="revenue", aggregation=AggregationFunction.SUM)],
+            manual_column_values=["2022", "2023"],
+            include_subtotals=True,
+            include_grand_totals=True,
+            strategy="native",
+        )
+        with patch("core.services.pivot_query_generator.config_manager") as mock_manager:
+            mock_manager.get_app_config.return_value = Mock(
+                enable_pivot_tables=True, pivot_table_extension="pivot_table"
+            )
+            result = generate_pivot_query_sql(config, pivot_config=pivot_config)
+
+        conn = duckdb.connect()
+        conn.execute(
+            "CREATE TABLE sales(region VARCHAR, year VARCHAR, revenue INT);"
+            "INSERT INTO sales VALUES('北京','2022',100),('北京','2023',200),"
+            "('上海','2022',300),('上海','2023',50)"
+        )
+        rows = conn.execute(result.final_sql).fetchall()
+        regions = [r[0] for r in rows]
+        # 单行维度:每个真实 region 恰一次(不重复)+ 总计;无 '全部' 小计行
+        assert regions.count("北京") == 1
+        assert regions.count("上海") == 1
+        assert regions.count("总计") == 1
+        assert "全部" not in regions
+        assert len(rows) == 3
+
+    def test_subtotals_two_row_dims_rollup(self):
+        """双行维度:小计对真前缀(depth=1)卷积,第二维填 '全部';基础行不重复。"""
+        import duckdb
+
+        config = PivotQueryConfig(table_name="s2", filters=[])
+        pivot_config = PivotConfig(
+            rows=["region", "city"],
+            columns=["year"],
+            values=[PivotValueConfig(column="amt", aggregation=AggregationFunction.SUM)],
+            manual_column_values=["2022", "2023"],
+            include_subtotals=True,
+            include_grand_totals=True,
+            strategy="native",
+        )
+        with patch("core.services.pivot_query_generator.config_manager") as mock_manager:
+            mock_manager.get_app_config.return_value = Mock(
+                enable_pivot_tables=True, pivot_table_extension="pivot_table"
+            )
+            result = generate_pivot_query_sql(config, pivot_config=pivot_config)
+
+        conn = duckdb.connect()
+        conn.execute(
+            "CREATE TABLE s2(region VARCHAR, city VARCHAR, year VARCHAR, amt INT);"
+            "INSERT INTO s2 VALUES('west','A','2022',10),('west','A','2023',20),"
+            "('west','B','2022',5),('east','A','2022',30)"
+        )
+        rows = conn.execute(result.final_sql).fetchall()
+        # region 小计:city='全部'(west 汇总、east 汇总各一条)
+        region_subtotals = {r[0]: (r[2], r[3]) for r in rows if r[1] == "全部"}
+        assert region_subtotals["west"] == (15, 20)   # 2022=10+5, 2023=20
+        assert region_subtotals["east"] == (30, None)
+        # 总计一条
+        assert sum(1 for r in rows if r[0] == "总计") == 1
+
     def test_native_pivot_single_agg_totals_executes(self):
         """回归: 静态 pivot(manual_column_values)+ 总计 曾用错误别名
         ({agg}_{col}_{value}=sum_revenue_2022) 注入 totals,而 DuckDB 单聚合列名
