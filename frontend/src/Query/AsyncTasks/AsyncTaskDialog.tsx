@@ -277,7 +277,7 @@ export const AsyncTaskDialog: React.FC<AsyncTaskDialogProps> = ({
             </p>
           </div>
 
-          {/* 行数范围:默认全量;勾选限制到系统上限。任何情况下都保留用户自己写的 LIMIT */}
+          {/* 行数范围:默认全量;勾选后仅为无外层 LIMIT 的 SQL 追加系统默认值 */}
           <div className="flex items-start gap-2">
             <Checkbox
               id="applyRowLimit"
@@ -290,7 +290,7 @@ export const AsyncTaskDialog: React.FC<AsyncTaskDialogProps> = ({
                 {t('async.dialog.limitRows', '限制行数')}
               </Label>
               <p className="text-xs text-muted-foreground">
-                {t('async.dialog.limitRowsHint', '默认导出全部行;勾选则限制到系统预览上限。无论如何都保留你在 SQL 里写的 LIMIT')}
+                {t('async.dialog.limitRowsHint', '默认导出全部行；勾选后，仅当 SQL 没有最外层 LIMIT 时追加系统预览行数。SQL 中手写的 LIMIT 始终原样保留')}
               </p>
             </div>
           </div>

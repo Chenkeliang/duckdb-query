@@ -18,6 +18,7 @@ import {
   quoteIdent,
   createTableReference,
   needsQuoting,
+  resolveBusinessSql,
   type DatabaseConnection,
   type TableReference,
 } from '../sqlUtils';
@@ -73,6 +74,15 @@ const mixedTablesArb = fc.array(fc.oneof(duckdbTableArb, externalTableArb), {
 });
 
 describe('Federated Query SQL Utils', () => {
+  it('prefers business SQL over a preview SQL with a system LIMIT', () => {
+    expect(
+      resolveBusinessSql('SELECT * FROM orders', 'SELECT * FROM orders\nLIMIT 10000')
+    ).toBe('SELECT * FROM orders');
+    expect(resolveBusinessSql(undefined, 'SELECT * FROM orders LIMIT 5')).toBe(
+      'SELECT * FROM orders LIMIT 5'
+    );
+  });
+
   describe('Property 1: Attach databases list consistency', () => {
     /**
      * **Property 1: Attach databases list consistency**

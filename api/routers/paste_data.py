@@ -1,5 +1,4 @@
 import logging
-from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import uuid4
 
@@ -16,7 +15,7 @@ from core.data.file_datasource_manager import (
     build_table_metadata_snapshot,
     file_datasource_manager,
 )
-from core.common.timezone_utils import get_current_time_iso  # 导入时区工具
+from core.common.timezone_utils import get_current_time_iso, get_storage_time
 from core.common.utils import dedupe_column_names
 from utils.response_helpers import (
     create_success_response,
@@ -62,7 +61,7 @@ def _sanitize_table_name(table_name: str) -> str:
     filtered = "".join(c for c in table_name if c.isalnum() or c in ("_", "-")).strip()
     if filtered:
         return filtered
-    return f"pasted_table_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+    return f"pasted_table_{get_storage_time().strftime('%Y%m%d_%H%M%S')}"
 
 
 # 标识符转义统一走 core.common.sql_identifiers(消灭历史 8 份副本)

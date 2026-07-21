@@ -68,6 +68,7 @@ import {
   formatTableReference,
   createTableReference,
   getSourceFromSelectedTable,
+  resolveBusinessSql,
 } from '@/utils/sqlUtils';
 import {
   FilterBar,
@@ -1947,9 +1948,10 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
   }, [joinRestoreRequest?.token, onClearJoinRestoreRequest]);
 
   const saveFavoriteSql = React.useMemo(() => {
-    if (!sql) return '';
-    return appendJoinWorkspaceToSql(sql, getJoinSnapshot());
-  }, [sql, getJoinSnapshot]);
+    const businessSql = resolveBusinessSql(baseSql, sql);
+    if (!businessSql) return '';
+    return appendJoinWorkspaceToSql(businessSql, getJoinSnapshot());
+  }, [baseSql, sql, getJoinSnapshot]);
 
   return (
     <div className="flex flex-col h-full overflow-hidden bg-surface">

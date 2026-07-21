@@ -170,3 +170,8 @@ def ensure_query_has_limit(query: str, default_limit: int = 1000) -> str:
         return query
 
     return _append_top_level_limit(query_stripped, default_limit)
+
+
+def prepare_query_for_embedding(query: str) -> str:
+    """Return one query without its terminal delimiter, ready for ``COPY (...)``."""
+    return _strip_trailing_semicolon_segment(query.strip())

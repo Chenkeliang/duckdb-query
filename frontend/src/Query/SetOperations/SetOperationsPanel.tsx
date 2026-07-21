@@ -22,6 +22,7 @@ import {
   extractAttachDatabases,
   generateExternalTableReference,
   getSourceFromSelectedTable,
+  resolveBusinessSql,
 } from '@/utils/sqlUtils';
 import { SQLHighlight } from '@/components/SQLHighlight';
 import { SaveQueryDialog } from '../Bookmarks/SaveQueryDialog';
@@ -816,7 +817,7 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
       <SaveQueryDialog
         open={isSaveDialogOpen}
         onOpenChange={setIsSaveDialogOpen}
-        sql={sql || ''}
+        sql={resolveBusinessSql(generatedBaseSql, sql)}
       />
 
       {/* 异步任务对话框:提交无系统 LIMIT 的基础 SQL——sqlForExecute 把 LIMIT maxQueryRows

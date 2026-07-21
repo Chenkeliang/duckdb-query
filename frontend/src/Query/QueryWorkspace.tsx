@@ -73,7 +73,8 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL, onOp
     async (table: SelectedTable) => {
       const { qualifiedName, attachDatabase } = generateExternalTableReference(table);
 
-      const sql = `SELECT * FROM ${qualifiedName} LIMIT ${maxQueryRows}`;
+      const baseSql = `SELECT * FROM ${qualifiedName}`;
+      const sql = `${baseSql} LIMIT ${maxQueryRows}`;
 
       // 构建 TableSource
       let source: TableSource;
@@ -89,12 +90,12 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL, onOp
       }
 
       try {
-        await handleQueryExecute(sql, source);
+        await handleQueryExecute(sql, source, { baseSql });
       } catch (error) {
         showErrorToast(t, error as Error, t('query.previewFailed', { message: (error as Error).message }));
       }
     },
-    [handleQueryExecute, t]
+    [handleQueryExecute, maxQueryRows, t]
   );
 
   // 数据画像：SUMMARIZE 表 → 走标准执行路径，结果进结果网格（复用全部网格能力）
@@ -128,7 +129,8 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL, onOp
         return;
       }
 
-      const sql = `SELECT * FROM ${qualifiedName} LIMIT ${maxQueryRows}`;
+      const baseSql = `SELECT * FROM ${qualifiedName}`;
+      const sql = `${baseSql} LIMIT ${maxQueryRows}`;
 
       // 使用联邦查询模式
       const source: TableSource = {
@@ -138,13 +140,13 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL, onOp
       };
 
       try {
-        await handleQueryExecute(sql, source);
+        await handleQueryExecute(sql, source, { baseSql });
         setAutoOpenImportDialog(true);
       } catch (error) {
         showErrorToast(t, error as Error, t("query.import.error", `导入失败: ${(error as Error).message}`));
       }
     },
-    [handleQueryExecute, t]
+    [handleQueryExecute, maxQueryRows, t]
   );
 
   // 删除表

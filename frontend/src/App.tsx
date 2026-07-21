@@ -50,6 +50,7 @@ import { ShortcutProvider, useKeyboardShortcuts } from "./Settings/shortcuts";
 
 import Logo from "./assets/duckq-logo.svg";
 import { openExternal } from "./desktop/openExternal";
+import { testDatabaseConnection } from "@/api";
 const WelcomePage = lazy(() => import("./WelcomePage"));
 
 // Types
@@ -345,10 +346,6 @@ const AppInner: React.FC = () => {
       const handleTestConnection = async (params: DatabaseConnectParams) => {
         try {
           setTestingDb(true);
-          // [Fix] Removed refreshDatabaseConnection dynamic import and logic
-          // Always use testDatabaseConnection which now supports ID-based password inheritance
-          const { testDatabaseConnection } = await import("@/api");
-
           // Unified test flow: pass ID + Params. Backend handles stored password merging.
           const result: { success?: boolean; message?: string; messageCode?: string } | undefined =
             await testDatabaseConnection({

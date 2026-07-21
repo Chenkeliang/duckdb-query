@@ -33,6 +33,8 @@ import {
   getSourceFromSelectedTable,
   parseSQLTableReferences,
 } from '@/utils/sqlUtils';
+import { tokenizeSQL } from '@/utils/sqlTokenizer';
+import { formatSQLDataGrip } from '@/utils/sqlFormatter';
 import { useAiStatus } from '@/hooks/useAiStatus';
 import { AiChatDrawer, ChatToggleButton } from './ai/AiChatDrawer';
 
@@ -44,7 +46,11 @@ export interface SQLQueryPanelProps {
   /** 选中的表（支持 SelectedTable[] 或 string[]） */
   selectedTables?: SelectedTable[];
   /** 执行回调（统一执行入口） */
-  onExecute?: (sql: string, source?: TableSource) => Promise<void>;
+  onExecute?: (
+    sql: string,
+    source?: TableSource,
+    options?: { baseSql?: string }
+  ) => Promise<void>;
   /** 执行成功回调（旧接口，保留兼容） */
   onExecuteSuccess?: (data: any, sql: string) => void;
   /** 执行失败回调 */
@@ -87,6 +93,10 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
   const [dismissedWarning, setDismissedWarning] = useState(false);
   const [asyncDialogOpen, setAsyncDialogOpen] = useState(false);
   const [saveDialogOpen, setSaveDialogOpen] = useState(false);
+  const [systemLimitedSql, setSystemLimitedSql] = useState<{
+    displaySql: string;
+    baseSql: string;
+  } | null>(null);
 
   // Global History
   const { addToHistory } = useGlobalHistory();
@@ -250,56 +260,111 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
   React.useEffect(() => {
     if (currentTableKey && currentTableKey !== lastSelectedTableKey && selectedTables.length > 0) {
       const { qualifiedName } = generateExternalTableReference(selectedTables[0]);
-      const defaultSQL = `SELECT * FROM ${qualifiedName} LIMIT ${maxQueryRows}`;
-      setSQL(defaultSQL);
+      const baseSql = `SELECT * FROM ${qualifiedName}`;
+      const displaySql = `${baseSql} LIMIT ${maxQueryRows}`;
+      setSystemLimitedSql({ displaySql, baseSql });
+      setSQL(displaySql);
       setLastSelectedTableKey(currentTableKey);
     }
   }, [currentTableKey, lastSelectedTableKey, setSQL, maxQueryRows, selectedTables]);
 
   // 处理预览 SQL（仅预填不自动执行）；previewNonce 保证同串重复加载也能回填
   useEffect(() => {
-    if (previewSQL && previewSQL !== sql) {
-      setSQL(previewSQL);
+    if (previewSQL) {
+      setSystemLimitedSql(null);
+      if (previewSQL !== sql) {
+        setSQL(previewSQL);
+      }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [previewSQL, previewNonce, setSQL]);
 
-  // 智能 LIMIT 处理（参考老 UI 的 applyDisplayLimit 逻辑）
-  // - 用户无 LIMIT：添加配置的 max_query_rows
-  // - 用户 LIMIT ≤ max_query_rows：保留用户设置
-  // - 用户 LIMIT > max_query_rows：前端显示限制为 max_query_rows
-  const applyDisplayLimit = useCallback((sqlStr: string): { displaySql: string; originalSql: string } => {
-    const sqlTrimmed = sqlStr.trim().replace(/;$/, '');
-
-    // 只对 SELECT 语句处理
-    if (!/^\s*SELECT\b/i.test(sqlTrimmed)) {
-      return { displaySql: sqlTrimmed, originalSql: sqlTrimmed };
+  // 页面预览只在最外层没有 LIMIT 时追加系统默认值；用户 LIMIT 永不改写。
+  const applyDisplayLimit = useCallback((sqlStr: string): {
+    displaySql: string;
+    baseSql: string;
+    systemLimitApplied: boolean;
+  } => {
+    const baseSql = sqlStr.trim();
+    if (systemLimitedSql?.displaySql === baseSql) {
+      return { ...systemLimitedSql, systemLimitApplied: true };
     }
 
-    // 检查是否已有 LIMIT
-    const limitMatch = sqlTrimmed.match(/\bLIMIT\s+(\d+)(\s+OFFSET\s+\d+)?\s*$/i);
+    const tokens = tokenizeSQL(baseSql);
+    const firstToken = tokens[0];
+    const firstKeyword = firstToken?.type === 'keyword'
+      ? firstToken.value.toUpperCase()
+      : '';
 
-    if (limitMatch) {
-      const userLimit = parseInt(limitMatch[1], 10);
-      if (userLimit > maxQueryRows) {
-        // 用户 LIMIT > maxQueryRows，前端显示限制为 maxQueryRows
-        const displaySql = sqlTrimmed.replace(
-          /\bLIMIT\s+\d+(\s+OFFSET\s+\d+)?\s*$/i,
-          `LIMIT ${maxQueryRows}`
-        );
-        return { displaySql, originalSql: sqlTrimmed };
-      } else {
-        // 用户 LIMIT ≤ maxQueryRows，保留用户设置
-        return { displaySql: sqlTrimmed, originalSql: sqlTrimmed };
+    let depth = 0;
+    let hasTopLevelLimit = false;
+    let hasMultipleStatements = false;
+    let withStatementType: string | undefined;
+    tokens.forEach((token, index) => {
+      if (token.type === 'lparen') {
+        depth += 1;
+      } else if (token.type === 'rparen') {
+        depth = Math.max(0, depth - 1);
+      } else if (depth === 0 && token.type === 'keyword') {
+        const keyword = token.value.toUpperCase();
+        if (
+          firstKeyword === 'WITH' &&
+          index > 0 &&
+          !withStatementType &&
+          ['SELECT', 'INSERT', 'UPDATE', 'DELETE'].includes(keyword)
+        ) {
+          withStatementType = keyword;
+        }
+        if (keyword === 'LIMIT') {
+          hasTopLevelLimit = true;
+        }
+      } else if (
+        depth === 0 &&
+        token.type === 'semicolon' &&
+        index !== tokens.length - 1
+      ) {
+        hasMultipleStatements = true;
       }
-    } else {
-      // 用户无 LIMIT，添加默认 LIMIT
-      return {
-        displaySql: `${sqlTrimmed} LIMIT ${maxQueryRows}`,
-        originalSql: sqlTrimmed,
-      };
+    });
+
+    const isSelectQuery = firstKeyword === 'SELECT' ||
+      (firstKeyword === 'WITH' && withStatementType === 'SELECT');
+    if (!isSelectQuery) {
+      return { displaySql: baseSql, baseSql, systemLimitApplied: false };
     }
-  }, [maxQueryRows]);
+
+    if (hasTopLevelLimit || hasMultipleStatements || tokens.length === 0) {
+      return { displaySql: baseSql, baseSql, systemLimitApplied: false };
+    }
+
+    const lastToken = tokens[tokens.length - 1];
+    const insertAt = lastToken.type === 'semicolon'
+      ? lastToken.position
+      : lastToken.position + lastToken.raw.length;
+    const displaySql = `${baseSql.slice(0, insertAt).trimEnd()} LIMIT ${maxQueryRows}${baseSql.slice(insertAt)}`;
+    return { displaySql, baseSql, systemLimitApplied: true };
+  }, [maxQueryRows, systemLimitedSql]);
+
+  const handleSQLChange = useCallback((nextSql: string) => {
+    setSystemLimitedSql(null);
+    setSQL(nextSql);
+  }, [setSQL]);
+
+  const businessSql = systemLimitedSql?.displaySql === sql.trim()
+    ? systemLimitedSql.baseSql
+    : sql;
+
+  const handleFormat = useCallback(() => {
+    if (systemLimitedSql?.displaySql === sql.trim()) {
+      const formattedBaseSql = formatSQLDataGrip(systemLimitedSql.baseSql);
+      const { displaySql, baseSql } = applyDisplayLimit(formattedBaseSql);
+      setSystemLimitedSql({ displaySql, baseSql });
+      setSQL(displaySql);
+      return;
+    }
+    setSystemLimitedSql(null);
+    formatSQL();
+  }, [applyDisplayLimit, formatSQL, setSQL, sql, systemLimitedSql]);
 
   // 计算查询类型
   const queryType = useMemo(() => {
@@ -335,7 +400,15 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
       // 使用统一的执行入口，传递数据源信息
       setIsExecuting(true);
       // 智能处理 LIMIT：前端显示限制，保留用户原始 SQL
-      const { displaySql } = applyDisplayLimit(sql.trim());
+      const { displaySql, baseSql, systemLimitApplied } = applyDisplayLimit(sql);
+      if (systemLimitApplied) {
+        setSystemLimitedSql({ displaySql, baseSql });
+        if (displaySql !== sql.trim()) {
+          setSQL(displaySql);
+        }
+      } else {
+        setSystemLimitedSql(null);
+      }
       const startTime = Date.now();
       try {
         // 构建执行时的 TableSource，包含联邦查询信息
@@ -348,7 +421,7 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
           }
           : tableSourceInfo.currentSource;
 
-        await onExecute(displaySql, executeSource);
+        await onExecute(displaySql, executeSource, { baseSql });
         addToHistory({
           type: 'sql',
           sql: displaySql,
@@ -372,7 +445,7 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
       execute({ isPreview: true });
     }
   }, [sql, onExecute, execute, onExecuteError, tableSourceInfo, applyDisplayLimit,
-    requiresFederatedQuery, attachDatabases, unrecognizedPrefixes, dismissedWarning, addToHistory]);
+    requiresFederatedQuery, attachDatabases, unrecognizedPrefixes, dismissedWarning, addToHistory, setSQL]);
 
   // 处理忽略未识别前缀并执行
   const handleIgnoreAndExecute = useCallback(() => {
@@ -444,7 +517,7 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
       <SQLToolbar
         onExecute={handleExecute}
         onAsyncExecute={handleAsyncExecute}
-        onFormat={formatSQL}
+        onFormat={handleFormat}
         onSave={() => setSaveDialogOpen(true)}
         isExecuting={executing}
         disableExecute={!sql.trim() || (tableSourceInfo.hasMixedSources && !requiresFederatedQuery)}
@@ -486,7 +559,7 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
           onClose={() => setChatOpen(false)}
           selectedTables={(selectedTables || []).map((tbl) => getTableName(tbl))}
           attachDatabases={attachDatabases}
-          onInsertSQL={(s) => setSQL(s)}
+          onInsertSQL={handleSQLChange}
           currentSql={sql}
           locale={aiLocale}
         />
@@ -496,7 +569,7 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
       <div className="flex-1 min-h-0 p-3">
         <SQLEditor
           value={sql}
-          onChange={setSQL}
+          onChange={handleSQLChange}
           onExecute={handleExecute}
           placeholder={t('query.sql.placeholder')}
           minHeight={editorMinHeight}
@@ -513,7 +586,7 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
       <SaveQueryDialog
         open={saveDialogOpen}
         onOpenChange={setSaveDialogOpen}
-        sql={sql}
+        sql={businessSql}
         type={queryType === 'external' && tableSourceInfo.currentSource ? tableSourceInfo.currentSource.databaseType : queryType}
       />
 
@@ -521,7 +594,7 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
       <AsyncTaskDialog
         open={asyncDialogOpen}
         onOpenChange={setAsyncDialogOpen}
-        sql={sql}
+        sql={businessSql}
         datasource={tableSourceInfo.isExternal && tableSourceInfo.currentSource ? {
           id: tableSourceInfo.currentSource.connectionId || '',
           type: tableSourceInfo.currentSource.databaseType || '',

@@ -16,7 +16,7 @@ from datetime import date, datetime, time as dt_time
 from openpyxl import load_workbook
 
 from core.common.timezone_utils import get_current_time_iso
-from core.common.utils import handle_non_serializable_data
+from core.common.utils import dedupe_column_names, handle_non_serializable_data
 
 logger = logging.getLogger(__name__)
 
@@ -242,22 +242,24 @@ def _inspect_xlsx_sheets(
         workbook.close()
 
 
+def _normalize_excel_headers(header_parts: List[List[Any]]) -> List[str]:
+    """Normalize header cells identically for preview and import."""
+    names = [
+        _ensure_unique_name(parts, index)
+        for index, parts in enumerate(header_parts)
+    ]
+    sanitized = [
+        sanitize_identifier(name, allow_leading_digit=True, prefix="col")
+        for name in names
+    ]
+    return dedupe_column_names(sanitized)
+
+
 def _build_preview_from_rows(head_rows: List[List[Any]]) -> tuple:
     """(表头行+数据行) → (columns 元数据, 预览 records)。首行视作列名。"""
     if not head_rows:
         return [], []
-    header = [
-        str(v) if v is not None else f"column_{idx + 1}"
-        for idx, v in enumerate(head_rows[0])
-    ]
-    # 与正式导入【同一条】表头管线:sanitize_identifier + ensure_unique_columns(见导入路径
-    # headers 处理)——预览列名必须与导入落表后的列名一致,不允许两套行为不同的清洗/去重实现
-    # (复审:Excel 规范化)。columns 与 preview_records 都按 enumerate(header) 位置消费,
-    # 第 i 个值恒对第 i 个(清洗去重后)列名;None 表头先落确定性兜底名再进管线。
-    header = ensure_unique_columns([
-        sanitize_identifier(name, allow_leading_digit=True, prefix="col")
-        for name in header
-    ])
+    header = _normalize_excel_headers([[value] for value in head_rows[0]])
     data_rows = head_rows[1:]
     columns = [
         {
@@ -396,35 +398,6 @@ def _repair_excel_coordinates(file_path: str) -> Optional[str]:
     return temp_path
 
 
-_ASCII_FOLD = str.maketrans(
-    "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"
-)
-
-
-def ensure_unique_columns(names: List[str]) -> List[str]:
-    # 冲突键用【ASCII-only 折叠】(保留显示大小写):DuckDB 列名大小写不敏感(id/ID 冲突),但折叠是
-    # ASCII 级——实测 ß/SS、Ä/ä 可共存,casefold()/lower() 的 Unicode 折叠会误合并——
-    # 大小写敏感比较会漏掉,CREATE TABLE 直接 "Column with name ID already exists"(与
-    # core.common.utils.dedupe_column_names 同口径,复审 P1)
-    seen: Dict[str, int] = {}
-    result: List[str] = []
-    for name in names:
-        current = name or "column"
-        key = current.translate(_ASCII_FOLD)
-        if key not in seen:
-            seen[key] = 0
-            result.append(current)
-        else:
-            seen[key] += 1
-            candidate = f"{current}_{seen[key]}"
-            while candidate.translate(_ASCII_FOLD) in seen:
-                seen[key] += 1
-                candidate = f"{current}_{seen[key]}"
-            seen[candidate.translate(_ASCII_FOLD)] = 0
-            result.append(candidate)
-    return result
-
-
 def _load_sheet_rows_openpyxl(file_path: str, sheet_name: Optional[str]) -> List[List[Any]]:
     workbook = load_workbook(filename=file_path, read_only=True, data_only=True)
     try:
@@ -507,7 +480,7 @@ def load_excel_sheet_rows(
         return row[idx] if idx < len(row) else None
 
     if header_rows == 0:
-        headers = [f"column_{idx + 1}" for idx in range(width)]
+        header_parts = [[f"column_{idx + 1}"] for idx in range(width)]
         data_rows = rows
     else:
         start_index = max((header_row_index or 1) - 1, 0)
@@ -518,18 +491,12 @@ def load_excel_sheet_rows(
 
         header_slice = rows[start_index:end_index]
         data_rows = rows[end_index:]
-        headers = [
-            _ensure_unique_name(
-                [_cell(hrow, col_idx) for hrow in header_slice], col_idx
-            )
+        header_parts = [
+            [_cell(hrow, col_idx) for hrow in header_slice]
             for col_idx in range(width)
         ]
 
-    headers = [
-        sanitize_identifier(name, allow_leading_digit=True, prefix="col")
-        for name in headers
-    ]
-    headers = ensure_unique_columns(headers)
+    headers = _normalize_excel_headers(header_parts)
 
     # 丢弃全空行（等价原 dropna(how="all")），并按表头宽度补齐/截断
     cleaned_rows = [
