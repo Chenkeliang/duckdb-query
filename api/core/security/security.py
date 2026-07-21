@@ -225,11 +225,9 @@ class SecurityValidator:
                 if re.search(pattern, sql_upper):
                     result["warnings"].append(f"检测到可疑SQL模式: {pattern}")
 
-            # 4. 自动添加LIMIT（如果没有）
-            if "LIMIT" not in sql_upper and sql_upper.startswith("SELECT"):
-                result["sanitized_sql"] = f"{sql.rstrip(';')} LIMIT 10000"
-                result["warnings"].append("自动添加LIMIT限制")
-
+            # 注:不在此处做自动 LIMIT——行数范围语义统一由 routers/query_sql_utils 的
+            # has_top_level_limit / ensure_query_has_limit(sqlglot AST)负责,禁止子串判断
+            # 与硬编码默认值的重复实现(复审:重复实现收敛)。
             result["valid"] = True
 
         except Exception as e:
