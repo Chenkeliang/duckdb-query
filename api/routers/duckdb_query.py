@@ -56,7 +56,7 @@ from core.common.exceptions import (
 from fastapi import APIRouter, Body, File, Form, Header, UploadFile
 from models.query_models import FederatedQueryRequest
 from pydantic import BaseModel
-from routers.query_sql_utils import statement_accepts_limit
+from routers.query_sql_utils import has_top_level_limit, statement_accepts_limit
 from utils.response_helpers import (
     MessageCode,
     create_list_response,
@@ -452,13 +452,16 @@ def execute_duckdb_query(
         # 拒绝写操作(save_as_table 时放行 CREATE);与 federated 端点共用同一 helper
         assert_no_dangerous_write(sql_upper_clean, request.save_as_table)
 
-        # 自动添加LIMIT限制（如果SQL中没有LIMIT且是预览模式；INSTALL/LOAD/ATTACH 等语句不接 LIMIT）
+        # 预览模式:最外层缺用户 LIMIT 时补系统默认(INSTALL/LOAD/ATTACH 等语句不接 LIMIT)。
+        # 判定走 has_top_level_limit(sqlglot AST):仅子查询里的 LIMIT 属于用户业务 SQL,
+        # 不算"最外层已有"——保留它并在最外层补默认;旧的 `"LIMIT" not in sql` 子串判断会
+        # 因子查询 LIMIT 而完全跳过外层默认(复审 P1)。换行追加,行尾注释安全。
         limit = None
-        if request.is_preview and "LIMIT" not in sql_upper_clean and statement_accepts_limit(sql_query):
+        if request.is_preview and statement_accepts_limit(sql_query) and not has_top_level_limit(sql_query):
             from core.common.config_manager import config_manager
 
             limit = config_manager.get_app_config().max_query_rows
-            sql_query = f"{sql_query.rstrip(';')} LIMIT {limit}"
+            sql_query = f"{sql_query.rstrip(';')}\nLIMIT {limit}"
             logger.info(f"Preview mode, applied LIMIT {limit}")
 
         logger.info(f"Executing DuckDB query: {sql_query}")
@@ -796,13 +799,12 @@ def execute_federated_query(
     sql_query = normalize_mysql_double_quoted_strings_for_duckdb(
         request.sql.strip()
     )
-    # 抹掉注释与字面量再判 LIMIT,避免 `-- LIMIT 5` 之类让预览失去上限(Codex P1-10)
-    sql_upper = _strip_sql_literals_upper(sql_query)
-
+    # 预览:最外层缺用户 LIMIT 时补默认——判定走 has_top_level_limit(AST,注释/字面量/
+    # 子查询天然正确),与本地 execute 同一口径(复审 P1);换行追加,行尾注释安全
     limit = None
-    if request.is_preview and "LIMIT" not in sql_upper and statement_accepts_limit(sql_query):
+    if request.is_preview and statement_accepts_limit(sql_query) and not has_top_level_limit(sql_query):
         limit = config_manager.get_app_config().max_query_rows
-        sql_query = f"{sql_query.rstrip(';')} LIMIT {limit}"
+        sql_query = f"{sql_query.rstrip(';')}\nLIMIT {limit}"
         logger.info(f"Preview mode, applied LIMIT {limit}")
 
     logger.info(f"Executing federated query: {sql_query}")

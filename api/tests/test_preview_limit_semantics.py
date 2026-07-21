@@ -59,3 +59,23 @@ def test_preview_user_limit_larger_not_capped():
         mgr.get_app_config.return_value.max_query_rows = 500
         data = _execute_preview(f'SELECT * FROM "{TABLE}" LIMIT 1200')
     assert len(data["data"]) == 1200
+
+
+def test_preview_subquery_limit_still_gets_outer_default():
+    """复审 P1 反例:仅子查询有 LIMIT 900——旧子串判断("LIMIT" in sql)会完全跳过外层默认、
+    返回 900 行。语义:子查询 LIMIT 属用户业务 SQL 保留,最外层仍补系统默认(AST 判定)。"""
+    with patch("core.common.config_manager.config_manager") as mgr:
+        mgr.get_app_config.return_value.max_query_rows = 500
+        data = _execute_preview(
+            f'SELECT * FROM (SELECT * FROM "{TABLE}" LIMIT 900) s'
+        )
+    assert len(data["data"]) == 500          # 外层默认生效
+    assert data.get("preview_limit_applied") == 500
+
+
+def test_preview_comment_mentioning_limit_still_gets_default():
+    # 注释里的 LIMIT 不算用户 LIMIT(AST 天然正确;旧实现靠抹注释近似)
+    with patch("core.common.config_manager.config_manager") as mgr:
+        mgr.get_app_config.return_value.max_query_rows = 500
+        data = _execute_preview(f'SELECT * FROM "{TABLE}" -- LIMIT 5')
+    assert len(data["data"]) == 500
