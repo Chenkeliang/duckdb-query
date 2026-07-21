@@ -247,7 +247,10 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
         const result = await executeFederatedQuery({
           sql,
           attachDatabases,
-          isPreview: false,
+          // 页面查询=预览语义:与本地 DuckDB 路径(executeDuckDBSQL 默认 is_preview:true)一致,
+          // 最外层缺用户 LIMIT 时由后端补系统默认。此前恒 false,联邦查询在页面上会无上限全量
+          // 执行(复审:联邦 isPreview)。后端按 AST 判定,面板烤入的外层 LIMIT/用户 LIMIT 不受影响。
+          isPreview: true,
           requestId,
           signal,
         });
