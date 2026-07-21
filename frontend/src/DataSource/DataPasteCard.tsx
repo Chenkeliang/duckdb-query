@@ -394,22 +394,25 @@ const DataPasteCard: React.FC<DataPasteCardProps> = ({ onDataSourceSaved }) => {
               </div>
             </label>
 
-            <div className="overflow-auto rounded-lg border border-border-subtle">
-              <table className="min-w-full text-sm">
+            <div className="max-w-full overflow-x-auto rounded-lg border border-border-subtle">
+              <table className="w-max min-w-full table-fixed text-sm">
                 <thead className="bg-surface-hover text-foreground">
                   <tr>
                     {columnNames.map((name, idx) => (
-                      <th key={idx} className="px-3 py-2 text-left">
+                      <th
+                        key={idx}
+                        className="w-40 min-w-40 max-w-40 px-3 py-2 text-left"
+                      >
                         <div className="space-y-1">
                           <input
-                            className="w-full rounded-md border border-border bg-input px-2 py-1 text-xs text-foreground placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 focus:ring-primary"
+                            className="min-w-0 w-full rounded-md border border-border bg-input px-2 py-1 text-xs text-foreground placeholder:text-muted-foreground focus:outline-hidden focus:ring-2 focus:ring-primary"
                             value={name}
                             onChange={e =>
                               updateColumnName(idx, e.target.value)
                             }
                           />
                           <select
-                            className="w-full rounded-md border border-border bg-input px-2 py-1 text-xs text-foreground"
+                            className="min-w-0 w-full rounded-md border border-border bg-input px-2 py-1 text-xs text-foreground"
                             value={columnTypes[idx] || "VARCHAR"}
                             onChange={e =>
                               updateColumnType(idx, e.target.value)
@@ -432,7 +435,8 @@ const DataPasteCard: React.FC<DataPasteCardProps> = ({ onDataSourceSaved }) => {
                       {row.map((cell, cIdx) => (
                         <td
                           key={cIdx}
-                          className="px-3 py-2 text-muted-foreground"
+                          className="w-40 max-w-40 truncate whitespace-nowrap px-3 py-2 text-muted-foreground"
+                          title={cell}
                         >
                           {cell}
                         </td>
