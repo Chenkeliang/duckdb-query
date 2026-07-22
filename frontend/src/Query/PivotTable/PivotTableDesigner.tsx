@@ -25,7 +25,7 @@ import {
 } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import { createPortal } from "react-dom";
-import { GripVertical, X, ChevronDown, Rows3, Columns3, Calculator } from "lucide-react";
+import { GripVertical, X, ChevronDown, Rows3, Columns3, Calculator, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
 import { Checkbox } from "@/components/ui/checkbox";
@@ -246,6 +246,8 @@ export const PivotTableDesigner: React.FC<PivotTableDesignerProps> = ({
     const { t } = useTranslation("common");
     // 手选列值标签输入的暂存文本(回车提交为一个标签)
     const [manualInput, setManualInput] = React.useState("");
+    const manualInputId = React.useId();
+    const subtotalHintId = React.useId();
     // 透视列变更时清空【未提交的暂存文本】:否则旧列输一半没回车的文本会残留、再切回单列时
     // 复现并可能被 blur/回车提交成新列的标签(复审 low)。已提交的 manualColumnValues 由 PivotPanel 清。
     const pivotColKey = columns.length === 1 ? columns[0] : "";
@@ -490,6 +492,12 @@ export const PivotTableDesigner: React.FC<PivotTableDesignerProps> = ({
     // hasConfig determines if preview should be shown
 
     const hasConfig = rows.length > 0 || columns.length > 0 || values.length > 0;
+    const previewPivotValues = manualColumnValues.length > 0
+        ? manualColumnValues.slice(0, 2)
+        : ["A", "B"];
+    const previewHasMore = manualColumnValues.length === 0
+        || manualColumnValues.length > previewPivotValues.length;
+    const previewPivotColumnCount = previewPivotValues.length + (previewHasMore ? 1 : 0);
 
     return (
         <DndContext
@@ -609,36 +617,52 @@ export const PivotTableDesigner: React.FC<PivotTableDesignerProps> = ({
                 {/* 透视列选项:小计/总计/手选列值——仅在【恰好一个】透视列(服务端原生 PIVOT 路径)
                     时相关。多列走本地 GROUP BY,不消费这些开关,显示出来会是"勾了没用"的哑控件(复审)。 */}
                 {columns.length === 1 && (
-                    <div className="flex flex-wrap items-center gap-x-4 gap-y-2 px-1 py-1 text-sm">
-                        <label
-                            className={"flex items-center gap-2 " +
-                                (rows.length >= 2 ? "cursor-pointer" : "opacity-50 cursor-not-allowed")}
-                            title={rows.length >= 2 ? undefined
-                                : t("query.pivot.subtotalsNeedTwoRows", "小计需至少 2 个行维度")}
-                        >
-                            <Checkbox
-                                // 如实显示存储态(不 && rows>=2):行维度<2 时置灰但保留勾选,
-                                // 加回行维度即复用,避免"变灰=看着关了、实则悄悄弹回"的可见态撒谎(复审)。
-                                // 实际是否发送由 PivotPanel 的 effectiveSubtotals(=includeSubtotals && rows>=2)门控。
-                                checked={includeSubtotals}
-                                disabled={rows.length < 2}
-                                onCheckedChange={(v) => onIncludeSubtotalsChange?.(v === true)}
-                            />
-                            <span>{t("query.pivot.subtotals", "小计")}</span>
-                        </label>
-                        <label className="flex items-center gap-2 cursor-pointer">
-                            <Checkbox
-                                checked={includeGrandTotals}
-                                onCheckedChange={(v) => onIncludeGrandTotalsChange?.(v === true)}
-                            />
-                            <span>{t("query.pivot.grandTotals", "总计")}</span>
-                        </label>
-                        {/* 手选列值(外层已保证恰好一个透视列):标签输入,回车逐个添加,
-                            可整体含逗号的值(如 "ACME, Inc"),不再按逗号切分 */}
-                        <div className="flex items-center gap-1.5 flex-wrap flex-1 min-w-56">
-                                <span className="text-muted-foreground whitespace-nowrap">
-                                    {t("query.pivot.manualColumnValues", "手选列值")}
+                    <div className="grid gap-3 px-1 py-1 text-sm">
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                            <label
+                                className={"flex items-center gap-2 " +
+                                    (rows.length >= 2 ? "cursor-pointer" : "opacity-50 cursor-not-allowed")}
+                            >
+                                <Checkbox
+                                    // 如实显示存储态(不 && rows>=2):行维度<2 时置灰但保留勾选,
+                                    // 加回行维度即复用,避免"变灰=看着关了、实则悄悄弹回"的可见态撒谎(复审)。
+                                    // 实际是否发送由 PivotPanel 的 effectiveSubtotals(=includeSubtotals && rows>=2)门控。
+                                    checked={includeSubtotals}
+                                    disabled={rows.length < 2}
+                                    aria-describedby={rows.length < 2 ? subtotalHintId : undefined}
+                                    onCheckedChange={(v) => onIncludeSubtotalsChange?.(v === true)}
+                                />
+                                <span>{t("query.pivot.subtotals", "小计")}</span>
+                            </label>
+                            {rows.length < 2 && (
+                                <span id={subtotalHintId} className="text-xs text-muted-foreground">
+                                    {t("query.pivot.subtotalsNeedTwoRows", "小计需至少 2 个行维度")}
                                 </span>
+                            )}
+                            <label className="flex items-center gap-2 cursor-pointer">
+                                <Checkbox
+                                    checked={includeGrandTotals}
+                                    onCheckedChange={(v) => onIncludeGrandTotalsChange?.(v === true)}
+                                />
+                                <span>{t("query.pivot.grandTotals", "总计")}</span>
+                            </label>
+                        </div>
+
+                        {/* 指定列值(外层已保证恰好一个透视列):标签输入,回车逐个添加,
+                            可整体含逗号的值(如 "ACME, Inc"),不再按逗号切分 */}
+                        <div className="grid gap-1.5">
+                            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                                <label htmlFor={manualInputId} className="font-medium">
+                                    {t("query.pivot.manualColumnValues", "指定透视列值（可选）")}
+                                </label>
+                                <span id={`${manualInputId}-hint`} className="text-xs text-muted-foreground">
+                                    {t(
+                                        "query.pivot.manualColumnValuesDescription",
+                                        "留空时自动生成全部列；指定后只生成这些列，不受列数上限影响"
+                                    )}
+                                </span>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-1.5">
                                 {manualColumnValues.map((val) => (
                                     <Badge key={val} variant="outline" className="gap-1 max-w-48">
                                         <span className="truncate">{val}</span>
@@ -654,22 +678,39 @@ export const PivotTableDesigner: React.FC<PivotTableDesignerProps> = ({
                                         </button>
                                     </Badge>
                                 ))}
-                                <Input
-                                    value={manualInput}
-                                    onChange={(e) => setManualInput(e.target.value)}
-                                    onKeyDown={(e) => {
-                                        // 中文输入法组合态:Enter 是"确认候选词"而非"提交标签",此时提交会落半成品。
-                                        if (e.nativeEvent.isComposing) return;
-                                        if (e.key === "Enter") { e.preventDefault(); addManualValue(); }
-                                        else if (e.key === "Backspace" && !manualInput && manualColumnValues.length) {
-                                            onManualColumnValuesChange?.(manualColumnValues.slice(0, -1));
-                                        }
-                                    }}
-                                    onBlur={addManualValue}
-                                    placeholder={t("query.pivot.manualColumnValuesHint", "输入后回车添加;留空=自动")}
-                                    title={t("query.pivot.manualColumnValuesTitle", "只展开这些列值(绕过列上限);留空则自动展开全部")}
-                                    className="h-7 text-xs w-32"
-                                />
+                                <div className="flex min-w-64 max-w-xl flex-1 gap-1.5">
+                                    <Input
+                                        id={manualInputId}
+                                        value={manualInput}
+                                        onChange={(e) => setManualInput(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            // 中文输入法组合态:Enter 是"确认候选词"而非"提交标签",此时提交会落半成品。
+                                            if (e.nativeEvent.isComposing) return;
+                                            if (e.key === "Enter") { e.preventDefault(); addManualValue(); }
+                                            else if (e.key === "Backspace" && !manualInput && manualColumnValues.length) {
+                                                onManualColumnValuesChange?.(manualColumnValues.slice(0, -1));
+                                            }
+                                        }}
+                                        onBlur={addManualValue}
+                                        aria-describedby={`${manualInputId}-hint`}
+                                        placeholder={t("query.pivot.manualColumnValuesHint", "输入一个列值后按 Enter")}
+                                        title={t("query.pivot.manualColumnValuesTitle", "只展开这些列值(绕过列上限);留空则自动展开全部")}
+                                        className="h-8 min-w-48 flex-1 text-xs"
+                                    />
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="icon"
+                                        className="h-8 w-8 shrink-0"
+                                        aria-label={t("query.pivot.manualColumnValuesAdd", "添加列值")}
+                                        disabled={!manualInput.trim()}
+                                        onPointerDown={(e) => e.preventDefault()}
+                                        onClick={addManualValue}
+                                    >
+                                        <Plus className="h-4 w-4" />
+                                    </Button>
+                                </div>
+                            </div>
                         </div>
                     </div>
                 )}
@@ -699,7 +740,7 @@ export const PivotTableDesigner: React.FC<PivotTableDesignerProps> = ({
                                             </th>
                                             <th
                                                 className="border-b border-border px-3 py-1.5 text-center text-xs text-purple-600 dark:text-purple-400"
-                                                colSpan={3}
+                                                colSpan={previewPivotColumnCount}
                                             >
                                                 ← {t("query.pivot.pivotColumnValues", "透视列")}: <strong>{columns[0]}</strong> {t("query.pivot.uniqueValues", "的唯一值")} →
                                             </th>
@@ -721,17 +762,24 @@ export const PivotTableDesigner: React.FC<PivotTableDesignerProps> = ({
                                         {columns.length > 0 ? (
                                             // 透视模式：显示透视列的预览值 + 聚合函数
                                             <>
-                                                <th className="border-b border-border px-3 py-2 text-center font-medium text-purple-600 dark:text-purple-400">
-                                                    [{columns[0]}]=A<br />
-                                                    <span className="text-xs text-green-600 dark:text-green-400">{values.map(v => v.aggregation.toUpperCase()).join("/")}</span>
-                                                </th>
-                                                <th className="border-b border-border px-3 py-2 text-center font-medium text-purple-600 dark:text-purple-400">
-                                                    [{columns[0]}]=B<br />
-                                                    <span className="text-xs text-green-600 dark:text-green-400">{values.map(v => v.aggregation.toUpperCase()).join("/")}</span>
-                                                </th>
-                                                <th className="border-b border-border px-3 py-2 text-center text-muted-foreground">
-                                                    ...
-                                                </th>
+                                                {previewPivotValues.map(previewValue => (
+                                                    <th
+                                                        key={previewValue}
+                                                        className="border-b border-border px-3 py-2 text-center font-medium text-purple-600 dark:text-purple-400"
+                                                    >
+                                                        <span className="block max-w-48 truncate" title={`${columns[0]}=${previewValue}`}>
+                                                            [{columns[0]}]={previewValue}
+                                                        </span>
+                                                        <span className="text-xs text-green-600 dark:text-green-400">
+                                                            {values.map(v => v.aggregation.toUpperCase()).join("/")}
+                                                        </span>
+                                                    </th>
+                                                ))}
+                                                {previewHasMore && (
+                                                    <th className="border-b border-border px-3 py-2 text-center text-muted-foreground">
+                                                        ...
+                                                    </th>
+                                                )}
                                             </>
                                         ) : values.length > 0 ? (
                                             // 普通聚合模式
@@ -759,9 +807,12 @@ export const PivotTableDesigner: React.FC<PivotTableDesignerProps> = ({
                                         )}
                                         {columns.length > 0 ? (
                                             <>
-                                                <td className="border-border px-3 py-2 text-center text-green-600 dark:text-green-400">123</td>
-                                                <td className="border-border px-3 py-2 text-center text-green-600 dark:text-green-400">456</td>
-                                                <td className="border-border px-3 py-2 text-center">...</td>
+                                                {previewPivotValues.map((previewValue, i) => (
+                                                    <td key={previewValue} className="border-border px-3 py-2 text-center text-green-600 dark:text-green-400">
+                                                        {["123", "456"][i]}
+                                                    </td>
+                                                ))}
+                                                {previewHasMore && <td className="border-border px-3 py-2 text-center">...</td>}
                                             </>
                                         ) : values.length > 0 ? (
                                             values.map((_, i) => (
@@ -781,9 +832,12 @@ export const PivotTableDesigner: React.FC<PivotTableDesignerProps> = ({
                                         )}
                                         {columns.length > 0 ? (
                                             <>
-                                                <td className="border-t border-border px-3 py-2 text-center text-green-600 dark:text-green-400">789</td>
-                                                <td className="border-t border-border px-3 py-2 text-center text-green-600 dark:text-green-400">101</td>
-                                                <td className="border-t border-border px-3 py-2 text-center">...</td>
+                                                {previewPivotValues.map((previewValue, i) => (
+                                                    <td key={previewValue} className="border-t border-border px-3 py-2 text-center text-green-600 dark:text-green-400">
+                                                        {["789", "101"][i]}
+                                                    </td>
+                                                ))}
+                                                {previewHasMore && <td className="border-t border-border px-3 py-2 text-center">...</td>}
                                             </>
                                         ) : values.length > 0 ? (
                                             values.map((_, i) => (

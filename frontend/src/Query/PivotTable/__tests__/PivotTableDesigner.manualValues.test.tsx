@@ -17,9 +17,15 @@ vi.mock('react-i18next', () => ({
 }));
 vi.mock('@/utils/toastHelpers', () => ({ showSuccessToast: vi.fn(), showErrorToast: vi.fn() }));
 
-const PLACEHOLDER = '输入后回车添加;留空=自动';
+const PLACEHOLDER = '输入一个列值后按 Enter';
 
-function Harness({ initial = [] as string[] }) {
+function Harness({
+    initial = [] as string[],
+    rows = ['region'],
+}: {
+    initial?: string[];
+    rows?: string[];
+}) {
     const [manual, setManual] = React.useState<string[]>(initial);
     const [cols, setCols] = React.useState<string[]>(['year']);
     return (
@@ -29,10 +35,11 @@ function Harness({ initial = [] as string[] }) {
             <PivotTableDesigner
                 availableFields={[
                     { name: 'region', type: 'VARCHAR' },
+                    { name: 'category', type: 'VARCHAR' },
                     { name: 'year', type: 'VARCHAR' },
                     { name: 'qty', type: 'INTEGER' },
                 ]}
-                rows={['region']}
+                rows={rows}
                 columns={cols}
                 values={[{ column: 'qty', aggregation: AggregationFunction.COUNT }] as never}
                 onRowsChange={() => {}}
@@ -99,5 +106,35 @@ describe('手选列值标签输入', () => {
         expect(tagInput().value).toBe('draft');
         fireEvent.click(screen.getByTestId('setcol')); // year → month
         expect(tagInput().value).toBe(''); // 暂存文本随透视列变更清空
+    });
+
+    it('单个行字段时直接显示小计禁用原因', () => {
+        render(<Harness />);
+        expect(screen.getByRole('checkbox', { name: /小计/ })).toBeDisabled();
+        expect(screen.getByText('小计需至少 2 个行维度')).toBeVisible();
+    });
+
+    it('两个行字段时小计可选且不显示禁用原因', () => {
+        render(<Harness rows={['region', 'category']} />);
+        expect(screen.getByRole('checkbox', { name: /小计/ })).toBeEnabled();
+        expect(screen.queryByText('小计需至少 2 个行维度')).toBeNull();
+    });
+
+    it('清楚说明指定列值语义并支持按钮添加', () => {
+        render(<Harness />);
+        expect(screen.getByText('指定透视列值（可选）')).toBeVisible();
+        expect(screen.getByText('留空时自动生成全部列；指定后只生成这些列，不受列数上限影响')).toBeVisible();
+
+        fireEvent.change(tagInput(), { target: { value: '2026-01' } });
+        fireEvent.pointerDown(screen.getByRole('button', { name: '添加列值' }));
+        fireEvent.click(screen.getByRole('button', { name: '添加列值' }));
+        expect(screen.getByTestId('mv').textContent).toBe('2026-01');
+    });
+
+    it('表格结构预览优先显示已指定的真实列值', () => {
+        render(<Harness initial={['2026-01', '2026-02']} />);
+        expect(screen.getByText('[year]=2026-01', { exact: false })).toBeVisible();
+        expect(screen.getByText('[year]=2026-02', { exact: false })).toBeVisible();
+        expect(screen.queryByText('[year]=A', { exact: false })).toBeNull();
     });
 });
