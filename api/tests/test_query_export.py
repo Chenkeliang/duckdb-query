@@ -193,3 +193,31 @@ def test_export_runs_user_query_once(monkeypatch):
             con.execute(f'DROP TABLE IF EXISTS "{table}"')
         if file_id:
             _remove_export(file_id)
+
+
+def test_csv_export_preserves_numeric_flags_and_real_booleans():
+    """回归(2026-07-21):数值 0/1 导出仍为 0/1，真正 BOOLEAN 仍保留布尔语义。"""
+    file_id = None
+    try:
+        resp = client.post(
+            "/api/query-results/export",
+            json={
+                "sql": (
+                    "SELECT * FROM (VALUES "
+                    "(0::TINYINT, false::BOOLEAN), "
+                    "(1::TINYINT, true::BOOLEAN)) AS t(numeric_flag, boolean_flag)"
+                ),
+                "format": "csv",
+            },
+        )
+        assert resp.status_code == 200, resp.text
+        data = resp.json()["data"]
+        file_id = data["file_id"]
+
+        download = client.get(data["download_url"])
+        assert download.status_code == 200
+        lines = download.text.strip().splitlines()
+        assert lines == ["numeric_flag,boolean_flag", "0,false", "1,true"]
+    finally:
+        if file_id:
+            _remove_export(file_id)

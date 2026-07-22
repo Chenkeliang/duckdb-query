@@ -368,14 +368,22 @@ ENGINE_COMPAT_OPTIONS = (
     "unsafe_enable_version_guessing",
 )
 
+# MySQL 的 BOOLEAN 是 TINYINT(1) 别名，扫描器默认把 TINYINT(1)/BIT(1) 的
+# 物理 0/1 改成 bool。查询、落表和导出都必须保留源值，因此不开放成兼容开关。
+_MYSQL_SOURCE_VALUE_OPTIONS = (
+    "mysql_tinyint1_as_boolean",
+    "mysql_bit1_as_boolean",
+)
+
 
 def apply_engine_compat_settings(connection, engine_compat: Optional[Dict[str, Any]]) -> None:
     """应用引擎兼容性配置。
 
     SET GLOBAL 是数据库实例级作用域：在池中任意一个连接上执行，所有池化连接立即生效。
-    这四个 option 分别由 sqlite_scanner/mysql/postgres/iceberg 扩展注册。
+    可配置 option 分别由 sqlite_scanner/mysql/postgres/iceberg 扩展注册；MySQL
+    TINYINT(1)/BIT(1) 的布尔转换另行固定关闭，保证查询与导出保留源值 0/1。
 
-    对全部四个开关都显式下发 true/false：SET GLOBAL 是实例级黏性状态，只发 true
+    对全部可配置开关都显式下发 true/false：SET GLOBAL 是实例级黏性状态，只发 true
     会导致用户关掉开关保存后运行实例仍停在 true（关不掉，与 UI 显示矛盾）。
     对未加载扩展的 option 执行 SET 会触发 DuckDB autoinstall 联网下载
     （受限网络单次挂 ~120s，发生在连接池初始化 = "本地引擎启动超时"；
@@ -383,8 +391,7 @@ def apply_engine_compat_settings(connection, engine_compat: Optional[Dict[str, A
     autoinstall：本地已装的扩展 autoload 即时生效；未装的快速失败降级为
     debug 日志（用户装好扩展后新连接自然生效），初始化路径绝不联网。
     """
-    if not engine_compat:
-        return
+    engine_compat = engine_compat or {}
     with _autoinstall_toggle_lock:
         try:
             connection.execute("SET autoinstall_known_extensions=false")
@@ -399,6 +406,11 @@ def apply_engine_compat_settings(connection, engine_compat: Optional[Dict[str, A
                     connection.execute(f"SET GLOBAL {option}={value}")
                 except Exception as exc:  # noqa: BLE001  扩展未装时的预期失败，静默降级
                     logger.debug("engine_compat SET GLOBAL %s=%s skipped: %s", option, value, exc)
+            for option in _MYSQL_SOURCE_VALUE_OPTIONS:
+                try:
+                    connection.execute(f"SET GLOBAL {option}=false")
+                except Exception as exc:  # noqa: BLE001  扩展未装时的预期失败，静默降级
+                    logger.debug("source-preserving SET GLOBAL %s=false skipped: %s", option, exc)
         finally:
             try:
                 connection.execute("SET autoinstall_known_extensions=true")

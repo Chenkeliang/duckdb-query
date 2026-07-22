@@ -4,7 +4,8 @@
  * 取消对话框 → 不写文件、不弹成功 toast。Web 分支(blob)不在此覆盖。
  */
 import { describe, it, expect, vi, beforeEach } from 'vitest';
-import { renderHook, act } from '@testing-library/react';
+import { renderHook, act, waitFor } from '@testing-library/react';
+import * as XLSX from 'xlsx';
 
 const { mocks } = vi.hoisted(() => ({
   mocks: {
@@ -95,5 +96,53 @@ describe('useGridExport 桌面直写', () => {
       { id: 1, name: 'Alice' },
       { id: 2, name: 'Bob' },
     ]);
+  });
+
+  it('CSV:数值 0/1 不转成 FALSE/TRUE，真正布尔值仍保持布尔语义', async () => {
+    mocks.save.mockResolvedValue('/tmp/flags.csv');
+    const flagData = [
+      { numeric_flag: 0, boolean_flag: false },
+      { numeric_flag: 1, boolean_flag: true },
+    ];
+    const { result } = renderHook(() =>
+      useGridExport({ data: flagData, columns: ['numeric_flag', 'boolean_flag'] })
+    );
+
+    await act(async () => {
+      await result.current.exportCSV({ filename: 'flags' });
+    });
+
+    const [, content] = mocks.writeTextFile.mock.calls[0];
+    expect(String(content).replace(/^﻿/, '')).toBe(
+      'numeric_flag,boolean_flag\n0,false\n1,true'
+    );
+    expect(flagData).toEqual([
+      { numeric_flag: 0, boolean_flag: false },
+      { numeric_flag: 1, boolean_flag: true },
+    ]);
+  });
+
+  it('Excel:数值 0/1 写成数字单元格，只有真正布尔值写成布尔单元格', async () => {
+    mocks.save.mockResolvedValue('/tmp/flags.xlsx');
+    const flagData = [
+      { numeric_flag: 0, boolean_flag: false },
+      { numeric_flag: 1, boolean_flag: true },
+    ];
+    const { result } = renderHook(() =>
+      useGridExport({ data: flagData, columns: ['numeric_flag', 'boolean_flag'] })
+    );
+
+    act(() => {
+      result.current.exportExcel({ filename: 'flags' });
+    });
+    await waitFor(() => expect(mocks.writeFile).toHaveBeenCalledTimes(1));
+
+    const [, bytes] = mocks.writeFile.mock.calls[0];
+    const workbook = XLSX.read(bytes, { type: 'array' });
+    const sheet = workbook.Sheets[workbook.SheetNames[0]];
+    expect(sheet.A2).toMatchObject({ t: 'n', v: 0 });
+    expect(sheet.A3).toMatchObject({ t: 'n', v: 1 });
+    expect(sheet.B2).toMatchObject({ t: 'b', v: false });
+    expect(sheet.B3).toMatchObject({ t: 'b', v: true });
   });
 });

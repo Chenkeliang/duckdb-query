@@ -64,8 +64,8 @@ def test_apply_engine_compat_settings_swallows_unrecognized_option(caplog):
         con.close()
 
 
-def test_apply_engine_compat_settings_noop_on_empty():
-    """空/None 配置直接返回，不做任何 SET。"""
+def test_apply_engine_compat_settings_accepts_empty_config():
+    """空/None 用户配置仍应可应用固定的源值保真设置，且不抛错。"""
     con = duckdb.connect()
     try:
         apply_engine_compat_settings(con, None)
@@ -152,3 +152,40 @@ def test_apply_engine_compat_true_disables_autoinstall_around_set():
     assert con.calls[0] == "SET autoinstall_known_extensions=false"
     assert con.calls[-1] == "SET autoinstall_known_extensions=true"
     assert "SET GLOBAL sqlite_all_varchar=true" in con.calls
+
+
+def test_mysql_flag_columns_are_never_coerced_to_boolean():
+    """回归(2026-07-21):MySQL TINYINT(1)/BIT(1) 的 0/1 曾在查询与导出中变成 FALSE/TRUE。"""
+    con = _RecordingConnection()
+
+    apply_engine_compat_settings(con, None)
+
+    assert "SET GLOBAL mysql_tinyint1_as_boolean=false" in con.calls
+    assert "SET GLOBAL mysql_bit1_as_boolean=false" in con.calls
+    assert "SET GLOBAL mysql_tinyint1_as_boolean=true" not in con.calls
+    assert "SET GLOBAL mysql_bit1_as_boolean=true" not in con.calls
+
+
+def test_mysql_flag_settings_are_false_in_duckdb_when_extension_available():
+    """回归(2026-07-21):真实 DuckDB 设置必须保留 MySQL 物理 0/1，不能只验证 mock SQL。"""
+    con = duckdb.connect()
+    try:
+        try:
+            con.execute("SET autoinstall_known_extensions=false")
+            con.execute("LOAD mysql")
+        except Exception:
+            pytest.skip("mysql extension is not installed in this environment")
+
+        apply_engine_compat_settings(con, None)
+        values = dict(
+            con.execute(
+                "SELECT name, value FROM duckdb_settings() "
+                "WHERE name IN ('mysql_tinyint1_as_boolean', 'mysql_bit1_as_boolean')"
+            ).fetchall()
+        )
+        assert values == {
+            "mysql_tinyint1_as_boolean": "false",
+            "mysql_bit1_as_boolean": "false",
+        }
+    finally:
+        con.close()
