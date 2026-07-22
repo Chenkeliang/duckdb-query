@@ -51,6 +51,9 @@ router = APIRouter()
 
 STREAMABLE_FILE_TYPES = {"csv", "json", "jsonl"}
 STREAM_CHUNK_SIZE = 1024 * 1024  # 1MB 内部流式写入块
+# 会话空闲超时:超过该时长无任何分块活动即视为废弃(与任务产物 24h 回收口径一致)。
+# 活跃会话每收到一个分块都会刷新 last_activity_ts,慢速上传不受影响。
+UPLOAD_SESSION_TTL_SECONDS = 24 * 3600
 
 
 class ChunkUploadRequest(BaseModel):
@@ -212,6 +215,52 @@ def get_chunks_dir(upload_id: str) -> str:
     chunks_dir = os.path.join(get_upload_dir(), "chunks", upload_id)
     os.makedirs(chunks_dir, exist_ok=True)
     return chunks_dir
+
+
+def reap_stale_upload_sessions(
+    ttl_seconds: int = UPLOAD_SESSION_TTL_SECONDS,
+) -> int:
+    """回收废弃的分块上传:超时无活动的内存会话 + 进程重启后遗留的孤儿分块目录。
+
+    此前中断的上传(关标签页/断网)会把会话条目和 chunk 文件永久留下;
+    进程重启后 upload_sessions 清空,磁盘上的 chunk 目录更是无人认领。
+    由 cleanup_scheduler 周期调用(启动即执行一次,覆盖重启遗留)。
+    返回回收的会话/目录数量。
+    """
+    now = time.time()
+    removed = 0
+
+    for upload_id, session in list(upload_sessions.items()):
+        last_activity = session.get("last_activity_ts", 0)
+        if now - last_activity < ttl_seconds:
+            continue
+        chunks_dir = session.get("chunks_dir")
+        if chunks_dir and os.path.isdir(chunks_dir):
+            shutil.rmtree(chunks_dir, ignore_errors=True)
+        upload_sessions.pop(upload_id, None)
+        removed += 1
+        logger.info(
+            "Reaped stale upload session: %s (file: %s, status: %s)",
+            upload_id, session.get("file_name"), session.get("status"),
+        )
+
+    # 磁盘孤儿:chunks 根目录下不属于任何在册会话的子目录(通常来自进程重启)。
+    # 目录 mtime 随块文件写入更新,足以作为活跃信号。
+    chunks_base = os.path.join(get_upload_dir(), "chunks")
+    if os.path.isdir(chunks_base):
+        for entry in os.scandir(chunks_base):
+            if not entry.is_dir() or entry.name in upload_sessions:
+                continue
+            try:
+                stale = now - entry.stat().st_mtime >= ttl_seconds
+            except OSError:
+                continue
+            if stale:
+                shutil.rmtree(entry.path, ignore_errors=True)
+                removed += 1
+                logger.info("Reaped orphan chunks dir: %s", entry.path)
+
+    return removed
 
 
 def calculate_file_hash(file_path: str) -> str:
@@ -391,6 +440,7 @@ async def init_upload(
             "uploaded_chunk_numbers": set(),
             "status": "uploading",
             "created_at": get_current_time_iso(),
+            "last_activity_ts": time.time(),
             "file_hash": file_hash,
             "table_alias": table_alias,  # 保存表别名
             "import_mode": import_mode,
@@ -442,11 +492,11 @@ async def upload_chunk(
         chunk: 分块文件数据
     """
     try:
-        # Check upload session
-        if upload_id not in upload_sessions:
+        # 原子取值:回收线程可能并发移除会话,check-then-act 会把 KeyError 放大成 500
+        session = upload_sessions.get(upload_id)
+        if session is None:
             raise ResourceNotFoundError("Upload session", upload_id)
-
-        session = upload_sessions[upload_id]
+        session["last_activity_ts"] = time.time()
 
         if session["status"] != "uploading":
             raise APIValidationError(f"Upload session status error: {session['status']}")
@@ -534,11 +584,11 @@ async def complete_upload(
         upload_id: 上传会话ID
     """
     try:
-        # Check upload session
-        if upload_id not in upload_sessions:
+        # 原子取值:与回收线程并发时避免 KeyError→500(同 upload_chunk)
+        session = upload_sessions.get(upload_id)
+        if session is None:
             raise ResourceNotFoundError("Upload session", upload_id)
-
-        session = upload_sessions[upload_id]
+        session["last_activity_ts"] = time.time()
 
         if session["uploaded_chunks"] != session["total_chunks"]:
             raise APIValidationError(
@@ -609,8 +659,8 @@ async def complete_upload(
             ):
                 schedule_cleanup(final_file_path, background_tasks)
 
-        session["status"] = "completed"
-        session["file_info"] = file_info
+        # 成功后会话已无消费者(无状态查询端点),立即移除,不留终态条目
+        upload_sessions.pop(upload_id, None)
 
         logger.info(
             "File upload completed: %s, size: %d",
@@ -632,9 +682,10 @@ async def complete_upload(
         logger.error("Failed to complete upload: %s", e)
         logger.error("Stack trace: %s", traceback.format_exc())
 
-        if upload_id in upload_sessions:
-            upload_sessions[upload_id]["status"] = "failed"
-            upload_sessions[upload_id]["error_message"] = str(e)
+        failed_session = upload_sessions.get(upload_id)
+        if failed_session is not None:
+            failed_session["status"] = "failed"
+            failed_session["error_message"] = str(e)
 
         return error_json_response(
             500,
@@ -723,17 +774,15 @@ async def process_uploaded_file(
 async def cancel_upload(upload_id: str):
     """取消上传"""
     try:
-        if upload_id not in upload_sessions:
+        # 原子摘除:先 pop 再清理,与回收线程并发也不会 KeyError;
+        # 若 rmtree 失败,残留目录由 reap 的磁盘孤儿扫描兜底
+        session = upload_sessions.pop(upload_id, None)
+        if session is None:
             raise ResourceNotFoundError("Upload session", upload_id)
-
-        session = upload_sessions[upload_id]
 
         # 清理分块文件
         if os.path.exists(session["chunks_dir"]):
             shutil.rmtree(session["chunks_dir"])
-
-        # 删除会话
-        del upload_sessions[upload_id]
 
         logger.info("Upload cancelled: %s", upload_id)
 

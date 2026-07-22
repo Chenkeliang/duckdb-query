@@ -73,8 +73,14 @@ async def app_lifespan(app: FastAPI):
 
     try:
         from routers.async_tasks import cleanup_old_files
+        from routers.chunked_upload import reap_stale_upload_sessions
 
-        start_cleanup_scheduler(cleanup_old_files)
+        def _scheduled_cleanup() -> int:
+            cleaned = cleanup_old_files()
+            cleaned += reap_stale_upload_sessions()
+            return cleaned
+
+        start_cleanup_scheduler(_scheduled_cleanup)
         logger.info("File cleanup scheduler started successfully")
     except Exception as e:
         logger.error(f"Failed to start file cleanup scheduler: {str(e)}")
