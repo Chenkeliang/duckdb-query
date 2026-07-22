@@ -6,7 +6,7 @@ import logging
 from typing import Any, Dict
 
 from core.common.exceptions import ResourceNotFoundError
-from core.database.duckdb_engine import with_duckdb_connection
+from core.database.duckdb_engine import validate_query_syntax, with_duckdb_connection
 from core.database.federated_attach import (
     attach_databases_on_connection,
     detach_databases_on_connection,
@@ -22,6 +22,7 @@ from core.services import (
     ai_nl_to_sql,
     ai_suggest_chart,
     llm_context,
+    schema_sampler,
 )
 from core.services.llm_service import AIConfigError, AIDisabledError, LLMService
 from core.services.retriever import KeywordRetriever
@@ -105,6 +106,18 @@ def _ai_error_response(exc: Exception):
     return error_json_response(400, code, str(exc))
 
 
+def _sampled_block(con: Any, cand: str, ref: str, rows: list, budget: int) -> str:
+    """本地未限定表才采样(联邦/限定名带 ".")；返回样例块或空串。"""
+    if "." in cand or budget <= 0:
+        return ""
+    return schema_sampler.sample_table_block(
+        con,
+        ref,
+        [(r[0], r[1]) for r in rows],
+        max_chars=min(schema_sampler.PER_TABLE_CHAR_BUDGET, budget),
+    )
+
+
 def _build_schema_text(
     tables: list[str], attach_databases: list[Any] | None = None
 ) -> str:
@@ -117,6 +130,8 @@ def _build_schema_text(
     # 联邦表(如 mysql_sorder.iget_order)需要先 ATTACH 远端库，否则 DESCRIBE 取不到结构
     attach_configs = resolve_attach_configs(attach_databases)
     lines: list[str] = []
+    sample_budget = schema_sampler.OVERALL_CHAR_BUDGET
+    sampled_any = False
     with with_duckdb_connection() as con:
         attached: list[str] = []
         try:
@@ -134,13 +149,22 @@ def _build_schema_text(
                         rows = con.execute(f"DESCRIBE {ref}").fetchall()
                         cols = ", ".join(f"{r[0]} {r[1]}" for r in rows)
                         lines.append(f"{name}({cols})")
+                        # 带真实取值样例,解决 WHERE 条件值靠猜的问题
+                        block = _sampled_block(con, cand, ref, rows, sample_budget)
+                        if block:
+                            lines.append(block)
+                            sample_budget -= len(block)
+                            sampled_any = True
                         break
                     except Exception:  # noqa: BLE001
                         continue
         finally:
             if attached:
                 detach_databases_on_connection(con, attached)
-    return "\n".join(lines)
+    text = "\n".join(lines)
+    if sampled_any:
+        text = schema_sampler.SAMPLE_DISCLAIMER + "\n" + text
+    return text
 
 
 # [完整目录] 预算与展开上限：见 _build_catalog_text 说明
@@ -352,6 +376,12 @@ class NlToSqlPayload(BaseModel):
     locale: str = "zh"
 
 
+def _explain_validator(sql: str) -> tuple[bool, str]:
+    """EXPLAIN 干跑校验(只做规划不执行,亿级大表也便宜)。"""
+    with with_duckdb_connection() as con:
+        return validate_query_syntax(sql, con=con)
+
+
 @router.post("/api/ai/nl-to-sql", tags=["AI"])
 def nl_to_sql_route(payload: NlToSqlPayload):
     cfg = ai_config.load_ai_settings()
@@ -361,7 +391,12 @@ def nl_to_sql_route(payload: NlToSqlPayload):
     context = llm_context.build_nl2sql_context(schema_text, locale=payload.locale)
     try:
         result = ai_nl_to_sql.nl_to_sql(
-            LLMService(cfg), payload.question, context, payload.locale
+            LLMService(cfg),
+            payload.question,
+            context,
+            payload.locale,
+            validator=_explain_validator,
+            schema_text=schema_text,
         )
     except (AIDisabledError, AIConfigError) as exc:
         return _ai_error_response(exc)
