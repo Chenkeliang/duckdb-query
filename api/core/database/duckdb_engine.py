@@ -471,8 +471,11 @@ def get_db_connection():
     return PooledConnectionProxy()
 
 
-def fetch_query_records(connection, query):
+def fetch_query_records(connection, query, *, describe_before_execute: bool = True):
     """执行查询 → (columns, records, cursor_types)：JSON 安全，纯 Python。
+
+    ``describe_before_execute=False`` 仅供 DESCRIBE 会执行远端 SQL 的表函数使用；
+    这时列类型从实际游标 description 获取，不改变查询结果值。
 
     cursor_types = 游标 description 的 (列名, DuckDB 类型串)——DESCRIBE 对
     PRAGMA/EXPLAIN/多语句失败时调用方以它兜底 column_types（同一次执行取得，
@@ -495,7 +498,7 @@ def fetch_query_records(connection, query):
     # 为纳秒重执行一次(改写失败还第三次),序列/UDF/远程读的副作用会重复(P1-8)。
     describe_types = None
     ns_cols = []
-    if _is_read_only_query(query):
+    if describe_before_execute and _is_read_only_query(query):
         describe_types = _describe_column_types(connection, query)
         if describe_types:
             ns_cols = [n for n, t in describe_types if t.upper() == "TIMESTAMP_NS"]

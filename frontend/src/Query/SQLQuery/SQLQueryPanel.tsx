@@ -19,9 +19,7 @@ import { useFederatedQueryDetection } from '@/hooks/useFederatedQueryDetection';
 import { useEnhancedAutocomplete } from '@/hooks/useEnhancedAutocomplete';
 import { useGlobalHistory } from '@/Query/hooks/useGlobalHistory';
 import { Alert, AlertDescription } from '@/components/ui/alert';
-import { AttachedDatabasesIndicator } from '@/Query/components/AttachedDatabasesIndicator';
 import { UnrecognizedPrefixWarning } from '@/Query/components/UnrecognizedPrefixWarning';
-import { FederatedQueryStatusBar } from '@/Query/components/FederatedQueryStatusBar';
 import { AsyncTaskDialog } from '@/Query/AsyncTasks/AsyncTaskDialog';
 import { SaveQueryDialog } from '@/Query/Bookmarks/SaveQueryDialog';
 import { cn } from '@/lib/utils';
@@ -55,6 +53,10 @@ export interface SQLQueryPanelProps {
   onExecuteSuccess?: (data: any, sql: string) => void;
   /** 执行失败回调 */
   onExecuteError?: (error: Error, sql: string) => void;
+  /** 取消当前同步查询 */
+  onCancel?: () => void;
+  /** 是否正在向后端提交取消 */
+  isCancelling?: boolean;
   /** 自定义类名 */
   className?: string;
   /** 编辑器最小高度 */
@@ -79,6 +81,8 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
   onExecute,
   onExecuteSuccess,
   onExecuteError,
+  onCancel,
+  isCancelling = false,
   className,
   editorMinHeight = '200px',
   editorMaxHeight = '400px',
@@ -136,8 +140,6 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
     unrecognizedPrefixes,
     requiresFederatedQuery,
     tableSource: detectedTableSource,
-    addManualDatabase,
-    removeManualDatabase,
     availableConnections,
   } = useFederatedQueryDetection({
     sql,
@@ -516,10 +518,12 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
       {/* 工具栏 */}
       <SQLToolbar
         onExecute={handleExecute}
+        onCancel={onCancel}
         onAsyncExecute={handleAsyncExecute}
         onFormat={handleFormat}
         onSave={() => setSaveDialogOpen(true)}
         isExecuting={executing}
+        isCancelling={isCancelling}
         disableExecute={!sql.trim() || (tableSourceInfo.hasMixedSources && !requiresFederatedQuery)}
         executionTime={executionTime}
         aiSlot={
@@ -531,24 +535,6 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
               }
             />
           ) : undefined
-        }
-        extraContent={
-          <div className="flex items-center gap-2">
-            <FederatedQueryStatusBar
-              queryType={queryType}
-              attachDatabases={attachDatabases}
-              isExecuting={executing}
-              executionTime={executionTime}
-            />
-            <AttachedDatabasesIndicator
-              attachDatabases={attachDatabases}
-              variant="expandable"
-              editable={true}
-              availableConnections={availableConnections}
-              onAddDatabase={addManualDatabase}
-              onRemoveDatabase={removeManualDatabase}
-            />
-          </div>
         }
       />
 

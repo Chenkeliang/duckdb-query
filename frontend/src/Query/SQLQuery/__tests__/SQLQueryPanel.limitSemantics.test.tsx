@@ -50,17 +50,24 @@ vi.mock('@/hooks/useAiStatus', () => ({
 vi.mock('../SQLToolbar', () => ({
   SQLToolbar: ({
     onExecute,
+    onCancel,
     onAsyncExecute,
     onFormat,
     onSave,
+    isExecuting,
   }: {
     onExecute: () => void;
+    onCancel?: () => void;
     onAsyncExecute: () => void;
     onFormat: () => void;
     onSave: () => void;
+    isExecuting?: boolean;
   }) => (
     <>
       <button type="button" onClick={onExecute}>execute</button>
+      {isExecuting && onCancel && (
+        <button type="button" onClick={onCancel}>cancel</button>
+      )}
       <button type="button" onClick={onAsyncExecute}>async</button>
       <button type="button" onClick={onFormat}>format</button>
       <button type="button" onClick={onSave}>save</button>
@@ -128,6 +135,21 @@ function renderPanel(props: React.ComponentProps<typeof SQLQueryPanel>) {
 
 describe('SQLQueryPanel page limit semantics', () => {
   beforeEach(() => vi.clearAllMocks());
+
+  it('exposes the workspace cancel action while a query is running', async () => {
+    let finishExecute: (() => void) | undefined;
+    const onExecute = vi.fn(
+      () => new Promise<void>((resolve) => { finishExecute = resolve; })
+    );
+    const onCancel = vi.fn();
+    renderPanel({ initialSQL: 'SELECT * FROM orders', onExecute, onCancel });
+
+    fireEvent.click(screen.getByRole('button', { name: 'execute' }));
+    fireEvent.click(await screen.findByRole('button', { name: 'cancel' }));
+
+    expect(onCancel).toHaveBeenCalledOnce();
+    finishExecute?.();
+  });
 
   it.each([5_000, 12_000])('preserves a user LIMIT %i', async (limit) => {
     const onExecute = createExecuteMock();

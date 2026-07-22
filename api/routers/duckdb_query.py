@@ -16,6 +16,8 @@ from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 import duckdb
+import sqlglot
+from sqlglot import exp
 from core.common.enhanced_error_handler import get_error_handler
 from core.common.config_manager import config_manager
 from core.common.sql_identifiers import quote_identifier
@@ -39,6 +41,7 @@ from core.database.duckdb_engine import (
 from core.database.federated_attach import (
     attach_databases_on_connection,
     detach_databases_on_connection,
+    mysql_remote_cancellation_scope,
 )
 from core.database.duckdb_pool import interruptible_connection
 from core.common.connection_alias import normalize_connection_id
@@ -95,6 +98,18 @@ def contains_keyword(sql_text: str, keyword: str) -> bool:
     """检测SQL文本中是否包含独立的关键字（忽略字符串字面量内的内容）"""
     pattern = rf"\b{keyword}\b"
     return re.search(pattern, sql_text) is not None
+
+
+def _uses_mysql_query_table_function(sql: str) -> bool:
+    """判断 SQL 是否真实调用 mysql_query，而非仅在注释或字面量中出现。"""
+    try:
+        tree = sqlglot.parse_one(sql, read="duckdb")
+    except Exception:  # pylint: disable=broad-exception-caught
+        return False
+    return any(
+        node.name.lower() == "mysql_query"
+        for node in tree.find_all(exp.Anonymous)
+    )
 
 
 _DANGEROUS_KEYWORDS = ("DROP", "DELETE", "TRUNCATE", "ALTER", "CREATE", "INSERT", "UPDATE")
@@ -805,35 +820,43 @@ def execute_federated_query(
         # DETACH 必须放 finally:查询/保存中途抛错时,若不清理,连接会带着
         # ATTACH 回到池里被后续请求复用(Codex S-13)
         try:
-            # 2. 智能下推：半连接键下推(保持结果) + 时间界建议(不改 SQL)
-            attach_aliases = {alias for (alias, _cfg) in attach_configs}
-            opt_sql, suggestions, opt_warnings = optimize_federated_sql(
-                conn, _opt["sql"], attach_aliases, config_manager.get_app_config()
-            )
-            _opt["sql"] = opt_sql
-            _opt["suggestions"] = suggestions or None
-            if opt_warnings:
-                warnings.extend(str(w) for w in opt_warnings)
+            with mysql_remote_cancellation_scope(conn, query_id, attach_configs):
+                # 2. 智能下推：半连接键下推(保持结果) + 时间界建议(不改 SQL)
+                attach_aliases = {alias for (alias, _cfg) in attach_configs}
+                opt_sql, suggestions, opt_warnings = optimize_federated_sql(
+                    conn, _opt["sql"], attach_aliases, config_manager.get_app_config()
+                )
+                _opt["sql"] = opt_sql
+                _opt["suggestions"] = suggestions or None
+                if opt_warnings:
+                    warnings.extend(str(w) for w in opt_warnings)
 
-            # 3. 执行用户 SQL（使用优化后的语句）
-            result_triplet = fetch_query_records(conn, opt_sql)
+                # 3. 执行用户 SQL（使用优化后的语句）
+                result_triplet = fetch_query_records(
+                    conn,
+                    opt_sql,
+                    # DESCRIBE(mysql_query(...)) 会在 MySQL 上真实执行 SQL，且使用
+                    # 独立于事务扫描的连接；取消器无法精确命中。实际游标 description
+                    # 已提供同样的列类型，因此该表函数直接执行一次即可。
+                    describe_before_execute=not _uses_mysql_query_table_function(opt_sql),
+                )
 
-            # 4. 可选：保存查询结果为新表（使用原始 SQL，确保语义不变）
-            if request.save_as_table:
-                table_name = request.save_as_table.strip()
-                if table_name:
-                    try:
-                        save_sql = request.sql.strip().rstrip(";")
-                        create_sql = (
-                            f'CREATE OR REPLACE TABLE {quote_identifier(table_name)} AS ({save_sql})'
-                        )
-                        conn.execute(create_sql)
-                        logger.info(f"Query result saved as table: {table_name}")
-                    except Exception as save_error:
-                        logger.warning(f"Failed to save query result as table: {str(save_error)}")
-                        warnings.append(f"Failed to save result as table: {str(save_error)}")
+                # 4. 可选：保存查询结果为新表（使用原始 SQL，确保语义不变）
+                if request.save_as_table:
+                    table_name = request.save_as_table.strip()
+                    if table_name:
+                        try:
+                            save_sql = request.sql.strip().rstrip(";")
+                            create_sql = (
+                                f'CREATE OR REPLACE TABLE {quote_identifier(table_name)} AS ({save_sql})'
+                            )
+                            conn.execute(create_sql)
+                            logger.info(f"Query result saved as table: {table_name}")
+                        except Exception as save_error:
+                            logger.warning(f"Failed to save query result as table: {str(save_error)}")
+                            warnings.append(f"Failed to save result as table: {str(save_error)}")
 
-            return result_triplet
+                return result_triplet
         finally:
             # 5. DETACH 清理(无论成功失败)
             if attached_aliases:
@@ -845,7 +868,7 @@ def execute_federated_query(
 
     def _on_timeout():
         timed_out["v"] = True
-        connection_registry.interrupt(query_id)
+        connection_registry.interrupt_with_remote(query_id)
 
     result_columns: list = []
     result_records: list = []

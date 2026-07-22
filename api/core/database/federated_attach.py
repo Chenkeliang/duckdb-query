@@ -6,9 +6,13 @@ import logging
 import re
 import uuid
 from contextlib import contextmanager
+from functools import partial
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
+import duckdb
+import pymysql
 
+from core.common.sql_identifiers import escape_string_literal
 from core.database.database_manager import db_manager
 from core.database.duckdb_engine import (
     build_attach_sql,
@@ -16,6 +20,7 @@ from core.database.duckdb_engine import (
     with_duckdb_connection,
 )
 from core.database.duckdb_pool import interruptible_connection
+from core.database.connection_registry import connection_registry
 from core.common.exceptions import DatabaseConnectionError, ResourceNotFoundError
 from core.security.encryption import password_encryptor
 
@@ -122,6 +127,99 @@ def detach_databases_on_connection(conn: Any, aliases: List[str]) -> None:
             conn.execute(f'DETACH {_quote_identifier(alias)}')
         except Exception as detach_error:
             logger.warning("DETACH %s failed: %s", alias, detach_error)
+
+
+def kill_mysql_query(db_config: Dict[str, Any], connection_id: int) -> bool:
+    """使用同账号的独立 MySQL 连接终止指定服务端查询。"""
+    username = db_config.get("user") or db_config.get("username")
+    killer = pymysql.connect(
+        host=db_config["host"],
+        port=int(db_config.get("port") or 3306),
+        user=username,
+        password=db_config.get("password", ""),
+        database=db_config["database"],
+        autocommit=True,
+        connect_timeout=5,
+        read_timeout=5,
+        write_timeout=5,
+    )
+    try:
+        with killer.cursor() as cursor:
+            cursor.execute(f"KILL QUERY {int(connection_id)}")
+        return True
+    finally:
+        killer.close()
+
+
+def _rollback_quietly(conn: Any) -> None:
+    try:
+        conn.execute("ROLLBACK")
+    except Exception as rollback_error:  # pylint: disable=broad-exception-caught
+        logger.debug("Remote cancellation transaction rollback skipped: %s", rollback_error)
+
+
+@contextmanager
+def mysql_remote_cancellation_scope(
+    conn: Any,
+    query_id: Optional[str],
+    attach_configs: List[Tuple[str, Dict[str, Any]]],
+) -> Iterator[None]:
+    """保持 MySQL 会话并登记 ``KILL QUERY``，供联邦查询取消使用。
+
+    mysql_scanner 的普通 ATTACH 扫描可能阻塞在远端结果物化阶段，此时 DuckDB
+    ``interrupt()`` 只能设置本地中断标记。这里用显式 DuckDB 事务固定扩展所用的
+    MySQL 会话，先读取 ``CONNECTION_ID()``，再为同一 query_id 登记第二连接取消器。
+    """
+    mysql_configs = [
+        (alias, config)
+        for alias, config in attach_configs
+        if str(config.get("type", "")).lower() == "mysql"
+    ]
+    if not query_id or not mysql_configs:
+        yield
+        return
+
+    captured_sessions: List[Tuple[Dict[str, Any], int]] = []
+    transaction_started = False
+    try:
+        conn.execute("BEGIN TRANSACTION")
+        transaction_started = True
+        for alias, db_config in mysql_configs:
+            safe_alias = escape_string_literal(alias)
+            row = conn.execute(
+                "SELECT connection_id FROM "
+                f"mysql_query('{safe_alias}', "
+                "'SELECT CONNECTION_ID() AS connection_id', stream_results=false)"
+            ).fetchone()
+            if not row:
+                raise RuntimeError("MySQL connection ID query returned no rows")
+            captured_sessions.append((dict(db_config), int(row[0])))
+    except duckdb.InterruptException:
+        if transaction_started:
+            _rollback_quietly(conn)
+        raise
+    except Exception as capture_error:  # pylint: disable=broad-exception-caught
+        if transaction_started:
+            _rollback_quietly(conn)
+        logger.warning(
+            "Unable to register MySQL remote cancellation; using DuckDB interrupt only: %s",
+            capture_error,
+        )
+        yield
+        return
+
+    for db_config, connection_id in captured_sessions:
+        connection_registry.register_remote_interrupt(
+            query_id,
+            partial(kill_mysql_query, db_config, connection_id),
+        )
+
+    try:
+        yield
+        conn.execute("COMMIT")
+    except Exception:
+        _rollback_quietly(conn)
+        raise
 
 
 def execute_sql_with_attach(

@@ -338,6 +338,8 @@ export const QueryTabs = React.forwardRef<QueryTabsHandle, QueryTabsProps>(({
             <SQLQueryPanel
               selectedTables={selectedTables}
               onExecute={onExecute}
+              onCancel={onCancel}
+              isCancelling={isCancelling}
               editorMinHeight="150px"
               editorMaxHeight="300px"
               previewSQL={loadedSqlPreview}
