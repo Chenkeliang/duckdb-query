@@ -3,9 +3,11 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from typing import Any, Dict
 
 from core.common.exceptions import ResourceNotFoundError
+from core.data.file_datasource_manager import file_datasource_manager
 from core.database.duckdb_engine import validate_query_syntax, with_duckdb_connection
 from core.database.federated_attach import (
     attach_databases_on_connection,
@@ -184,6 +186,22 @@ def _format_catalog_table(name: str, columns: list[tuple]) -> str:
     return f"{name}({col_str})"
 
 
+def _local_created_at_map() -> dict[str, str]:
+    """表名 → created_at ISO 串(文件数据源元数据;没登记的表不在 map 里)。"""
+    created: dict[str, str] = {}
+    try:
+        for entry in file_datasource_manager.list_file_datasources():
+            ts = entry.get("created_at")
+            if ts is None:
+                continue
+            created[str(entry.get("source_id"))] = (
+                ts.isoformat() if isinstance(ts, datetime) else str(ts)
+            )
+    except Exception as exc:  # noqa: BLE001  元数据不可用时目录退回 oid 序
+        logger.warning("catalog: list file datasources failed: %s", exc)
+    return created
+
+
 def _catalog_lines_for_tables(
     con: Any,
     database_name: str,
@@ -191,17 +209,21 @@ def _catalog_lines_for_tables(
     selected: set,
     detail_limit: int,
     name_prefix: str = "",
+    created_map: dict[str, str] | None = None,
 ) -> list[str]:
     """给一批表名生成目录行：前 detail_limit 张带列，其余仅列名。
 
     已出现在 selected（详细段）里的表，这里跳过列只列名，避免重复。
+    created_map 提供时在行尾标注创建时间,让模型能回答"最新/今天建的表"。
     """
     lines: list[str] = []
     detailed, rest = table_names[:detail_limit], table_names[detail_limit:]
     for name in detailed:
         qualified = f"{name_prefix}{name}" if name_prefix else name
+        ts = (created_map or {}).get(name, "")
+        suffix = f" [created {ts[:16].replace('T', ' ')}]" if ts else ""
         if name in selected or qualified in selected:
-            lines.append(f"  {name}")
+            lines.append(f"  {name}{suffix}")
             continue
         try:
             cols = con.execute(
@@ -212,7 +234,7 @@ def _catalog_lines_for_tables(
                 """,
                 [database_name, name],
             ).fetchall()
-            lines.append(f"  {_format_catalog_table(name, cols)}")
+            lines.append(f"  {_format_catalog_table(name, cols)}{suffix}")
         except Exception as exc:  # noqa: BLE001  单表枚举失败不影响其它表
             logger.warning("catalog: describe %s.%s failed: %s", database_name, name, exc)
             lines.append(f"  {name}")
@@ -252,7 +274,10 @@ def _build_catalog_text(selected: set, attach_databases: list[Any] | None = None
     with with_duckdb_connection() as con:
         attached: list[str] = []
         try:
-            # 本地 DuckDB 表：目录名用 current_database()，不假设固定叫 main
+            # 本地 DuckDB 表：目录名用 current_database()，不假设固定叫 main。
+            # "新旧"以元数据 created_at 为权威并按其倒排、逐行标注——table_oid
+            # 在库文件重建后会漂,表名时间戳靠猜,两者都错过(2026-07-22 实测);
+            # 无元数据的表排最后(oid 序兜底)
             try:
                 local_db = con.execute("SELECT current_database()").fetchone()[0]
                 local_names = [
@@ -261,16 +286,23 @@ def _build_catalog_text(selected: set, attach_databases: list[Any] | None = None
                         """
                         SELECT table_name FROM duckdb_tables()
                         WHERE NOT internal AND database_name = ?
-                        ORDER BY table_name
+                        ORDER BY table_oid DESC
                         """,
                         [local_db],
                     ).fetchall()
                 ]
                 if local_names:
-                    lines = ["Local DuckDB tables:"]
+                    created_map = _local_created_at_map()
+                    local_names.sort(key=lambda n: created_map.get(n, ""), reverse=True)
+                    lines = ["Local DuckDB tables (newest created first):"]
                     lines.extend(
                         _catalog_lines_for_tables(
-                            con, local_db, local_names, selected, _CATALOG_LOCAL_TABLE_LIMIT
+                            con,
+                            local_db,
+                            local_names,
+                            selected,
+                            _CATALOG_LOCAL_TABLE_LIMIT,
+                            created_map=created_map,
                         )
                     )
                     sections.append("\n".join(lines))
