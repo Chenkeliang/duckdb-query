@@ -1,14 +1,10 @@
 # pylint: disable=too-many-lines,broad-exception-caught,logging-fstring-interpolation,import-outside-toplevel,line-too-long,unused-argument,bare-except
 """Set operations HTTP routes (extracted from join_query.py)."""
 import logging
-import os
-import uuid
 from contextlib import contextmanager
-from datetime import datetime
 from typing import Any, Iterator, Optional, Set
 
 import duckdb
-from core.common.config_manager import config_manager
 from core.common.sql_identifiers import quote_identifier
 from core.common.utils import describe_query_column_types
 from core.database.duckdb_engine import (
@@ -29,12 +25,10 @@ from core.services.set_operation_generator import (
 from fastapi import APIRouter, Header
 from models.set_operation_models import (
     SetOperationConfig,
-    SetOperationExportRequest,
     SetOperationRequest,
     SetOperationType,
     UnionOperationRequest,
 )
-from utils.safe_filename import safe_filename_base
 from utils.response_helpers import (
     MessageCode,
     create_success_response,
@@ -49,38 +43,6 @@ def _timed_execute_fetch(con: Any, sql: str) -> tuple:
     """执行 SQL 并记录慢查询 / 自动 EXPLAIN，返回 (columns, records)。"""
     columns, records, _cursor_types = timed_fetch_query_records(con, sql)
     return columns, records
-
-
-def _xlsx_safe_projection(con: Any, sql: str) -> str:
-    """xlsx 数字单元格物理上是 float64:高精度 DECIMAL(p>15)/(U)BIGINT/HUGEINT
-    直接写入会静默失真(如 DECIMAL(38,9) 变 1.23e+19)。这些列 CAST 成文本导出
-    (Excel 里显示为文本单元格,但数值逐位精确——财务铁律优先于单元格类型美观)。
-    DESCRIBE 失败(多语句等)时原样返回,由 COPY 自行处理。
-    """
-    try:
-        described = con.execute(f"DESCRIBE ({sql.rstrip().rstrip(';')})").fetchall()
-    except Exception:  # pylint: disable=broad-exception-caught
-        return sql
-    projections = []
-    needs_wrap = False
-    for row in described:
-        name, dtype = str(row[0]), str(row[1]).upper()
-        quoted = '"' + name.replace('"', '""') + '"'
-        lossy = "HUGEINT" in dtype or dtype.startswith(("BIGINT", "UBIGINT"))
-        if dtype.startswith(("DECIMAL", "NUMERIC")):
-            digits = dtype[dtype.find("(") + 1 : dtype.find(",")] if "(" in dtype else "38"
-            try:
-                lossy = int(digits) > 15  # float64 有效十进制位约 15-17
-            except ValueError:
-                lossy = True
-        if lossy:
-            projections.append(f"CAST({quoted} AS VARCHAR) AS {quoted}")
-            needs_wrap = True
-        else:
-            projections.append(quoted)
-    if not needs_wrap:
-        return sql
-    return f"SELECT {', '.join(projections)} FROM ({sql.rstrip().rstrip(';')})"
 
 
 router = APIRouter()
@@ -558,180 +520,4 @@ def simple_union_operation(request: UnionOperationRequest):
             MessageCode.OPERATION_FAILED,
             f"Failed to operate: {str(e)}",
             details={"errors": [f"Failed to operate: {str(e)}"]},
-        )
-
-
-@router.post("/api/set-operations/export", tags=["Set Operations"])
-def export_set_operation(request: SetOperationExportRequest):
-    """
-    集合操作异步导出 - 使用DuckDB COPY命令
-
-    支持Excel、CSV、Parquet格式，使用DuckDB COPY命令直接导出完整数据，
-    避免内存限制问题。
-    """
-    from concurrent.futures import ThreadPoolExecutor
-
-    from core.services.task_manager import task_manager
-
-    try:
-        config = request.config
-        export_format = request.format
-        custom_filename = request.filename
-
-        logger.info(
-            f"Starting set operation export: format={export_format}, operation_type={config.operation_type}"
-        )
-
-        # 生成完整SQL（无LIMIT）
-        sql = generate_set_operation_sql(config)
-        logger.info(f"Generated complete SQL: {sql}")
-
-        # 创建异步导出任务
-        task_id = str(uuid.uuid4())
-
-        # 生成文件名
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        operation_name = config.operation_type.replace(" ", "_").lower()
-        # custom_filename 必须先清洗：它会拼进磁盘路径和 COPY ... TO '...'，
-        # 未清洗可 ../ 穿越目录、单引号打断 COPY SQL（见 safe_filename_base）。
-        # 清洗后为空则回退到生成名。
-        base_filename = (
-            safe_filename_base(custom_filename)
-            or f"set_operation_{operation_name}_{timestamp}"
-        )
-
-        # 根据格式确定文件扩展名和DuckDB COPY格式
-        if export_format == "csv":
-            file_extension = "csv"
-            copy_format = "CSV"
-            copy_options = "HEADER"
-        elif export_format == "parquet":
-            file_extension = "parquet"
-            copy_format = "PARQUET"
-            copy_options = ""
-        elif export_format == "excel":
-            file_extension = "xlsx"
-            copy_format = "CSV"  # 先导出为CSV，然后转换为Excel
-            copy_options = "HEADER"
-        else:
-            raise ValueError(f"Unsupported export format: {export_format}")
-
-        # 构建文件路径
-        filename = f"{base_filename}.{file_extension}"
-        exports_dir = str(config_manager.get_exports_dir())
-        os.makedirs(exports_dir, exist_ok=True)
-        file_path = os.path.join(exports_dir, filename)
-
-        # 创建任务记录
-        task_info = {
-            "task_id": task_id,
-            "type": "set_operation_export",
-            "status": "running",
-            "created_at": datetime.now().isoformat(),
-            "config": config.dict(),
-            "format": export_format,
-            "filename": filename,
-            "file_path": file_path,
-            "progress": 0,
-            "message": "正在准备导出...",
-        }
-
-        # 注册任务
-        task_manager.add_task(task_id, task_info)
-
-        # 在后台线程中执行导出任务
-        def export_task():
-            try:
-                # 更新任务状态
-                task_manager.update_task(
-                    task_id,
-                    {
-                        "status": "running",
-                        "progress": 10,
-                        "message": "正在连接数据库...",
-                    },
-                )
-
-                with with_duckdb_connection() as con:
-                    task_manager.update_task(
-                        task_id, {"progress": 30, "message": "正在执行查询..."}
-                    )
-
-                    if export_format == "excel":
-                        # excel 扩展原生写 xlsx（桌面预置/Docker 预装）。
-                        # 此前经 CSV 中转 + pandas 重读会丢类型语义且双倍 I/O
-                        try:
-                            con.execute("LOAD excel")
-                        except Exception:  # 已加载时无害；真缺失由 COPY 报错
-                            pass
-                        xlsx_sql = _xlsx_safe_projection(con, sql)
-                        copy_sql = (
-                            f"COPY ({xlsx_sql}) TO '{file_path}' "
-                            f"(FORMAT xlsx, HEADER true)"
-                        )
-
-                        logger.info(f"Executing Excel export: {copy_sql}")
-                        con.execute(copy_sql)
-
-                    else:
-                        copy_sql = (
-                            f"COPY ({sql}) TO '{file_path}' (FORMAT {copy_format}, {copy_options})"
-                        )
-
-                        logger.info(f"Executing export: {copy_sql}")
-                        con.execute(copy_sql)
-
-                    if not os.path.exists(file_path):
-                        raise RuntimeError("Export file not created")
-
-                    file_size = os.path.getsize(file_path)
-
-                    task_manager.update_task(
-                        task_id,
-                        {
-                            "status": "completed",
-                            "progress": 100,
-                            "message": f"导出完成，文件size: {file_size / 1024 / 1024:.2f} MB",
-                            "file_size": file_size,
-                            "download_url": f"/api/async-tasks/{task_id}/download",
-                        },
-                    )
-
-                    logger.info(
-                        f"Set operation export completed: {filename}, size: {file_size} bytes"
-                    )
-
-            except Exception as e:
-                logger.error(f"Export taskFailed to execute: {str(e)}")
-                task_manager.update_task(
-                    task_id,
-                    {
-                        "status": "failed",
-                        "progress": 0,
-                        "message": f"导出失败: {str(e)}",
-                        "error": str(e),
-                    },
-                )
-
-        # 在后台线程中执行导出任务
-        executor = ThreadPoolExecutor(max_workers=1)
-        executor.submit(export_task)
-
-        return create_success_response(
-            data={
-                "task_id": task_id,
-                "filename": filename,
-                "format": export_format,
-            },
-            message_code=MessageCode.SET_OPERATION_EXPORTED,
-            message="Export task created, please check async task list later",
-        )
-
-    except Exception as e:
-        logger.error(f"Failed to export set operation: {str(e)}")
-        return error_json_response(
-            500,
-            MessageCode.OPERATION_FAILED,
-            f"Failed to create export task: {str(e)}",
-            details={"error": str(e)},
         )

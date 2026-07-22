@@ -187,7 +187,6 @@ BY NAME、LIMIT、预览 vs 执行语义见 [QUERY_BEHAVIOR_ZH.md](QUERY_BEHAVIO
 | POST | `/api/set-operations/validate` | 对象 | `validateSetOperation`；500 服务异常 |
 | POST | `/api/set-operations/execute` | 对象 | `executeSetOperation`（`save_as_table` / `preview`）；400 / 500 |
 | POST | `/api/set-operations/simple-union` | 对象 | `simpleUnionSetOperation` |
-| POST | `/api/set-operations/export` | 对象 | `exportSetOperation`；500 `OPERATION_FAILED` |
 
 ## 9.1 查询结果服务端导出（`queryExportApi.ts`）
 

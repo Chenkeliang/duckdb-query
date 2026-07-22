@@ -1,6 +1,6 @@
-"""safe_filename_base 的行为——集合导出(set_operations)与下载(async_tasks)共用。
+"""safe_filename_base 的行为——下载(async_tasks)与查询导出(query_export)共用。
 
-回归(2026-07): 集合导出的 custom_filename 曾未清洗，可 ../ 穿越 exports 目录、
+回归(2026-07): custom_filename 曾未清洗，可 ../ 穿越 exports 目录、
 单引号打断 COPY ... TO '...'。清洗后两者都被消除。
 """
 

@@ -52,7 +52,6 @@
   "SET_OPERATION_PREVIEWED": "Set operation preview successful",
   "SET_OPERATION_VALIDATED": "Set operation validation passed",
   "SET_OPERATION_EXECUTED": "Set operation executed successfully",
-  "SET_OPERATION_EXPORTED": "Set operation exported successfully",
   "TASK_SUBMITTED": "Task submitted",
   "TASK_RETRIEVED": "Task details retrieved successfully",
   "TASKS_RETRIEVED": "Tasks retrieved successfully",

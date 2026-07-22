@@ -81,7 +81,6 @@ class MessageCode(str, Enum):
     SET_OPERATION_PREVIEWED = "SET_OPERATION_PREVIEWED"
     SET_OPERATION_VALIDATED = "SET_OPERATION_VALIDATED"
     SET_OPERATION_EXECUTED = "SET_OPERATION_EXECUTED"
-    SET_OPERATION_EXPORTED = "SET_OPERATION_EXPORTED"
 
     # ==================== 异步任务相关 ====================
     TASK_SUBMITTED = "TASK_SUBMITTED"
@@ -242,7 +241,6 @@ DEFAULT_MESSAGES = {
     MessageCode.SET_OPERATION_PREVIEWED: "集合操作预览成功",
     MessageCode.SET_OPERATION_VALIDATED: "集合操作验证通过",
     MessageCode.SET_OPERATION_EXECUTED: "集合操作执行成功",
-    MessageCode.SET_OPERATION_EXPORTED: "集合操作导出成功",
 
     # ==================== 异步任务相关 ====================
     MessageCode.TASK_SUBMITTED: "任务已提交",

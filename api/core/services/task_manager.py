@@ -280,17 +280,6 @@ class TaskManager:
             return None
 
     @staticmethod
-    def _parse_datetime(value: Optional[str]) -> Optional[datetime]:
-        if not value:
-            return None
-        if isinstance(value, datetime):
-            return value
-        try:
-            return datetime.fromisoformat(value)
-        except ValueError:
-            return None
-
-    @staticmethod
     def _coerce_status(value: Any) -> TaskStatus:
         if isinstance(value, TaskStatus):
             return value
@@ -432,39 +421,6 @@ class TaskManager:
         )
 
         logger.info("Creating new task: %s (%s)", task_id, task_type)
-        return task_id
-
-    def add_task(self, task_id: str, task_info: Dict[str, Any]) -> str:
-        """
-        Compatible with old interface: directly write a task record
-        """
-        info = dict(task_info)
-        status = self._coerce_status(info.pop("status", TaskStatus.QUEUED.value))
-        query = info.pop("query", "") or ""
-        task_type = info.pop("type", info.pop("task_type", "async"))
-        datasource = info.pop("datasource", None)
-        created_at = (
-            self._parse_datetime(info.pop("created_at", None)) or get_storage_time()
-        )
-        result_file_path = info.get("file_path") or info.get("result_file_path")
-        error_message = info.get("error") or info.get("error_message")
-        result_info = info.pop("result_info", None)
-
-        self._upsert_task(
-            task_id=task_id,
-            status=status,
-            query=query,
-            task_type=task_type,
-            datasource=datasource,
-            result_file_path=result_file_path,
-            error_message=error_message,
-            created_at=created_at,
-            started_at=None,
-            completed_at=None,
-            execution_time=None,
-            result_info=result_info,
-            metadata=info,
-        )
         return task_id
 
     def start_task(self, task_id: str) -> bool:

@@ -52,7 +52,6 @@
   "SET_OPERATION_PREVIEWED": "集合操作预览成功",
   "SET_OPERATION_VALIDATED": "集合操作验证通过",
   "SET_OPERATION_EXECUTED": "集合操作执行成功",
-  "SET_OPERATION_EXPORTED": "集合操作导出成功",
   "TASK_SUBMITTED": "任务已提交",
   "TASK_RETRIEVED": "获取任务详情成功",
   "TASKS_RETRIEVED": "获取任务列表成功",

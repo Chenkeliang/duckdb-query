@@ -72,20 +72,6 @@ export interface SimpleUnionSetOperationResult {
     warnings?: string[];
 }
 
-export type SetOperationExportFormat = 'excel' | 'csv' | 'parquet';
-
-export interface SetOperationExportPayload {
-    config: SetOperationConfigPayload;
-    format: SetOperationExportFormat;
-    filename?: string;
-}
-
-export interface SetOperationExportResult {
-    task_id: string;
-    filename: string;
-    format: SetOperationExportFormat;
-}
-
 export interface SetOperationGenerateResult {
     sql: string;
     estimated_rows?: number;
@@ -205,20 +191,5 @@ export async function simpleUnionSetOperation(
         return normalized.data;
     } catch (error) {
         throw handleApiError(error as never, '简化 UNION 生成失败');
-    }
-}
-
-/**
- * POST /api/set-operations/export — 创建异步导出任务
- */
-export async function exportSetOperation(
-    payload: SetOperationExportPayload
-): Promise<SetOperationExportResult> {
-    try {
-        const response = await apiClient.post('/api/set-operations/export', payload);
-        const normalized = normalizeResponse<SetOperationExportResult>(response);
-        return normalized.data;
-    } catch (error) {
-        throw handleApiError(error as never, '集合运算导出任务创建失败');
     }
 }
