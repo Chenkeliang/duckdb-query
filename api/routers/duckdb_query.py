@@ -308,6 +308,11 @@ def list_duckdb_tables_summary():
                     }
                 )
 
+            # "最新"以元数据 created_at 为权威口径(与 AI 目录一致):table_oid
+            # 会在库文件重建/checkpoint 后漂移,重启即洗牌(2026-07-22 实测,
+            # 用户误以为新表被回退);无 created_at 的表保持建表序垫底(稳定排序)
+            table_info.sort(key=lambda t: t["created_at"] or "", reverse=True)
+
             return create_list_response(
                 items=table_info,
                 total=len(table_info),
