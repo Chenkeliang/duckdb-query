@@ -253,6 +253,59 @@ class TestJoinQueryGenerator:
         assert 'INNER JOIN "orders"' in join_chain
         assert 'ON "users"."id" = "orders"."user_id"' in join_chain
 
+    def test_build_join_chain_no_hardcoded_table_casts(self):
+        """回归:曾按表名/列名硬编码改写连接键(uid+0711/0702 REGEXP_EXTRACT、
+        iget_uid/buyer_id+query_result* 强制 CAST,来自 a816e4e 的临时补丁)。
+        通用 left_cast/right_cast 上线后该硬编码已删,任何用户的同名表不得再被静默改写。"""
+        source_left = DataSource(
+            id="0711",
+            type=DataSourceType.DUCKDB,
+            params={"table_name": "0711"},
+            columns=[{"name": "uid", "type": "VARCHAR"}],
+        )
+        source_right = DataSource(
+            id="query_result_20250725",
+            type=DataSourceType.DUCKDB,
+            params={"table_name": "query_result_20250725"},
+            columns=[{"name": "iget_uid", "type": "BIGINT"}],
+        )
+        join = Join(
+            left_source_id="0711",
+            right_source_id="query_result_20250725",
+            join_type=JoinType.INNER,
+            conditions=[
+                JoinCondition(left_column="uid", right_column="iget_uid", operator="=")
+            ],
+        )
+        table_columns = {"0711": ["uid"], "query_result_20250725": ["iget_uid"]}
+
+        join_chain = build_join_chain([source_left, source_right], [join], table_columns)
+
+        assert "REGEXP_EXTRACT" not in join_chain
+        assert "CAST" not in join_chain
+        assert '"0711"."uid" = "query_result_20250725"."iget_uid"' in join_chain
+
+        # 显式 cast 机制不受影响:同样的条件加 left_cast/right_cast 应生成 TRY_CAST
+        join_with_cast = Join(
+            left_source_id="0711",
+            right_source_id="query_result_20250725",
+            join_type=JoinType.INNER,
+            conditions=[
+                JoinCondition(
+                    left_column="uid",
+                    right_column="iget_uid",
+                    operator="=",
+                    left_cast="VARCHAR",
+                    right_cast="VARCHAR",
+                )
+            ],
+        )
+        chain_with_cast = build_join_chain(
+            [source_left, source_right], [join_with_cast], table_columns
+        )
+        assert 'TRY_CAST("0711"."uid" AS VARCHAR)' in chain_with_cast
+        assert 'TRY_CAST("query_result_20250725"."iget_uid" AS VARCHAR)' in chain_with_cast
+
     def test_build_join_chain_multiple(self):
         """测试构建多表JOIN链"""
         join1 = Join(

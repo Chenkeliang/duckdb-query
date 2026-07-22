@@ -604,22 +604,6 @@ def build_join_chain(sources, joins, table_columns, attach_aliases=None):
                 left_col = base_left_col
                 right_col = base_right_col
 
-                # Check if data cleaning is needed (for JSON or complex strings)
-                # If left column contains complex data, try to extract numeric part
-                if condition.left_column == "uid" and left_table_id in ["0711", "0702"]:
-                    # Use regex to extract numeric part
-                    left_col = (
-                        f"CAST(REGEXP_EXTRACT({left_col}, '^([0-9]+)', 1) AS VARCHAR)"
-                    )
-
-                # If right column is numeric type, ensure type matching
-                if condition.right_column in [
-                    "iget_uid",
-                    "buyer_id",
-                ] and right_table_id.startswith("query_result"):
-                    # Ensure right column is also string type for comparison
-                    right_col = f"CAST({right_col} AS VARCHAR)"
-
                 if condition.left_cast:
                     left_col = f"TRY_CAST({left_col} AS {condition.left_cast})"
                 if condition.right_cast:
