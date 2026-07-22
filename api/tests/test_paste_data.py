@@ -1,3 +1,4 @@
+from datetime import datetime
 from uuid import uuid4
 
 import pytest
@@ -9,6 +10,7 @@ from fastapi.testclient import TestClient
 from core.database.duckdb_engine import with_duckdb_connection
 from core.data.file_datasource_manager import file_datasource_manager
 from main import app
+from routers import paste_data
 
 
 client = TestClient(app)
@@ -17,6 +19,14 @@ client = TestClient(app)
 def _cleanup_table(table_name: str):
     with with_duckdb_connection() as con:
         con.execute(f'DROP TABLE IF EXISTS "{table_name}"')
+
+
+def test_sanitize_table_name_uses_storage_time_for_fallback(monkeypatch):
+    """Regression (2026-07): fallback names must use the shared storage clock."""
+    fixed_time = datetime(2026, 7, 21, 10, 11, 12)
+    monkeypatch.setattr(paste_data, "get_storage_time", lambda: fixed_time)
+
+    assert paste_data._sanitize_table_name("!!!") == "pasted_table_20260721_101112"
 
 
 def test_paste_data_creates_typed_table():
