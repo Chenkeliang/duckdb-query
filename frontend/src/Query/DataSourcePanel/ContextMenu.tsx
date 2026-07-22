@@ -278,7 +278,7 @@ export const TableContextMenu: React.FC<TableContextMenuProps> = ({
           )}
 
           {/* DuckDB 表特有选项 - 删除 */}
-          {!isExternal && canDelete && onDelete && (
+          {!isExternal && canDelete && (
             <>
               <ContextMenuSeparator />
               <ContextMenuItem
