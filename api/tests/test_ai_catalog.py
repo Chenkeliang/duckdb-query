@@ -84,13 +84,14 @@ def test_catalog_orders_by_metadata_created_at_over_oid(monkeypatch, local_table
         ai_router.file_datasource_manager,
         "list_file_datasources",
         lambda: [
-            {"source_id": older, "created_at": "2026-07-22T16:49:51"},
-            {"source_id": newer, "created_at": "2026-07-20T08:00:00"},
+            {"source_id": older, "created_at": "2026-07-22T08:49:51"},
+            {"source_id": newer, "created_at": "2026-07-20T00:00:00"},
         ],
     )
     text = ai_router._build_catalog_text(set())
     assert text.index(older) < text.index(newer)  # 元数据口径压过 oid 口径
-    assert "[created 2026-07-22 16:49]" in text  # 行尾标注创建时间
+    # 行尾标注创建时间:存储 UTC 08:49 → 应用时区(+08)16:49 展示
+    assert "[created 2026-07-22 16:49]" in text
 
 
 def test_catalog_includes_external_db_and_rules_table(sqlite_alarm_db, local_tables):

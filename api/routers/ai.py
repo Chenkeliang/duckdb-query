@@ -7,6 +7,7 @@ from datetime import datetime
 from typing import Any, Dict
 
 from core.common.exceptions import ResourceNotFoundError
+from core.common.timezone_utils import format_storage_time_for_response
 from core.data.file_datasource_manager import file_datasource_manager
 from core.database.duckdb_engine import validate_query_syntax, with_duckdb_connection
 from core.database.federated_attach import (
@@ -202,6 +203,15 @@ def _local_created_at_map() -> dict[str, str]:
     return created
 
 
+def _display_time(ts: str) -> str:
+    """存储 UTC 时间串 → 应用时区的 'YYYY-MM-DD HH:MM'(给模型/用户看)。"""
+    try:
+        local = format_storage_time_for_response(datetime.fromisoformat(ts))
+    except ValueError:
+        local = None
+    return (local or ts)[:16].replace("T", " ")
+
+
 def _catalog_lines_for_tables(
     con: Any,
     database_name: str,
@@ -221,7 +231,7 @@ def _catalog_lines_for_tables(
     for name in detailed:
         qualified = f"{name_prefix}{name}" if name_prefix else name
         ts = (created_map or {}).get(name, "")
-        suffix = f" [created {ts[:16].replace('T', ' ')}]" if ts else ""
+        suffix = f" [created {_display_time(ts)}]" if ts else ""
         if name in selected or qualified in selected:
             lines.append(f"  {name}{suffix}")
             continue
@@ -293,6 +303,8 @@ def _build_catalog_text(selected: set, attach_databases: list[Any] | None = None
                 ]
                 if local_names:
                     created_map = _local_created_at_map()
+                    # 名称决胜:同刻/无元数据的表也有确定顺序(跨重启稳定)
+                    local_names.sort()
                     local_names.sort(key=lambda n: created_map.get(n, ""), reverse=True)
                     lines = ["Local DuckDB tables (newest created first):"]
                     lines.extend(
