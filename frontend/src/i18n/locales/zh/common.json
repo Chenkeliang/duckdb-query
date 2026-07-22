@@ -100,7 +100,8 @@
     "clear": "清空",
     "execute": "执行",
     "unknownError": "未知错误",
-    "remove": "移除"
+    "remove": "移除",
+    "copyTableName": "复制表名"
   },
   "dataSource": {
     "previewTable": "预览表: {{tableName}}",

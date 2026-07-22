@@ -1,6 +1,7 @@
 import * as React from 'react';
 import { forwardRef } from 'react';
-import { Database, Table2 } from 'lucide-react';
+import { useTranslation } from 'react-i18next';
+import { Check, Copy, Database, Table2 } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { TableContextMenu } from './ContextMenu';
 import type { SelectedTableObject } from '@/types/SelectedTable';
@@ -76,7 +77,7 @@ const TableItemButton = forwardRef<
     onClick={onClick}
     onKeyDown={onKeyDown}
     className={[
-      'w-full rounded-lg px-3 py-2 text-left text-sm transition-colors',
+      'group w-full rounded-lg px-3 py-2 text-left text-sm transition-colors',
       'hover:bg-accent focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-primary focus-visible:ring-offset-2',
       isSelected ? 'border-l-2 border-primary bg-primary/10' : 'border-l-2 border-transparent',
       disabled ? 'cursor-not-allowed opacity-50 hover:bg-transparent' : 'cursor-pointer',
@@ -106,7 +107,21 @@ export const TableItem = forwardRef<HTMLDivElement, TableItemProps>(({
   batchChecked = false,
   onBatchToggle,
 }, _ref) => {
+  const { t } = useTranslation('common');
   const tableIcon = React.useMemo(() => getTableIcon(table), [table]);
+  const [nameCopied, setNameCopied] = React.useState(false);
+
+  // 复制表名:阻止冒泡以免触发行选中;失败静默(剪贴板权限等)
+  const handleCopyName = React.useCallback(async (e: React.MouseEvent) => {
+    e.stopPropagation();
+    try {
+      await navigator.clipboard.writeText(table.name);
+      setNameCopied(true);
+      window.setTimeout(() => setNameCopied(false), 1500);
+    } catch {
+      /* 忽略剪贴板失败 */
+    }
+  }, [table.name]);
 
   // 高亮搜索匹配的文本
   const highlightText = (text: string, query: string) => {
@@ -237,6 +252,21 @@ export const TableItem = forwardRef<HTMLDivElement, TableItemProps>(({
               </div>
             )}
           </div>
+
+          {/* 复制表名：悬停/聚焦时可见 */}
+          <button
+            type="button"
+            onClick={handleCopyName}
+            title={t('common.copyTableName', '复制表名')}
+            aria-label={t('common.copyTableName', '复制表名')}
+            className="shrink-0 rounded p-1 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 hover:bg-accent hover:text-foreground"
+          >
+            {nameCopied ? (
+              <Check className="h-3.5 w-3.5 text-primary" />
+            ) : (
+              <Copy className="h-3.5 w-3.5" />
+            )}
+          </button>
         </div>
       </TableItemButton>
     </TableContextMenu>

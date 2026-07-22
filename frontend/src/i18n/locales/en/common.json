@@ -100,7 +100,8 @@
     "clear": "Clear",
     "execute": "Execute",
     "unknownError": "Unknown error",
-    "remove": "Remove"
+    "remove": "Remove",
+    "copyTableName": "Copy table name"
   },
   "dataSource": {
     "previewTable": "Preview table: {{tableName}}",
