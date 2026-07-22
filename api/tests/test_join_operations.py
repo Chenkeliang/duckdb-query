@@ -267,7 +267,7 @@ class TestJoinQueryGenerator:
             id="query_result_20250725",
             type=DataSourceType.DUCKDB,
             params={"table_name": "query_result_20250725"},
-            columns=[{"name": "iget_uid", "type": "BIGINT"}],
+            columns=[{"name": "iget_uid", "type": "VARCHAR"}],
         )
         join = Join(
             left_source_id="0711",
@@ -285,26 +285,50 @@ class TestJoinQueryGenerator:
         assert "CAST" not in join_chain
         assert '"0711"."uid" = "query_result_20250725"."iget_uid"' in join_chain
 
-        # 显式 cast 机制不受影响:同样的条件加 left_cast/right_cast 应生成 TRY_CAST
-        join_with_cast = Join(
-            left_source_id="0711",
-            right_source_id="query_result_20250725",
-            join_type=JoinType.INNER,
-            conditions=[
-                JoinCondition(
-                    left_column="uid",
-                    right_column="iget_uid",
-                    operator="=",
-                    left_cast="VARCHAR",
-                    right_cast="VARCHAR",
-                )
-            ],
-        )
-        chain_with_cast = build_join_chain(
-            [source_left, source_right], [join_with_cast], table_columns
-        )
-        assert 'TRY_CAST("0711"."uid" AS VARCHAR)' in chain_with_cast
-        assert 'TRY_CAST("query_result_20250725"."iget_uid" AS VARCHAR)' in chain_with_cast
+        conn = duckdb.connect(":memory:")
+        try:
+            conn.execute('CREATE TABLE "0711" (uid VARCHAR)')
+            conn.execute(
+                'CREATE TABLE "query_result_20250725" (iget_uid VARCHAR)'
+            )
+            conn.execute("INSERT INTO \"0711\" VALUES ('123abc'), ('00123')")
+            conn.execute("INSERT INTO \"query_result_20250725\" VALUES ('123')")
+            rows = conn.execute(
+                'SELECT "0711"."uid", "query_result_20250725"."iget_uid" '
+                f"FROM {join_chain} ORDER BY 1"
+            ).fetchall()
+            assert rows == []
+
+            # 显式 cast 机制不受影响:同样的条件加 cast 应生成并执行 TRY_CAST
+            join_with_cast = Join(
+                left_source_id="0711",
+                right_source_id="query_result_20250725",
+                join_type=JoinType.INNER,
+                conditions=[
+                    JoinCondition(
+                        left_column="uid",
+                        right_column="iget_uid",
+                        operator="=",
+                        left_cast="BIGINT",
+                        right_cast="BIGINT",
+                    )
+                ],
+            )
+            chain_with_cast = build_join_chain(
+                [source_left, source_right], [join_with_cast], table_columns
+            )
+            assert 'TRY_CAST("0711"."uid" AS BIGINT)' in chain_with_cast
+            assert (
+                'TRY_CAST("query_result_20250725"."iget_uid" AS BIGINT)'
+                in chain_with_cast
+            )
+            rows = conn.execute(
+                'SELECT "0711"."uid", "query_result_20250725"."iget_uid" '
+                f"FROM {chain_with_cast} ORDER BY 1"
+            ).fetchall()
+            assert rows == [("00123", "123")]
+        finally:
+            conn.close()
 
     def test_build_join_chain_multiple(self):
         """测试构建多表JOIN链"""

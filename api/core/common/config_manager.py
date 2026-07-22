@@ -25,8 +25,6 @@ class DuckDBPaths:
     extension_dir: Path
     home_dir: Path
 
-# 避免循环导入，在需要时动态导入
-# from core.security.security import mask_sensitive_config
 from core.foundation.crypto_utils import decrypt_config_passwords
 
 @dataclass
@@ -296,7 +294,9 @@ class ConfigManager:
         """更新现有应用配置文件，确保包含所有新字段"""
         try:
             # 读取现有配置
-            existing_config = self._load_json(self.app_config_file)
+            existing_config = self._load_json(
+                self.app_config_file, raise_on_error=True
+            )
 
             # 版本化迁移(在合并默认值之前,用原始文件判版本——合并会补上 config_schema_version
             # 默认值,之后就分不清"遗留"与"主动选择"了)。v1(无该字段)的 query_tree profiling
@@ -363,29 +363,34 @@ class ConfigManager:
                         i += 1
                     continue
                 if nxt == "*":
-                    # 块注释:吃到 */;未闭合则吃到文件尾(交给 json.loads 报错)
+                    # 块注释:只接受成对的 /* */，避免把损坏文件尾部静默吞掉
                     i += 2
                     while i + 1 < n and not (
                         content[i] == "*" and content[i + 1] == "/"
                     ):
                         i += 1
+                    if i + 1 >= n:
+                        raise ValueError("Unterminated JSONC block comment")
                     i += 2
                     continue
             out.append(ch)
             i += 1
         return "".join(out)
 
-    def _load_json(self, file_path: Path) -> Dict[str, Any]:
+    def _load_json(
+        self, file_path: Path, *, raise_on_error: bool = False
+    ) -> Dict[str, Any]:
         """加载 JSON 配置文件（支持注释）"""
         try:
-            if file_path.exists():
-                with open(file_path, "r", encoding="utf-8") as f:
-                    content = f.read()
-
-                return json.loads(self._strip_jsonc(content))
-            return {}
-        except Exception as e:
-            logger.error(f"Loading configuration filefailed {file_path}: {str(e)}")
+            if not file_path.exists():
+                return {}
+            with open(file_path, "r", encoding="utf-8") as file_obj:
+                content = file_obj.read()
+            return json.loads(self._strip_jsonc(content))
+        except Exception as exc:
+            logger.error("Failed to load configuration file %s: %s", file_path, exc)
+            if raise_on_error:
+                raise
             return {}
 
     def _save_json(self, file_path: Path, data: Any):
@@ -714,6 +719,11 @@ class ConfigManager:
         try:
             if self._app_config is None:
                 self.load_app_config()
+
+            # Never overwrite a malformed file with in-memory defaults loaded after
+            # a parse failure. The existing file must remain available for repair.
+            if self.app_config_file.exists():
+                self._load_json(self.app_config_file, raise_on_error=True)
 
             # 更新配置
             for key, value in kwargs.items():

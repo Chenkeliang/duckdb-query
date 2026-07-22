@@ -6,6 +6,8 @@
 """
 import json
 
+import pytest
+
 from core.common.config_manager import ConfigManager, config_manager
 
 strip = ConfigManager._strip_jsonc
@@ -72,8 +74,38 @@ def test_shipped_example_jsonc_parses(tmp_path):
     assert isinstance(parsed, dict) and parsed, "example config parsed to empty"
 
 
-def test_load_json_failure_still_returns_empty_dict(tmp_path):
-    """_load_json 的兜底契约不变:坏文件返回 {},不抛异常。"""
+def test_unterminated_block_comment_is_rejected():
+    """回归(2026-07):未闭合块注释不能被吞到 EOF 后当成合法 JSON。"""
+    with pytest.raises(ValueError, match="Unterminated JSONC block comment"):
+        strip('{"max_query_rows": 123} /* unclosed')
+
+
+def test_load_json_failure_keeps_runtime_fallback_contract(tmp_path):
+    """回归(2026-07):坏文件运行时仍回退空配置，写入路径另行严格校验。"""
     bad = tmp_path / "bad.jsonc"
     bad.write_text("{ definitely not json", encoding="utf-8")
     assert config_manager._load_json(bad) == {}
+
+
+def test_invalid_existing_config_is_not_overwritten(tmp_path):
+    """回归(2026-07):启动迁移遇到坏配置时必须保留原文件供用户修复。"""
+    config_file = tmp_path / "app-config.json"
+    original = '{"max_query_rows": 4321} /* unclosed'
+    config_file.write_text(original, encoding="utf-8")
+
+    ConfigManager(config_dir=str(tmp_path))
+
+    assert config_file.read_text(encoding="utf-8") == original
+
+
+def test_invalid_existing_config_blocks_later_settings_write(tmp_path):
+    """回归(2026-07):加载失败后的内存默认值不能在设置保存时覆盖坏文件。"""
+    config_file = tmp_path / "app-config.json"
+    original = '{"max_query_rows": 4321} /* unclosed'
+    config_file.write_text(original, encoding="utf-8")
+    manager = ConfigManager(config_dir=str(tmp_path))
+    loaded_rows = manager.get_app_config().max_query_rows
+
+    assert manager.update_app_config(max_query_rows=999) is False
+    assert manager.get_app_config().max_query_rows == loaded_rows
+    assert config_file.read_text(encoding="utf-8") == original

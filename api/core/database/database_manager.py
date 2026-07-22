@@ -32,13 +32,12 @@ class DatabaseManager:
 
     def __init__(self):
         self.connections: Dict[str, DatabaseConnection] = {}
-        self.connection_pools: Dict[str, Any] = {}
         self._config_loaded = False
         # 延迟加载配置，避免初始化顺序问题
         # RLock（可重入）：add_connection 会在持锁期间被 _load_connections_from_config
         # 循环调用，list_connections 也会在持锁期间触发同一个加载路径——同一线程需要
-        # 能重复拿到这把锁而不死锁。只保护 connections/connection_pools 这几个
-        # 字典本身的读写/遍历，不覆盖 test_connection 这类慢速网络 I/O。
+        # 能重复拿到这把锁而不死锁。只保护 connections 字典本身的读写/遍历，
+        # 不覆盖 test_connection 这类慢速网络 I/O。
         self._lock = threading.RLock()
 
     def _load_connections_from_config(self):
@@ -176,9 +175,6 @@ class DatabaseManager:
             with self._lock:
                 if connection_id in self.connections:
                     del self.connections[connection_id]
-
-                if connection_id in self.connection_pools:
-                    del self.connection_pools[connection_id]
 
             # 从 DuckDB 元数据表删除
             success = metadata_manager.delete_database_connection(connection_id)

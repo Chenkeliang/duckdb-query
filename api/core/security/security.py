@@ -4,10 +4,8 @@
 """
 
 import os
-import re
-import hashlib
 import logging
-from typing import List, Dict, Any, Optional, Set
+from typing import Dict, Any
 from pathlib import Path
 
 # 可选依赖：python-magic
@@ -57,15 +55,6 @@ def get_max_chunk_file_size():
     except Exception as e:
         logger.warning(f"Unable to get configuration file, using default value: {str(e)}")
         return 1024 * 1024 * 1024  # 1GB 默认值
-
-
-# 敏感信息正则表达式
-SENSITIVE_PATTERNS = [
-    r'password\s*=\s*[\'"][^\'"]+[\'"]',  # password="xxx"
-    r'pwd\s*=\s*[\'"][^\'"]+[\'"]',  # pwd="xxx"
-    r'secret\s*=\s*[\'"][^\'"]+[\'"]',  # secret="xxx"
-    r'token\s*=\s*[\'"][^\'"]+[\'"]',  # token="xxx"
-]
 
 
 class SecurityValidator:
@@ -163,41 +152,5 @@ class SecurityValidator:
 
         return True
 
-    def sanitize_log_message(self, message: str) -> str:
-        """清理日志消息中的敏感信息"""
-        sanitized = message
-
-        for pattern in SENSITIVE_PATTERNS:
-            sanitized = re.sub(
-                pattern,
-                lambda m: m.group(0).split("=")[0] + '="***"',
-                sanitized,
-                flags=re.IGNORECASE,
-            )
-
-        return sanitized
-
-
 # 全局安全验证器实例
 security_validator = SecurityValidator()
-
-
-def get_file_hash(file_path: str) -> str:
-    """计算文件 SHA256 哈希值"""
-    sha256_hash = hashlib.sha256()
-    with open(file_path, "rb") as f:
-        for chunk in iter(lambda: f.read(4096), b""):
-            sha256_hash.update(chunk)
-    return sha256_hash.hexdigest()
-
-
-def mask_sensitive_config(config: Dict[str, Any]) -> Dict[str, Any]:
-    """遮蔽配置中的敏感信息"""
-    masked_config = config.copy()
-    sensitive_keys = ["password", "pwd", "secret", "token", "key"]
-
-    for key in masked_config:
-        if any(sensitive in key.lower() for sensitive in sensitive_keys):
-            masked_config[key] = "***"
-
-    return masked_config

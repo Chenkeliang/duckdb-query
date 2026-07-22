@@ -28,7 +28,7 @@
 | `asyncTaskApi.ts` | §6 | 异步任务、连接池状态、错误统计 |
 | `pivotQueryApi.ts` | §7 | 透视 generate/preview、SQL 收藏、应用配置（`POST /api/pivot-query/*`） |
 | `settingsShortcutsApi.ts` | §8 | 快捷键 |
-| `setOperationsApi.ts` | §9 | 集合运算 generate / preview / validate / execute / export 等 |
+| `setOperationsApi.ts` | §9 | 集合运算 generate / preview / validate / execute 等 |
 | `queryExportApi.ts` | §9.1 | 查询结果服务端导出 |
 | `joinQueryApi.ts` | §9.2 | 结构化多表 JOIN：`performJoinQuery` |
 | `aiApi.ts` | §9.3 | AI 设置 / 供应商测试 / 报错医生 / 解释 / 问数 / 对话 / 图表推荐 |
@@ -60,6 +60,7 @@
 | 404 | `RESOURCE_NOT_FOUND` | 数据源 id、分块上传会话、DuckDB 表、联邦 `attach_databases[].connection_id` |
 | 404 | `FAVORITE_NOT_FOUND` | SQL 收藏 id 不存在 |
 | 404 | `QUERY_NOT_FOUND` | 同步查询取消时无对应 `X-Request-ID` 会话 |
+| 409 | `UPLOAD_PROCESSING` | 分块上传已进入合并/导入阶段，不能再取消 |
 | 413 | `FILE_TOO_LARGE` | 分块 `init` 超过 `max_file_size` |
 | 499 | `QUERY_CANCELLED` | 同步 DuckDB / 联邦查询取消（`X-Request-ID`） |
 | 500 | `QUERY_FAILED` | DuckDB `execute` / 联邦 SQL 执行失败 |
@@ -128,7 +129,7 @@
 | POST | `/api/server-files/excel/import` | JSON body | `importServerExcelSheets` |
 | POST | `/api/read_from_url` | JSON `import_mode?`, `prefer_native?`（默认 true，false 时对 http(s) 跳过 DuckDB/httpfs 直读） | `readFromUrl`；s3:// 禁止 requests 回退；400 `URL_INVALID`；500 `URL_READ_FAILED`（§1.1） |
 | POST | `/api/upload/chunk` | — | `uploadChunk` |
-| DELETE | `/api/upload/cancel/{upload_id}` | — | `cancelChunkedUpload`；404 会话（§1.1） |
+| DELETE | `/api/upload/cancel/{upload_id}` | — | `cancelChunkedUpload`；404 会话；409 已进入处理阶段（§1.1） |
 | — | `uploadFileAuto` | 同上 | 文件 &gt; 8MB 走分块，否则 `POST /api/upload` |
 | GET | `/api/url_info` | — | `getUrlInfo`；400 `URL_INVALID`（§1.1） |
 | POST | `/api/data-sources/excel/inspect` | — | `inspectExcelSheets`；404 `FILE_NOT_FOUND` |
@@ -198,7 +199,7 @@ BY NAME、LIMIT、预览 vs 执行语义见 [QUERY_BEHAVIOR_ZH.md](QUERY_BEHAVIO
 
 请求：`{ sql, format: "parquet"|"csv", attach_databases? }`；支持 `X-Request-ID` 取消（499 `QUERY_CANCELLED`）。
 
-**`setOperationsApi.ts` 已封装**：`generate`、`preview`、`validate`、`execute`、`simple-union`、`export`（上表全部）。
+**`setOperationsApi.ts` 已封装**：`generate`、`preview`、`validate`、`execute`、`simple-union`。
 
 执行时前端在 generate 返回的 SQL 后追加 `LIMIT`（与 `maxQueryRows` 一致）；**preview** 端点 LIMIT 由后端 `max_query_rows` 控制，结果写入结果面板。
 
