@@ -65,20 +65,7 @@ function formatDateValue(value: unknown): string {
   if (value === null || value === undefined) {
     return 'NULL';
   }
-
-  const date = new Date(value as string | number | Date);
-  if (isNaN(date.getTime())) {
-    return String(value);
-  }
-
-  return new Intl.DateTimeFormat('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  }).format(date);
+  return String(value);
 }
 
 // DuckDB 数值/VARIANT 判定统一走 utils/duckdbTypes(别名先归一)。
