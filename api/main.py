@@ -41,6 +41,7 @@ from models.query_models import DatabaseConnection, DataSourceType
 from core.data.file_datasource_manager import reload_all_file_datasources_to_duckdb
 from core.database.duckdb_engine import with_duckdb_connection
 from core.services.cleanup_scheduler import start_cleanup_scheduler, stop_cleanup_scheduler
+from core.common.timezone_utils import get_current_time_iso
 
 logger = logging.getLogger(__name__)
 
@@ -232,4 +233,4 @@ def initialize_encryption_key():
 
 @app.get("/health", tags=["Health"])
 async def health_check():
-    return {"status": "healthy", "timestamp": "2025-01-18"}
+    return {"status": "healthy", "timestamp": get_current_time_iso()}
