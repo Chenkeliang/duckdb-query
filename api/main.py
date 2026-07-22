@@ -75,8 +75,16 @@ async def app_lifespan(app: FastAPI):
         from routers.chunked_upload import reap_stale_upload_sessions
 
         def _scheduled_cleanup() -> int:
-            cleaned = cleanup_old_files()
-            cleaned += reap_stale_upload_sessions()
+            # 调度器是单回调,此组合点是唯一隔离层:一个回收失败不吞掉另一个
+            cleaned = 0
+            try:
+                cleaned += cleanup_old_files()
+            except Exception as exc:
+                logger.error(f"cleanup_old_files failed: {exc}")
+            try:
+                cleaned += reap_stale_upload_sessions()
+            except Exception as exc:
+                logger.error(f"reap_stale_upload_sessions failed: {exc}")
             return cleaned
 
         start_cleanup_scheduler(_scheduled_cleanup)
