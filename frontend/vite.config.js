@@ -19,6 +19,9 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks(id) {
+          if (id.includes("commonjsHelpers")) {
+            return "vendor";
+          }
           if (
             id.includes("/src/Query/JoinQuery/") ||
             id.includes("/src/Query/PivotTable/") ||
