@@ -299,18 +299,18 @@ def _inspect_xls_sheets(file_path: str, preview_rows: int = 20) -> List[Dict[str
     workbook = CalamineWorkbook.from_path(file_path)
     for sheet_name in workbook.sheet_names:
         try:
-            all_rows = [
-                list(row)
-                for row in workbook.get_sheet_by_name(sheet_name).to_python()
-            ]
+            sheet = workbook.get_sheet_by_name(sheet_name)
+            all_rows = [list(row) for row in sheet.to_python()]
             max_row = len(all_rows)
             max_col = max((len(r) for r in all_rows), default=0)
+            has_merged_cells = bool(sheet.merged_cell_ranges)
             columns, preview_records = _build_preview_from_rows(
                 all_rows[: preview_rows + 1]
             )
         except Exception:
             max_row = 0
             max_col = 0
+            has_merged_cells = False
             columns = []
             preview_records = []
 
@@ -319,7 +319,7 @@ def _inspect_xls_sheets(file_path: str, preview_rows: int = 20) -> List[Dict[str
                 "name": sheet_name,
                 "rows": int(max_row),
                 "columns_count": int(max_col),
-                "has_merged_cells": False,  # calamine 不暴露合并区信息，维持原行为
+                "has_merged_cells": has_merged_cells,
                 "suggested_header_rows": 1,
                 "suggested_header_row_index": 1,
                 "columns": columns,
