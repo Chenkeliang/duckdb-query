@@ -40,3 +40,27 @@ def test_load_json_as_variant_columns():
         assert row_count == 2
     finally:
         os.unlink(path)
+
+
+@pytest.mark.parametrize("import_mode", ["auto", "variant"])
+def test_load_bom_prefixed_json_array_as_rows(import_mode):
+    """2026-07-22 regression: UTF-8 BOM made DuckDB infer one LIST row."""
+    payload = [{"id": 1, "name": "Alice"}, {"id": 2, "name": "Bob"}]
+    with tempfile.NamedTemporaryFile(suffix=".json", delete=False) as handle:
+        handle.write(b"\xef\xbb\xbf" + json.dumps(payload).encode("utf-8"))
+        path = handle.name
+
+    try:
+        con = duckdb.connect()
+        load_file_to_duckdb(
+            con,
+            "bom_json_test",
+            path,
+            "json",
+            import_mode=import_mode,
+        )
+        assert con.execute(
+            "SELECT id::BIGINT, name::VARCHAR FROM bom_json_test ORDER BY id::BIGINT"
+        ).fetchall() == [(1, "Alice"), (2, "Bob")]
+    finally:
+        os.unlink(path)

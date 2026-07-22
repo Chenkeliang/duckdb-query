@@ -281,6 +281,23 @@ def _build_reader_invocation(function_name: str, options: Optional[Dict[str, Any
     return f"{function_name}({', '.join(args)})"
 
 
+def _resolve_json_reader_format(file_path: str, file_type: str) -> str:
+    """Choose an explicit format when a UTF-8 BOM breaks DuckDB auto detection."""
+    with open(file_path, "rb") as source:
+        prefix = source.read(4096)
+
+    has_utf8_bom = prefix.startswith(b"\xef\xbb\xbf")
+    if has_utf8_bom:
+        prefix = prefix[3:]
+
+    if file_type == "jsonl":
+        # DuckDB 1.5 rejects BOM with explicit newline_delimited, while auto
+        # correctly recognizes the subsequent JSON objects.
+        return "auto" if has_utf8_bom else "newline_delimited"
+
+    return "array" if prefix.lstrip().startswith(b"[") else "auto"
+
+
 def _detect_csv_encoding(file_path: str) -> Optional[str]:
     """检测 CSV 编码，返回 DuckDB 认识的编码拼写；UTF-8 返回 None（默认值）。
 
@@ -345,7 +362,7 @@ def _load_json_file_as_variant(
     quoted_raw_stage = _quote_identifier(raw_stage)
     variant_stage = f"__json_variant_stage_{uuid4().hex}"
     quoted_variant_stage = _quote_identifier(variant_stage)
-    format_value = "newline_delimited" if file_type == "jsonl" else "auto"
+    format_value = _resolve_json_reader_format(file_path, file_type)
 
     try:
         connection.execute(
@@ -409,16 +426,27 @@ def load_file_to_duckdb(
     from core.data.import_mode import resolve_import_mode
 
     import_mode = resolve_import_mode(import_mode, file_type=normalized_type)
+    json_reader_format = (
+        _resolve_json_reader_format(file_path, normalized_type)
+        if normalized_type in ("json", "jsonl")
+        else None
+    )
 
     native_readers = {
         "csv": ("read_csv_auto", {"HEADER": True, "SAMPLE_SIZE": -1}),
         "json": (
             "read_json_auto",
-            {"format": "auto", "maximum_depth": 10},
+            {
+                "format": json_reader_format or "auto",
+                "maximum_depth": 10,
+            },
         ),
         "jsonl": (
             "read_json_auto",
-            {"format": "newline_delimited", "maximum_depth": 10},
+            {
+                "format": json_reader_format or "newline_delimited",
+                "maximum_depth": 10,
+            },
         ),
         "parquet": ("read_parquet", {}),
         "pq": ("read_parquet", {}),

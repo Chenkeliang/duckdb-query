@@ -62,6 +62,7 @@ describe('useGridExport 桌面直写', () => {
     expect(mocks.writeTextFile).toHaveBeenCalledTimes(1);
     const [path, content] = mocks.writeTextFile.mock.calls[0];
     expect(path).toBe('/Users/me/导出 目录/out.csv');
+    expect(String(content).charCodeAt(0)).toBe(0xfeff);
     expect(content).toContain('id,name');
     expect(content).toContain('1,Alice');
     expect(mocks.showSavedToToast).toHaveBeenCalledWith(expect.anything(), '/Users/me/导出 目录/out.csv');
@@ -90,8 +91,9 @@ describe('useGridExport 桌面直写', () => {
     });
 
     const [, content] = mocks.writeTextFile.mock.calls[0];
-    // 去掉 BOM 后应可解析
-    const parsed = JSON.parse(String(content).replace(/^﻿/, ''));
+    expect(String(content).startsWith('[')).toBe(true);
+    expect(String(content).charCodeAt(0)).not.toBe(0xfeff);
+    const parsed = JSON.parse(String(content));
     expect(parsed).toEqual([
       { id: 1, name: 'Alice' },
       { id: 2, name: 'Bob' },
