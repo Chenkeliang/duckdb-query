@@ -325,46 +325,64 @@ class ConfigManager:
         except Exception as e:
             logger.warning(f"Failed to update application configuration file: {str(e)}")
 
+    @staticmethod
+    def _strip_jsonc(content: str) -> str:
+        """字符串感知的 JSONC 注释剥离:只在字符串字面量之外剥 // 与 /* */。
+
+        旧实现按行 find('//') 且用「前一字符是否为 :」猜 URL:字符串值里含
+        裸 // 会被截断,含 /*..*/ 形状会被静默删掉——经 _update_existing_app_config
+        的无条件回存,损坏结果会持久化(整份配置重置/字段内容丢失)。
+        不做尾逗号容忍,与旧行为一致。
+        """
+        out = []
+        i, n = 0, len(content)
+        in_string = False
+        escaped = False
+        while i < n:
+            ch = content[i]
+            if in_string:
+                out.append(ch)
+                if escaped:
+                    escaped = False
+                elif ch == "\\":
+                    escaped = True
+                elif ch == '"':
+                    in_string = False
+                i += 1
+                continue
+            if ch == '"':
+                in_string = True
+                out.append(ch)
+                i += 1
+                continue
+            if ch == "/" and i + 1 < n:
+                nxt = content[i + 1]
+                if nxt == "/":
+                    # 行注释:吃到行尾,保留换行符(维持行号)
+                    while i < n and content[i] != "\n":
+                        i += 1
+                    continue
+                if nxt == "*":
+                    # 块注释:吃到 */;未闭合则吃到文件尾(交给 json.loads 报错)
+                    i += 2
+                    while i + 1 < n and not (
+                        content[i] == "*" and content[i + 1] == "/"
+                    ):
+                        i += 1
+                    i += 2
+                    continue
+            out.append(ch)
+            i += 1
+        return "".join(out)
+
     def _load_json(self, file_path: Path) -> Dict[str, Any]:
         """加载 JSON 配置文件（支持注释）"""
         try:
             if file_path.exists():
                 with open(file_path, "r", encoding="utf-8") as f:
                     content = f.read()
-                    
-                # 移除注释 (支持 // 和 /* */)
-                import re
-                
-                # 移除块注释 /* ... */
-                content = re.sub(r'/\*.*?\*/', '', content, flags=re.DOTALL)
-                
-                # 移除行注释 // ... (注意处理URL中的//，这里简单处理：//前必须有空白或行首，且不是URL的一部分)
-                # 更稳健的方式是忽略字符串内容的解析，但作为简单的配置加载器，
-                # 我们假设注释出现在行尾或独立行，并且URL不会与注释混淆（URL的//前是:）
-                # 这里使用简单的行处理：如果行中存在 // 且不紧跟在 : 之后（为了兼容URL），则截断
-                # 或者更简单：只支持独立行的注释和行尾且前面有空格的注释
-                
-                lines = content.split('\n')
-                cleaned_lines = []
-                for line in lines:
-                    # 查找注释标记 //
-                    comment_idx = line.find('//')
-                    if comment_idx != -1:
-                        # 检查是否看起来像URL (https://)
-                        # 如果 // 前面试 :，则认为是URL的一部分，不处理（简易逻辑）
-                        if comment_idx > 0 and line[comment_idx-1] == ':':
-                            pass
-                        else:
-                            line = line[:comment_idx]
-                    cleaned_lines.append(line)
-                
-                content = '\n'.join(cleaned_lines)
-                
-                # 处理可能产生的尾部逗号问题（JSON 不支持，但配置变更是常事）
-                # 为了保持简单，暂不处理尾部逗号，依赖标准json解析
-                # 大多数情况下用户只需小心
-                
-                return json.loads(content)
+
+                return json.loads(self._strip_jsonc(content))
             return {}
         except Exception as e:
             logger.error(f"Loading configuration filefailed {file_path}: {str(e)}")
