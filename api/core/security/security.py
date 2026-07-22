@@ -59,23 +59,6 @@ def get_max_chunk_file_size():
         return 1024 * 1024 * 1024  # 1GB 默认值
 
 
-# 危险的SQL关键词
-DANGEROUS_SQL_KEYWORDS = {
-    "DROP",
-    "DELETE",
-    "TRUNCATE",
-    "ALTER",
-    "CREATE",
-    "INSERT",
-    "UPDATE",
-    "EXEC",
-    "EXECUTE",
-    "UNION",
-    "SCRIPT",
-    "DECLARE",
-    "CURSOR",
-}
-
 # 敏感信息正则表达式
 SENSITIVE_PATTERNS = [
     r'password\s*=\s*[\'"][^\'"]+[\'"]',  # password="xxx"
@@ -179,62 +162,6 @@ class SecurityValidator:
             return False
 
         return True
-
-    def validate_sql_query(
-        self, sql: str, allow_write_operations: bool = False
-    ) -> Dict[str, Any]:
-        """
-        验证 SQL 查询的安全性
-
-        Args:
-            sql: SQL 查询语句
-            allow_write_operations: 是否允许写操作
-
-        Returns:
-            验证结果字典
-        """
-        result = {"valid": False, "errors": [], "warnings": [], "sanitized_sql": sql}
-
-        try:
-            sql_upper = sql.upper().strip()
-
-            # 1. 检查空查询
-            if not sql.strip():
-                result["errors"].append("SQLquery不能is empty")
-                return result
-
-            # 2. 检查危险关键词
-            if not allow_write_operations:
-                for keyword in DANGEROUS_SQL_KEYWORDS:
-                    if keyword in sql_upper:
-                        if keyword == "CREATE" and "CREATE TABLE" in sql_upper:
-                            # 允许 CREATE TABLE 用于保存查询结果
-                            continue
-                        result["errors"].append(f"不允许使用 {keyword} 操作")
-                        return result
-
-            # 3. 检查SQL注入模式
-            injection_patterns = [
-                r";\s*(DROP|DELETE|TRUNCATE|ALTER)",
-                r"UNION\s+SELECT",
-                r"--\s*$",
-                r"/\*.*\*/",
-            ]
-
-            for pattern in injection_patterns:
-                if re.search(pattern, sql_upper):
-                    result["warnings"].append(f"检测到可疑SQL模式: {pattern}")
-
-            # 注:不在此处做自动 LIMIT——行数范围语义统一由 routers/query_sql_utils 的
-            # has_top_level_limit / ensure_query_has_limit(sqlglot AST)负责,禁止子串判断
-            # 与硬编码默认值的重复实现(复审:重复实现收敛)。
-            result["valid"] = True
-
-        except Exception as e:
-            logger.error(f"SQL validation failed: {str(e)}")
-            result["errors"].append(f"SQL验证过程中出错: {str(e)}")
-
-        return result
 
     def sanitize_log_message(self, message: str) -> str:
         """清理日志消息中的敏感信息"""

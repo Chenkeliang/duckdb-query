@@ -4,9 +4,7 @@ import logging
 import json
 import os
 import traceback
-import base64
 from datetime import datetime
-from cryptography.fernet import Fernet
 from contextlib import asynccontextmanager
 from core.security.security import security_validator
 from core.common.config_manager import config_manager
@@ -183,52 +181,6 @@ async def root():
             "Connection management & credential security",
         ],
     }
-
-
-def initialize_encryption_key():
-    """
-    Initializes the encryption key for the application.
-    It follows a strict order:
-    1. Check for SECRET_KEY environment variable.
-    2. Check for a persisted key file in the data directory.
-    3. If neither exists, generate a new key and save it to the file.
-    """
-    logger.info("Initializing encryption key...")
-    secret_key_env = os.getenv("SECRET_KEY")
-    key_file_path = os.path.join("data", ".secret_key")
-
-    secret_key = None
-
-    if secret_key_env:
-        logger.info("Found SECRET_KEY in environment variables.")
-        # Ensure the key is properly encoded for Fernet
-        secret_key = base64.urlsafe_b64encode(
-            secret_key_env.encode("utf-8").ljust(32)[:32]
-        )
-    elif os.path.exists(key_file_path):
-        logger.info(f"Found persisted secret key file at {key_file_path}.")
-        with open(key_file_path, "rb") as f:
-            secret_key = f.read()
-    else:
-        logger.warning("No SECRET_KEY found. Generating a new one.")
-        secret_key = Fernet.generate_key()
-        try:
-            os.makedirs("data", exist_ok=True)
-            with open(key_file_path, "wb") as f:
-                f.write(secret_key)
-            logger.info(f"New secret key generated and saved to {key_file_path}.")
-        except Exception as e:
-            logger.error(f"Failed to save new secret key: {e}")
-            # Fallback to using the key in memory without persisting
-
-    # Note: The password_encryptor is already initialized in core/encryption.py
-    # We don't need to re-initialize it here
-    if secret_key:
-        logger.info("Encryption key initialized successfully.")
-    else:
-        logger.error(
-            "CRITICAL: Could not initialize encryption key. Password encryption will fail."
-        )
 
 
 @app.get("/health", tags=["Health"])
