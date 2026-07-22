@@ -42,7 +42,6 @@ from core.database.duckdb_pool import interruptible_connection
 from fastapi import APIRouter, Body, Header
 from models.query_models import QueryRequest
 from pydantic import BaseModel, Field, ValidationError
-from sqlalchemy import create_engine
 from core.common.exceptions import (
     BaseAPIException,
     DatabaseConnectionError,

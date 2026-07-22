@@ -37,7 +37,7 @@ a = Analysis(
     # 无条件拖入(本项目不用 fetchnumpy/df 路径,实测排除后冒烟全绿);
     # pyarrow/pandas 防未来传递依赖悄悄带回;hf_xet 仅 HF 下载加速用。
     excludes=['magic', 'tkinter', 'matplotlib', 'IPython', 'jupyter', 'notebook', 'PIL',
-              'pyarrow', 'hf_xet', 'numpy', 'pandas'],
+              'pyarrow', 'hf_xet', 'numpy', 'pandas', 'sqlalchemy'],
     noarchive=False,
 )
 pyz = PYZ(a.pure)

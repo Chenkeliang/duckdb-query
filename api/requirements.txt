@@ -35,7 +35,6 @@ pytz==2026.2  # duckdb Python 客户端 TIMESTAMPTZ fetchall 转换的运行时�
 requests==2.34.2
 six==1.17.0
 sniffio==1.3.1
-SQLAlchemy==2.0.49
 starlette==1.1.0
 typing-inspection==0.4.2
 typing_extensions==4.15.0

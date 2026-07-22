@@ -160,10 +160,9 @@ class TestDuckdbFileTablesEndpoint:
 class TestDuckdbConnectionCreationViaApi:
     """回归测试：POST /api/datasources/databases 创建 duckdb 文件连接不应失败
 
-    历史 bug：DatabaseManager._create_engine 未处理 DataSourceType.DUCKDB，
-    add_connection 测试通过后仍会因“创建 SQLAlchemy 引擎”这一步抛
-    `Unsupported database type: DataSourceType.DUCKDB` 而把整体保存判为失败，
-    导致 duckdb 文件连接完全无法创建。
+    历史 bug：曾因 SQLAlchemy 引擎创建步骤不支持 DUCKDB 类型而整体保存失败。
+    SQLAlchemy 引擎已随死代码清理整体退役（查询一律走 DuckDB ATTACH），
+    保留本测试作为该端点的端到端冒烟。
     """
 
     def test_create_duckdb_connection_succeeds(self, duckdb_file):
@@ -184,7 +183,6 @@ class TestDuckdbConnectionCreationViaApi:
             assert body["success"] is True
             assert body["data"]["connection"]["status"] == "active"
             assert body["data"]["test_result"]["success"] is True
-            assert connection_id not in db_manager.engines
         finally:
             db_manager.remove_connection(connection_id)
 

@@ -1,14 +1,12 @@
-"""DatabaseManager.connections/.engines 并发安全性。
+"""DatabaseManager.connections 并发安全性。
 
-背景：这两个字典曾经完全没有锁保护，被处理同步请求的事件循环线程和跑
-BackgroundTasks 的工作线程共同读写。两类具体风险：
-1. list_connections() 的 list(self.connections.values()) 在遍历时如果有另一个
-   线程并发 add_connection/remove_connection，CPython 会抛
-   RuntimeError: dictionary changed size during iteration。
-2. execute_query() 的"没有引擎就现建一个"是 check-then-create-then-assign，
-   两个线程并发首次查询同一个 connection_id 会各自建一个引擎，后赋值的把
-   先创建的覆盖掉，先创建的那个连接池泄漏（与 duckdb_pool.py 的
-   get_connection_pool 单例竞态同一类问题）。
+背景：连接字典曾经完全没有锁保护，被处理同步请求的事件循环线程和跑
+BackgroundTasks 的工作线程共同读写。典型风险：list_connections() 的
+list(self.connections.values()) 在遍历时如果有另一个线程并发
+add_connection/remove_connection，CPython 会抛
+RuntimeError: dictionary changed size during iteration。
+（历史上还存在 .engines 字典与 execute_query() 的引擎竞态，二者已随
+SQLAlchemy 引擎层退役一并删除。）
 """
 
 from __future__ import annotations

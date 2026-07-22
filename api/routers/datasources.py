@@ -162,33 +162,14 @@ async def refresh_database_connection(id: str):
         message = test_result.message or ""
 
         if test_result.success:
-            try:
-                # 重新初始化引擎
-                if conn_id in db_manager.engines:
-                    try:
-                        db_manager.engines[conn_id].dispose()
-                    except Exception as dispose_error:
-                        logger.warning(f"Warning when disposing old engine: {dispose_error}")
-
-                engine = db_manager._create_engine(connection.type, connection.params)
-                db_manager.engines[conn_id] = engine
-                connection.status = ConnectionStatus.ACTIVE
-                success = True
-                message = test_result.message or "Connection test successful"
-                logger.info(f"Database connection {conn_id} refreshed successfully")
-            except Exception as engine_error:
-                logger.error(f"Connection test succeeded but engine initialization failed: {engine_error}")
-                connection.status = ConnectionStatus.ERROR
-                message = f"Connection succeeded but initialization failed: {engine_error}"
+            # 查询一律走 DuckDB ATTACH,无引擎需要重建,测试通过即视为刷新成功
+            connection.status = ConnectionStatus.ACTIVE
+            success = True
+            message = test_result.message or "Connection test successful"
+            logger.info(f"Database connection {conn_id} refreshed successfully")
         else:
             connection.status = ConnectionStatus.ERROR
             message = test_result.message or "Connection test failed"
-            if conn_id in db_manager.engines:
-                try:
-                    db_manager.engines[conn_id].dispose()
-                except Exception as dispose_error:
-                    logger.warning(f"Warning when disposing engine: {dispose_error}")
-                db_manager.engines.pop(conn_id, None)
             logger.warning(f"Database connection {conn_id} refresh failed: {message}")
 
         # 保存更新
