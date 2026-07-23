@@ -14,7 +14,14 @@ import pytest
 
 from core.database.duckdb_pool import with_system_connection
 from core.services import table_registry
-from routers import duckdb_query
+from models.query_models import FederatedQueryRequest
+from models.set_operation_models import (
+    SetOperationConfig,
+    SetOperationRequest,
+    SetOperationType,
+    TableConfig,
+)
+from routers import duckdb_query, set_operations
 
 
 @pytest.fixture(autouse=True)
@@ -138,6 +145,168 @@ def test_flow_replace_bumps_to_top(monkeypatch):
         connection.close()
 
 
+def test_direct_sql_replace_after_sync_bumps_to_top(monkeypatch):
+    """Regression 2026-07-23: SQL 直写替换已登记表也必须拿新序号置顶。"""
+    _install_fake_metadata(monkeypatch)
+    connection = duckdb.connect(":memory:")
+    try:
+        connection.execute("CREATE TABLE t_x (id INTEGER)")
+        connection.execute("CREATE TABLE t_y (id INTEGER)")
+        assert _list_table_names(monkeypatch, connection) == ["t_y", "t_x"]
+
+        duckdb_query._run_query_maybe_save(
+            connection,
+            "CREATE OR REPLACE TABLE t_x AS SELECT 2 AS id",
+            None,
+            None,
+        )
+
+        assert _list_table_names(monkeypatch, connection) == ["t_x", "t_y"]
+    finally:
+        connection.close()
+
+
+def test_direct_sql_if_not_exists_does_not_bump_existing_table(monkeypatch):
+    """Regression 2026-07-23:未发生建表时不能伪造一次新创建顺序。"""
+    _install_fake_metadata(monkeypatch)
+    connection = duckdb.connect(":memory:")
+    try:
+        connection.execute('CREATE TABLE "MixedCase" (id INTEGER)')
+        connection.execute("CREATE TABLE t_y (id INTEGER)")
+        assert _list_table_names(monkeypatch, connection) == ["t_y", "MixedCase"]
+        with with_system_connection() as system_conn:
+            before = system_conn.execute(
+                "SELECT sort_seq FROM system_table_registry WHERE table_name = ?",
+                ["MixedCase"],
+            ).fetchone()[0]
+
+        duckdb_query._run_query_maybe_save(
+            connection,
+            "CREATE TABLE IF NOT EXISTS mixedcase AS SELECT 2 AS id",
+            None,
+            None,
+        )
+
+        with with_system_connection() as system_conn:
+            rows = system_conn.execute(
+                "SELECT table_name, sort_seq FROM system_table_registry "
+                "WHERE lower(table_name) = lower(?)",
+                ["MixedCase"],
+            ).fetchall()
+        assert rows == [("MixedCase", before)]
+        assert _list_table_names(monkeypatch, connection) == ["t_y", "MixedCase"]
+        assert connection.execute('SELECT * FROM "MixedCase"').fetchall() == []
+    finally:
+        connection.close()
+
+
+def test_direct_sql_registers_only_persistent_main_tables():
+    """Regression 2026-07-23:临时表和其它 schema 不得污染 main 排序登记。"""
+    connection = duckdb.connect(":memory:")
+    try:
+        connection.execute("CREATE SCHEMA extra")
+        duckdb_query._run_query_maybe_save(
+            connection,
+            "CREATE TEMP TABLE temp_result AS SELECT 1 AS id",
+            None,
+            None,
+        )
+        duckdb_query._run_query_maybe_save(
+            connection,
+            "CREATE TABLE extra.other_result AS SELECT 2 AS id",
+            None,
+            None,
+        )
+
+        with with_system_connection() as system_conn:
+            names = system_conn.execute(
+                "SELECT table_name FROM system_table_registry"
+            ).fetchall()
+        assert names == []
+    finally:
+        connection.close()
+
+
+def test_direct_sql_if_not_exists_keeps_unicode_identifiers_distinct(monkeypatch):
+    """Regression 2026-07-23:DuckDB 仅折叠 ASCII，Ä/ä 可并存且都须登记。"""
+    _install_fake_metadata(monkeypatch)
+    connection = duckdb.connect(":memory:")
+    try:
+        connection.execute('CREATE TABLE "Ä" (id INTEGER)')
+        assert _list_table_names(monkeypatch, connection) == ["Ä"]
+
+        duckdb_query._run_query_maybe_save(
+            connection,
+            'CREATE TABLE IF NOT EXISTS "ä" AS SELECT 2 AS id',
+            None,
+            None,
+        )
+
+        assert _list_table_names(monkeypatch, connection) == ["ä", "Ä"]
+    finally:
+        connection.close()
+
+
+def test_set_operation_replace_after_sync_bumps_to_top(monkeypatch):
+    """Regression 2026-07-23:集合运算保存替换不得绕过稳定排序登记。"""
+    _install_fake_metadata(monkeypatch)
+    connection = duckdb.connect(":memory:")
+    try:
+        connection.execute("CREATE TABLE set_left AS SELECT 1 AS id")
+        connection.execute("CREATE TABLE set_right AS SELECT 2 AS id")
+        connection.execute("CREATE TABLE set_result AS SELECT 0 AS id")
+        connection.execute("CREATE TABLE set_newer AS SELECT 9 AS id")
+        assert _list_table_names(monkeypatch, connection)[0] == "set_newer"
+
+        @contextmanager
+        def _connection(_request, _query_id=None):
+            yield connection, None
+
+        monkeypatch.setattr(set_operations, "_set_operation_connection", _connection)
+        request = SetOperationRequest(
+            config=SetOperationConfig(
+                operation_type=SetOperationType.UNION_ALL,
+                tables=[
+                    TableConfig(table_name="set_left", selected_columns=["id"]),
+                    TableConfig(table_name="set_right", selected_columns=["id"]),
+                ],
+            ),
+            save_as_table="set_result",
+        )
+        response = set_operations.execute_set_operation(request)
+        assert response["success"] is True
+        assert _list_table_names(monkeypatch, connection)[0] == "set_result"
+    finally:
+        connection.close()
+
+
+def test_federated_save_replace_after_sync_bumps_to_top(monkeypatch):
+    """Regression 2026-07-23:联邦保存替换不得绕过稳定排序登记。"""
+    _install_fake_metadata(monkeypatch)
+    connection = duckdb.connect(":memory:")
+    try:
+        connection.execute("CREATE TABLE fed_result AS SELECT 0 AS id")
+        connection.execute("CREATE TABLE fed_newer AS SELECT 9 AS id")
+        assert _list_table_names(monkeypatch, connection)[0] == "fed_newer"
+
+        @contextmanager
+        def _connection(_query_id, _sql):
+            yield connection
+
+        monkeypatch.setattr(duckdb_query, "interruptible_connection", _connection)
+        response = duckdb_query.execute_federated_query(
+            FederatedQueryRequest(
+                sql="SELECT 3 AS id",
+                is_preview=False,
+                save_as_table="fed_result",
+            )
+        )
+        assert response["success"] is True
+        assert _list_table_names(monkeypatch, connection)[0] == "fed_result"
+    finally:
+        connection.close()
+
+
 def test_dropped_table_cleaned_and_recreate_goes_top(monkeypatch):
     """删表清登记;同名重建视为新面孔 → 置顶(旧序号不得残留)。"""
     _install_fake_metadata(monkeypatch)
@@ -183,6 +352,13 @@ def test_migration_prefers_name_embedded_ms_over_stale_metadata(monkeypatch):
         assert item["created_at"].startswith("2026-07-22T16:49:22")
     finally:
         connection.close()
+
+
+def test_name_timestamp_requires_product_generated_prefix():
+    """Regression 2026-07-23:普通业务表的13位编号不能伪装成创建毫秒。"""
+    assert table_registry._created_at_from_name("orders_1234567890123") is None
+    assert table_registry._created_at_from_name("export_1784710162377") is not None
+    assert table_registry._created_at_from_name("粘贴数据_1784710162377") is not None
 
 
 def test_created_at_returned_in_app_timezone(monkeypatch):

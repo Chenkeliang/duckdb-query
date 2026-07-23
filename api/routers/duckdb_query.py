@@ -141,6 +141,27 @@ def assert_no_dangerous_write(sql_upper_cleaned: str, save_as_table: Optional[st
             )
 
 
+def _main_table_create_target(sql: str) -> tuple[Optional[str], bool]:
+    """返回直写 CREATE TABLE 的 main 表名及 IF NOT EXISTS 标记。"""
+    try:
+        tree = sqlglot.parse_one(sql, read="duckdb")
+    except Exception:  # pylint: disable=broad-exception-caught
+        return None, False
+    if not isinstance(tree, exp.Create) or str(tree.args.get("kind", "")).upper() != "TABLE":
+        return None, False
+    if tree.find(exp.TemporaryProperty) is not None:
+        return None, False
+    target = tree.this
+    if isinstance(target, exp.Schema):
+        target = target.this
+    if not isinstance(target, exp.Table) or target.catalog:
+        return None, False
+    schema_name = str(target.db or "")
+    if schema_name and schema_name.lower() != "main":
+        return None, False
+    return target.name or None, bool(tree.args.get("exists"))
+
+
 def _run_query_maybe_save(conn, sql_query, save_as_table, limit, original_sql=None):
     """执行查询;若指定 save_as_table 则先 CTAS 物化(原查询只执行这一次),
     预览行改从已建的表读取——既避免为预览重跑昂贵/有副作用的查询,也保证预览行
@@ -191,7 +212,24 @@ def _run_query_maybe_save(conn, sql_query, save_as_table, limit, original_sql=No
             cols, recs, cur_types = fetch_query_records(conn, sql_query)
             return cols, recs, cur_types, _types(cur_types, sql_query), None, str(save_error)
 
+    created_table, if_not_exists = _main_table_create_target(sql_query)
+    table_existed = False
+    if created_table and if_not_exists:
+        existing_names = conn.execute(
+            "SELECT table_name FROM duckdb_tables() WHERE NOT internal "
+            "AND database_name = current_database() AND schema_name = 'main'"
+        ).fetchall()
+        ascii_fold = str.maketrans(
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"
+        )
+        target_key = created_table.translate(ascii_fold)
+        table_existed = any(
+            str(row[0]).translate(ascii_fold) == target_key for row in existing_names
+        )
+
     cols, recs, cur_types = fetch_query_records(conn, sql_query)
+    if created_table and not (if_not_exists and table_existed):
+        table_registry.record_creation(created_table)
     return cols, recs, cur_types, _types(cur_types, sql_query), None, None
 
 
@@ -868,6 +906,7 @@ def execute_federated_query(
                                 f'CREATE OR REPLACE TABLE {quote_identifier(table_name)} AS ({save_sql})'
                             )
                             conn.execute(create_sql)
+                            table_registry.record_creation(table_name)
                             logger.info(f"Query result saved as table: {table_name}")
                         except Exception as save_error:
                             logger.warning(f"Failed to save query result as table: {str(save_error)}")

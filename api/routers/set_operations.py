@@ -22,6 +22,7 @@ from core.services.set_operation_generator import (
     estimate_set_operation_rows,
     generate_set_operation_sql,
 )
+from core.services import table_registry
 from fastapi import APIRouter, Header
 from models.set_operation_models import (
     SetOperationConfig,
@@ -343,6 +344,7 @@ def execute_set_operation(
                 create_sql = f'CREATE OR REPLACE TABLE {quote_identifier(table_name)} AS ({sql})'
                 logger.info(f"Executing create table SQL: {create_sql}")
                 con.execute(create_sql)
+                table_registry.record_creation(table_name)
 
                 # 获取统计信息（不使用fetchdf）
                 row_count_result = con.execute(
@@ -352,10 +354,14 @@ def execute_set_operation(
 
                 # 获取列信息（使用LIMIT 1避免大数据集问题）
                 sample_sql = f'SELECT * FROM "{table_name}" LIMIT 1'
-                sample_df = _timed_execute_fetch(con, sample_sql)
+                sample_columns, _sample_rows = _timed_execute_fetch(con, sample_sql)
+                described = {
+                    c["name"]: c["duckdb_type"]
+                    for c in describe_query_column_types(con, sample_sql)
+                }
                 columns = [
-                    {"name": col, "type": str(sample_df[col].dtype)}
-                    for col in sample_df.columns
+                    {"name": name, "type": described.get(name, "")}
+                    for name in sample_columns
                 ]
 
                 logger.info(f"Table {table_name} created successfully，rows: {row_count}")

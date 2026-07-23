@@ -205,6 +205,7 @@ def _catalog_lines_for_tables(
     detail_limit: int,
     name_prefix: str = "",
     created_map: dict[str, str] | None = None,
+    schema_name: str | None = None,
 ) -> list[str]:
     """给一批表名生成目录行：前 detail_limit 张带列，其余仅列名。
 
@@ -221,14 +222,16 @@ def _catalog_lines_for_tables(
             lines.append(f"  {name}{suffix}")
             continue
         try:
-            cols = con.execute(
-                """
+            column_sql = """
                 SELECT column_name, data_type FROM duckdb_columns()
                 WHERE database_name = ? AND table_name = ?
-                ORDER BY column_index
-                """,
-                [database_name, name],
-            ).fetchall()
+            """
+            params = [database_name, name]
+            if schema_name:
+                column_sql += " AND schema_name = ?"
+                params.append(schema_name)
+            column_sql += " ORDER BY column_index"
+            cols = con.execute(column_sql, params).fetchall()
             lines.append(f"  {_format_catalog_table(name, cols)}{suffix}")
         except Exception as exc:  # noqa: BLE001  单表枚举失败不影响其它表
             logger.warning("catalog: describe %s.%s failed: %s", database_name, name, exc)
@@ -280,6 +283,8 @@ def _build_catalog_text(selected: set, attach_databases: list[Any] | None = None
                         """
                         SELECT table_name FROM duckdb_tables()
                         WHERE NOT internal AND database_name = ?
+                          AND schema_name = 'main'
+                          AND lower(table_name) NOT LIKE 'system_%'
                         ORDER BY table_oid DESC
                         """,
                         [local_db],
@@ -308,6 +313,7 @@ def _build_catalog_text(selected: set, attach_databases: list[Any] | None = None
                             selected,
                             _CATALOG_LOCAL_TABLE_LIMIT,
                             created_map=created_map,
+                            schema_name="main",
                         )
                     )
                     sections.append("\n".join(lines))

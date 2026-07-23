@@ -31,9 +31,11 @@ _SCHEMA_NAME = "main"
 _schema_ready = False
 # 首启迁移与增量登记互斥:并发首启(侧边栏+目录同时拉)不得双份播种
 _sync_lock = threading.Lock()
-# 产品生成的表名自带创建毫秒时间戳(粘贴数据_/export_):升级用户的历史
+# 产品生成的表名自带创建毫秒时间戳(粘贴数据_/pasted_data_/export_):升级用户的历史
 # 元数据 created_at 可能带旧版时区缺陷,名字里的毫秒才是普适真值
-_NAME_MS_PATTERN = re.compile(r"_(\d{13})(?:_|$)")
+_NAME_MS_PATTERN = re.compile(
+    r"^(?:粘贴数据|pasted_data|export)_(\d{13})(?:_|$)", re.IGNORECASE
+)
 
 
 def _created_at_from_name(table_name: str) -> Optional[datetime]:

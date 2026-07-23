@@ -99,6 +99,34 @@ def test_catalog_orders_by_registry_and_annotates_creation_time(monkeypatch, loc
     assert "[created 2026-07-22 16:49]" in text
 
 
+def test_catalog_ignores_non_main_local_schema():
+    """Regression 2026-07-23:AI 与侧边栏都只登记 main schema，避免序号反复增删。"""
+    schema = f"cat_schema_{uuid.uuid4().hex[:8]}"
+    table = f"cat_other_{uuid.uuid4().hex[:8]}"
+    shared = f"cat_shared_{uuid.uuid4().hex[:8]}"
+    with with_duckdb_connection() as con:
+        con.execute(f'CREATE SCHEMA "{schema}"')
+        con.execute(f'CREATE TABLE "{schema}"."{table}" AS SELECT 1 AS id')
+        con.execute(f'CREATE TABLE "{shared}" AS SELECT 1 AS main_id')
+        con.execute(
+            f'CREATE TABLE "{schema}"."{shared}" AS SELECT 1 AS leaked_extra_column'
+        )
+    try:
+        text = ai_router._build_catalog_text(set())
+        assert table not in text
+        assert shared in text
+        assert "main_id INTEGER" in text
+        assert "leaked_extra_column" not in text
+    finally:
+        with with_duckdb_connection() as con:
+            con.execute(f'DROP SCHEMA "{schema}" CASCADE')
+            con.execute(f'DROP TABLE "{shared}"')
+        from core.services import table_registry
+
+        table_registry.remove(table)
+        table_registry.remove(shared)
+
+
 def test_catalog_includes_external_db_and_rules_table(sqlite_alarm_db, local_tables):
     """核心场景：外部库里未选中的 rules 表也要出现在目录里，且带列。"""
     connection_id = f"alarm-sqlite-{uuid.uuid4().hex[:8]}"
