@@ -94,11 +94,15 @@ jobs:
           sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev \
             libayatana-appindicator3-dev librsvg2-dev libsoup-3.0-dev
 
-      - name: Provide frontend dist placeholder
-        # tauri::generate_context! 编译期要求 frontendDist 目录存在;单测无需真实产物
+      - name: Provide frontend dist and sidecar placeholders
+        # tauri::generate_context! 编译期要求 frontendDist 与 resources
+        # (binaries/duckquery-api) 目录都存在;单测无需真实产物。本地能过是
+        # 因为开发机有真实 sidecar,干净 CI 必须占位(2026-07-23 发布检查发现)
         run: |
           mkdir -p frontend/dist
           echo "<!doctype html><title>test</title>" > frontend/dist/index.html
+          mkdir -p frontend/src-tauri/binaries/duckquery-api
+          touch frontend/src-tauri/binaries/duckquery-api/.placeholder
 
       - name: Cargo test
         run: cd frontend/src-tauri && cargo test
