@@ -75,7 +75,17 @@
 | **在线 Demo** | 免安装体验 SQL | 仅 DuckDB-Wasm；不含 AI、数据库连接和 Excel |
 | **Docker** | 自托管前后端 | 需要 Docker 与 Docker Compose；数据保存在宿主机 `./data` |
 
-**桌面版**：从 [GitHub Releases](https://github.com/Chenkeliang/duckdb-query/releases/latest) 下载 `.dmg` 或 Windows 安装程序。当前没有 Linux 安装包；安装包没有 Apple / Microsoft 官方开发者证书签名，首次启动可能触发系统警告。
+**桌面版**：从 [GitHub Releases](https://github.com/Chenkeliang/duckdb-query/releases/latest) 按下表下载 **1 个安装包**即可（下载页里的 `.sig`、`.app.tar.gz`、`latest.json` 是应用内自动更新用的，不用下载）：
+
+| 你的电脑 | 标准包（推荐，体积小） | 离线全量包（内网 / 无外网） |
+|---|---|---|
+| **Windows 10 / 11（64 位）** | `*_x64-setup.exe` | `*_x64-offline-setup.exe` |
+| **Mac · Apple 芯片（M1–M4）** | `*_aarch64.dmg` | `*_aarch64-offline.dmg` |
+| **Mac · Intel 处理器** | `*_x64.dmg` | `*_x64-offline.dmg` |
+
+怎么选：联网环境用**标准包**——首次使用 MySQL / PostgreSQL / 远程文件等能力时会自动在线下载对应 DuckDB 扩展（Windows 安装时还需联网获取 WebView2）；内网或无外网环境用 **`-offline` 全量包**——内置全部扩展与 WebView2 离线安装器，安装使用全程无需联网。不确定 Mac 芯片型号：苹果图标 → 「关于本机」，写 Apple M 系列选 `aarch64`，写 Intel 选 `x64`。
+
+当前没有 Linux 安装包；安装包没有 Apple / Microsoft 官方开发者证书签名，首次启动可能触发系统警告。
 
 首次启动被拦截时：Windows 选择「更多信息」→「仍要运行」；macOS 将 App 拖入「应用程序」后，在终端执行 `xattr -cr /Applications/DuckQuery.app`。完整步骤见 [桌面版使用手册](docs/guide/桌面版使用手册.md#2-安装时弹出警告怎么办)。
 
