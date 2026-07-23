@@ -1,17 +1,16 @@
 # pylint: disable=too-many-lines,broad-exception-caught,logging-fstring-interpolation,import-outside-toplevel,line-too-long,unused-argument,bare-except
 """Set operations HTTP routes (extracted from join_query.py)."""
 import logging
-import os
-import uuid
 from contextlib import contextmanager
-from datetime import datetime
 from typing import Any, Iterator, Optional, Set
 
 import duckdb
-import pandas as pd
-from core.common.config_manager import config_manager
-from core.common.utils import normalize_dataframe_output
-from core.database.duckdb_engine import fetch_query_dataframe, with_duckdb_connection
+from core.common.sql_identifiers import quote_identifier
+from core.common.utils import describe_query_column_types
+from core.database.duckdb_engine import (
+    timed_fetch_query_records,
+    with_duckdb_connection,
+)
 from core.database.duckdb_pool import interruptible_connection
 from core.database.federated_attach import (
     attach_databases_on_connection,
@@ -23,15 +22,14 @@ from core.services.set_operation_generator import (
     estimate_set_operation_rows,
     generate_set_operation_sql,
 )
+from core.services import table_registry
 from fastapi import APIRouter, Header
 from models.set_operation_models import (
     SetOperationConfig,
-    SetOperationExportRequest,
     SetOperationRequest,
     SetOperationType,
     UnionOperationRequest,
 )
-from utils.safe_filename import safe_filename_base
 from utils.response_helpers import (
     MessageCode,
     create_success_response,
@@ -42,27 +40,11 @@ from core.common.error_codes import classify_exception
 logger = logging.getLogger(__name__)
 
 
-def _timed_execute_fetch(con: Any, sql: str) -> pd.DataFrame:
-    """执行 SQL 并记录慢查询 / 自动 EXPLAIN。"""
-    import time
+def _timed_execute_fetch(con: Any, sql: str) -> tuple:
+    """执行 SQL 并记录慢查询 / 自动 EXPLAIN，返回 (columns, records)。"""
+    columns, records, _cursor_types = timed_fetch_query_records(con, sql)
+    return columns, records
 
-    from core.common.config_manager import config_manager
-    from core.database.query_metrics import log_query_duration
-
-    start = time.time()
-    result_df = fetch_query_dataframe(con, sql)
-    elapsed_ms = (time.time() - start) * 1000
-    explain_threshold = max(
-        config_manager.get_app_config().duckdb_auto_explain_threshold_ms or 0, 0
-    )
-    log_query_duration(
-        con,
-        sql,
-        elapsed_ms,
-        len(result_df),
-        explain_threshold_ms=explain_threshold,
-    )
-    return result_df
 
 router = APIRouter()
 
@@ -171,8 +153,7 @@ def preview_set_operation(request: SetOperationRequest):
         with _set_operation_connection(request) as (con, alias_set):
             sql = generate_set_operation_sql(config, attach_aliases=alias_set)
             preview_sql = f"{sql} LIMIT {preview_limit}"
-            result_df = _timed_execute_fetch(con, preview_sql)
-            preview_data = normalize_dataframe_output(result_df)
+            _, preview_data = _timed_execute_fetch(con, preview_sql)
             estimated_rows = estimate_set_operation_rows(
                 config, con, alias_set
             )
@@ -301,12 +282,10 @@ def execute_set_operation(
         limit = config_manager.get_app_config().max_query_rows
 
         with _set_operation_connection(request, query_id) as (con, alias_set):
-            if request.preview or (not request.save_as_table):
-                sql = generate_set_operation_sql(
-                    config, preview_limit=limit, attach_aliases=alias_set
-                )
-            else:
-                sql = generate_set_operation_sql(config, attach_aliases=alias_set)
+            # 基础 SQL 统一不带系统 LIMIT(分支/整体都不带):预览时只在最外层追加一次。
+            # 旧写法既让生成器按 preview_limit 加、下面又拼一层,分支截断还会改变
+            # EXCEPT/INTERSECT 的结果(复审验收 #11)。
+            sql = generate_set_operation_sql(config, attach_aliases=alias_set)
 
             if request.preview:
                 # 预览模式：使用配置的max_query_rows限制
@@ -314,12 +293,17 @@ def execute_set_operation(
 
                 limit = config_manager.get_app_config().max_query_rows
                 preview_sql = f"{sql} LIMIT {limit}"
-                result_df = _timed_execute_fetch(con, preview_sql)
+                col_names, data = _timed_execute_fetch(con, preview_sql)
+                # 列类型用 DESCRIBE 的真实 DuckDB 类型（此前的 pandas dtype
+                # 字符串在保真帧下会大面积显示 "object"，信息是错的）
+                described = {
+                    c["name"]: c["duckdb_type"]
+                    for c in describe_query_column_types(con, preview_sql)
+                }
                 columns = [
-                    {"name": col, "type": str(result_df[col].dtype)}
-                    for col in result_df.columns
+                    {"name": name, "type": described.get(name, "")}
+                    for name in col_names
                 ]
-                data = normalize_dataframe_output(result_df)
 
                 return create_success_response(
                     data={
@@ -349,18 +333,18 @@ def execute_set_operation(
                 logger.info(f"Starting to save set operation result to table: {table_name}")
 
                 # 检查表名是否已存在
-                existing_tables = con.execute("SHOW TABLES").fetchdf()
-                existing_table_names = (
-                    existing_tables["name"].tolist() if not existing_tables.empty else []
-                )
+                existing_table_names = [
+                    row[0] for row in con.execute("SHOW TABLES").fetchall()
+                ]
 
                 if table_name in existing_table_names:
                     logger.warning(f"Table {table_name} already exists，will be replaced")
 
-                # 直接创建表，不使用fetchdf
-                create_sql = f'CREATE OR REPLACE TABLE "{table_name}" AS ({sql})'
+                # 直接创建表，不使用fetchdf(表名走 quote_identifier 转义防注入)
+                create_sql = f'CREATE OR REPLACE TABLE {quote_identifier(table_name)} AS ({sql})'
                 logger.info(f"Executing create table SQL: {create_sql}")
                 con.execute(create_sql)
+                table_registry.record_creation(table_name)
 
                 # 获取统计信息（不使用fetchdf）
                 row_count_result = con.execute(
@@ -370,10 +354,14 @@ def execute_set_operation(
 
                 # 获取列信息（使用LIMIT 1避免大数据集问题）
                 sample_sql = f'SELECT * FROM "{table_name}" LIMIT 1'
-                sample_df = _timed_execute_fetch(con, sample_sql)
+                sample_columns, _sample_rows = _timed_execute_fetch(con, sample_sql)
+                described = {
+                    c["name"]: c["duckdb_type"]
+                    for c in describe_query_column_types(con, sample_sql)
+                }
                 columns = [
-                    {"name": col, "type": str(sample_df[col].dtype)}
-                    for col in sample_df.columns
+                    {"name": name, "type": described.get(name, "")}
+                    for name in sample_columns
                 ]
 
                 logger.info(f"Table {table_name} created successfully，rows: {row_count}")
@@ -408,12 +396,17 @@ def execute_set_operation(
 
                 limit = config_manager.get_app_config().max_query_rows
                 preview_sql = f"{sql} LIMIT {limit}"
-                result_df = _timed_execute_fetch(con, preview_sql)
+                col_names, data = _timed_execute_fetch(con, preview_sql)
+                # 列类型用 DESCRIBE 的真实 DuckDB 类型（此前的 pandas dtype
+                # 字符串在保真帧下会大面积显示 "object"，信息是错的）
+                described = {
+                    c["name"]: c["duckdb_type"]
+                    for c in describe_query_column_types(con, preview_sql)
+                }
                 columns = [
-                    {"name": col, "type": str(result_df[col].dtype)}
-                    for col in result_df.columns
+                    {"name": name, "type": described.get(name, "")}
+                    for name in col_names
                 ]
-                data = normalize_dataframe_output(result_df)
 
                 return create_success_response(
                     data={
@@ -533,181 +526,4 @@ def simple_union_operation(request: UnionOperationRequest):
             MessageCode.OPERATION_FAILED,
             f"Failed to operate: {str(e)}",
             details={"errors": [f"Failed to operate: {str(e)}"]},
-        )
-
-
-@router.post("/api/set-operations/export", tags=["Set Operations"])
-def export_set_operation(request: SetOperationExportRequest):
-    """
-    集合操作异步导出 - 使用DuckDB COPY命令
-
-    支持Excel、CSV、Parquet格式，使用DuckDB COPY命令直接导出完整数据，
-    避免内存限制问题。
-    """
-    from concurrent.futures import ThreadPoolExecutor
-
-    from core.services.task_manager import task_manager
-
-    try:
-        config = request.config
-        export_format = request.format
-        custom_filename = request.filename
-
-        logger.info(
-            f"Starting set operation export: format={export_format}, operation_type={config.operation_type}"
-        )
-
-        # 生成完整SQL（无LIMIT）
-        sql = generate_set_operation_sql(config)
-        logger.info(f"Generated complete SQL: {sql}")
-
-        # 创建异步导出任务
-        task_id = str(uuid.uuid4())
-
-        # 生成文件名
-        timestamp = datetime.now().strftime("%Y%m%d_%H%M%S")
-        operation_name = config.operation_type.replace(" ", "_").lower()
-        # custom_filename 必须先清洗：它会拼进磁盘路径和 COPY ... TO '...'，
-        # 未清洗可 ../ 穿越目录、单引号打断 COPY SQL（见 safe_filename_base）。
-        # 清洗后为空则回退到生成名。
-        base_filename = (
-            safe_filename_base(custom_filename)
-            or f"set_operation_{operation_name}_{timestamp}"
-        )
-
-        # 根据格式确定文件扩展名和DuckDB COPY格式
-        if export_format == "csv":
-            file_extension = "csv"
-            copy_format = "CSV"
-            copy_options = "HEADER"
-        elif export_format == "parquet":
-            file_extension = "parquet"
-            copy_format = "PARQUET"
-            copy_options = ""
-        elif export_format == "excel":
-            file_extension = "xlsx"
-            copy_format = "CSV"  # 先导出为CSV，然后转换为Excel
-            copy_options = "HEADER"
-        else:
-            raise ValueError(f"Unsupported export format: {export_format}")
-
-        # 构建文件路径
-        filename = f"{base_filename}.{file_extension}"
-        exports_dir = str(config_manager.get_exports_dir())
-        os.makedirs(exports_dir, exist_ok=True)
-        file_path = os.path.join(exports_dir, filename)
-
-        # 创建任务记录
-        task_info = {
-            "task_id": task_id,
-            "type": "set_operation_export",
-            "status": "running",
-            "created_at": datetime.now().isoformat(),
-            "config": config.dict(),
-            "format": export_format,
-            "filename": filename,
-            "file_path": file_path,
-            "progress": 0,
-            "message": "正在准备导出...",
-        }
-
-        # 注册任务
-        task_manager.add_task(task_id, task_info)
-
-        # 在后台线程中执行导出任务
-        def export_task():
-            try:
-                # 更新任务状态
-                task_manager.update_task(
-                    task_id,
-                    {
-                        "status": "running",
-                        "progress": 10,
-                        "message": "正在连接数据库...",
-                    },
-                )
-
-                with with_duckdb_connection() as con:
-                    task_manager.update_task(
-                        task_id, {"progress": 30, "message": "正在执行查询..."}
-                    )
-
-                    if export_format == "excel":
-                        csv_path = file_path.replace(".xlsx", ".csv")
-                        copy_sql = (
-                            f"COPY ({sql}) TO '{csv_path}' (FORMAT {copy_format}, {copy_options})"
-                        )
-
-                        logger.info(f"Executing CSV export: {copy_sql}")
-                        con.execute(copy_sql)
-
-                        task_manager.update_task(
-                            task_id, {"progress": 70, "message": "正在转换为Excel格式..."}
-                        )
-
-                        df = pd.read_csv(csv_path)
-                        df.to_excel(file_path, index=False)
-                        os.remove(csv_path)
-
-                    else:
-                        copy_sql = (
-                            f"COPY ({sql}) TO '{file_path}' (FORMAT {copy_format}, {copy_options})"
-                        )
-
-                        logger.info(f"Executing export: {copy_sql}")
-                        con.execute(copy_sql)
-
-                    if not os.path.exists(file_path):
-                        raise RuntimeError("Export file not created")
-
-                    file_size = os.path.getsize(file_path)
-
-                    task_manager.update_task(
-                        task_id,
-                        {
-                            "status": "completed",
-                            "progress": 100,
-                            "message": f"导出完成，文件size: {file_size / 1024 / 1024:.2f} MB",
-                            "file_size": file_size,
-                            "download_url": f"/api/async-tasks/{task_id}/download",
-                        },
-                    )
-
-                    logger.info(
-                        f"Set operation export completed: {filename}, size: {file_size} bytes"
-                    )
-
-            except Exception as e:
-                logger.error(f"Export taskFailed to execute: {str(e)}")
-                task_manager.update_task(
-                    task_id,
-                    {
-                        "status": "failed",
-                        "progress": 0,
-                        "message": f"导出失败: {str(e)}",
-                        "error": str(e),
-                    },
-                )
-
-        # 在后台线程中执行导出任务
-        executor = ThreadPoolExecutor(max_workers=1)
-        executor.submit(export_task)
-
-        return create_success_response(
-            data={
-                "task_id": task_id,
-                "filename": filename,
-                "format": export_format,
-            },
-            message_code=MessageCode.SET_OPERATION_EXPORTED,
-            message="Export task created, please check async task list later",
-        )
-
-    except Exception as e:
-        logger.error(f"Failed to export set operation: {str(e)}")
-        return error_json_response(
-            500,
-            MessageCode.OPERATION_FAILED,
-            f"Failed to create export task: {str(e)}",
-            details={"error": str(e)},
         )

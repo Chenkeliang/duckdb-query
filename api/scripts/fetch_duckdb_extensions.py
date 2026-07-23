@@ -1,6 +1,8 @@
 """离线预下载 DuckDB 扩展,供 PyInstaller 打包。
-用法: python scripts/fetch_duckdb_extensions.py <platform>
+用法: python scripts/fetch_duckdb_extensions.py <platform> [--full]
 platform ∈ {osx_arm64, osx_amd64, windows_amd64}
+--full: 拉取全量扩展(excel+httpfs+mysql+postgres),供 -offline 离线全量包;
+        缺省只拉 excel(标准包/更新包)。
 输出: api/extensions/v<ver>/<platform>/<ext>.duckdb_extension
 """
 
@@ -23,17 +25,26 @@ EXTS = {
     "excel": "excel",
 }
 
+# --full(离线全量包):内网/无外网环境一次装齐,联邦查询开箱即用
+FULL_EXTS = {
+    "excel": "excel",
+    "httpfs": "httpfs",
+    "mysql": "mysql_scanner",
+    "postgres": "postgres_scanner",
+}
+
 # Cloudflare 屏蔽 Python 默认 UA,需设置浏览器 UA
 _HEADERS = {"User-Agent": "Mozilla/5.0"}
 
 
-def main(platform: str) -> None:
+def main(platform: str, full: bool = False) -> None:
+    exts = FULL_EXTS if full else EXTS
     out = Path(__file__).resolve().parent.parent / "extensions" / f"v{DUCK_VER}" / platform
     # 幂等:先清空,避免脚本迭代/重命名遗留旧文件(如 *_scanner)被一并打进包
     if out.exists():
         shutil.rmtree(out)
     out.mkdir(parents=True, exist_ok=True)
-    for load_name, cdn_name in EXTS.items():
+    for load_name, cdn_name in exts.items():
         url = f"https://extensions.duckdb.org/v{DUCK_VER}/{platform}/{cdn_name}.duckdb_extension.gz"
         dest = out / f"{load_name}.duckdb_extension"
         print(f"-> {url}")
@@ -45,4 +56,5 @@ def main(platform: str) -> None:
 
 
 if __name__ == "__main__":
-    main(sys.argv[1] if len(sys.argv) > 1 else "osx_arm64")
+    args = [a for a in sys.argv[1:] if a != "--full"]
+    main(args[0] if args else "osx_arm64", full="--full" in sys.argv)

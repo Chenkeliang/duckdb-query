@@ -6,6 +6,7 @@ from dataclasses import dataclass
 from typing import Any, Dict, List, Optional
 
 from models.pivot_query_models import (
+    AggregationFunction,
     PivotQueryConfig,
     FilterOperator,
     PivotQueryMode,
@@ -55,8 +56,10 @@ def generate_pivot_query_sql(
     pivot_config: PivotConfig,
     app_config: Optional[Any] = None,
     resolved_casts: Optional[Dict[str, str]] = None,
+    connection=None,
 ) -> GeneratedPivotQuery:
-    """Generate pivot SQL (HTTP /api/pivot-query/*)."""
+    """Generate pivot SQL (HTTP /api/pivot-query/*)。connection:路由传入的已 ATTACH 连接,
+    供列上限探测/列值采样使用(联邦透视必需,否则自开的新连接看不到外部表)。"""
     warnings: List[str] = []
     mode = PivotQueryMode.PIVOT
 
@@ -76,13 +79,12 @@ def generate_pivot_query_sql(
             "System configuration has disabled pivot table feature, please contact administrator to enable"
         )
 
-    pivot_config.strategy = "native"
-
     base_sql = _generate_pivot_base_sql(config, pivot_config, resolved_casts)
     pivot_result = _generate_pivot_transformation_sql(
         base_sql=base_sql,
         pivot_config=pivot_config,
         casts_map=resolved_casts,
+        connection=connection,
     )
 
     warnings.extend(pivot_result.get("warnings", []))
@@ -95,7 +97,6 @@ def generate_pivot_query_sql(
             {
                 "column": value.column,
                 "aggregation": value.aggregation.value,
-                "alias": value.alias,
             }
             for value in pivot_config.values
         ],
@@ -143,10 +144,71 @@ def _generate_pivot_base_sql(
     return _strip_trailing_semicolon(" ".join(sql_parts))
 
 
+def _conn_ctx(connection):
+    """有外部连接就直接用它(路由已 ATTACH,联邦表可见);否则自开一个池连接(本地表)。
+    联邦透视的上限探测/列值读取必须用路由传入的已 ATTACH 连接,自开的新连接看不到外部表。"""
+    from contextlib import nullcontext
+
+    if connection is not None:
+        return nullcontext(connection)
+    from core.database.duckdb_engine import with_duckdb_connection  # type: ignore
+
+    return with_duckdb_connection()
+
+
+class PivotColumnLimitError(ValueError):
+    """透视列维度去重值超过 pivot_max_columns 上限。路由显式捕获它 → 400 +
+    PIVOT_COLUMN_LIMIT_EXCEEDED + 结构化 details{column,cap,observed_at_least},
+    前端据结构化字段提示(不解析中文消息)。observed_at_least:探到的去重值数
+    (受探测 LIMIT cap+1 限制,实际恒为 cap+1)。"""
+
+    def __init__(self, column: str, cap: int, observed_at_least: int | None = None):
+        self.column = column
+        self.cap = cap
+        self.observed_at_least = observed_at_least if observed_at_least is not None else cap + 1
+        super().__init__(
+            f"PIVOT_COLUMN_LIMIT_EXCEEDED: 透视列「{column}」的去重值超过上限 {cap}"
+            f"(至少 {self.observed_at_least} 个分类)。请增加筛选缩小范围,或手动选择要展开的列值后重试。"
+        )
+
+
+def _pivot_column_cap() -> int:
+    try:
+        if config_manager is None:
+            return 300
+        return int(getattr(config_manager.get_app_config(), "pivot_max_columns", 300) or 300)
+    except Exception:  # pylint: disable=broad-except
+        return 300
+
+
+def _enforce_pivot_column_cap(base_sql: str, target_col: str, connection=None) -> None:
+    """单列维度去重值 > pivot_max_columns 时抛 PivotColumnLimitError(Codex #3:超限报错,
+    不静默采样出「看似完整、实际少算」的结果)。只探到 cap+1 即止;内省失败不阻断
+    (交由后续 native pivot 尝试/兜底报错)。connection:路由传入的已 ATTACH 连接(联邦必需)。"""
+    cap = _pivot_column_cap()
+    try:
+        qcol = _quote_identifier(target_col)
+        probe = (
+            f"WITH base AS (\n{_strip_trailing_semicolon(base_sql)}\n)\n"
+            f"SELECT count(*) FROM ("
+            f"SELECT DISTINCT {qcol} AS v FROM base WHERE {qcol} IS NOT NULL "
+            f"LIMIT {cap + 1})"
+        )
+        with _conn_ctx(connection) as con:
+            distinct_n = con.execute(probe).fetchone()[0]
+    except PivotColumnLimitError:
+        raise
+    except Exception:  # pylint: disable=broad-except
+        return
+    if distinct_n > cap:
+        raise PivotColumnLimitError(target_col, cap, observed_at_least=distinct_n)
+
+
 def _generate_pivot_transformation_sql(
     base_sql: str,
     pivot_config: PivotConfig,
     casts_map: Optional[Dict[str, str]] = None,
+    connection=None,
 ) -> Dict[str, Any]:
     row_dimensions = [_quote_identifier(dim) for dim in pivot_config.rows]
     manual_values = list(
@@ -162,8 +224,6 @@ def _generate_pivot_transformation_sql(
         if not max_values or max_values <= 0:
             return None
         try:
-            from core.database.duckdb_engine import with_duckdb_connection  # type: ignore
-
             target_col = pivot_config.columns[0]
             introspect_sql = (
                 f"WITH base AS (\n{_strip_trailing_semicolon(base_sql)}\n)\n"
@@ -172,16 +232,18 @@ def _generate_pivot_transformation_sql(
                 f"WHERE {_quote_identifier(target_col)} IS NOT NULL\n"
                 f"LIMIT {int(max_values)}"
             )
-            with with_duckdb_connection() as con:
-                df = con.execute(introspect_sql).fetchdf()
-            values: List[str] = []
-            if df is not None and not df.empty:
-                for raw in df["v"].tolist():
-                    # Preserve original values as string form; _format_literal will escape
-                    values.append(str(raw))
+            with _conn_ctx(connection) as con:  # 用路由传入的已 ATTACH 连接(联邦必需)
+                rows = con.execute(introspect_sql).fetchall()
+            # Preserve original values as string form; _format_literal will escape
+            values: List[str] = [str(raw) for (raw,) in rows]
             return values or None
         except Exception as _:
             return None
+
+    # 列数上限强制检查(Codex #3):单列维度、非手动选列时,列去重值超过 pivot_max_columns
+    # 即报错——不再静默采样。手动选列(manual_values)视为用户显式选择,跳过。
+    if pivot_config.columns and len(pivot_config.columns) == 1 and not manual_values:
+        _enforce_pivot_column_cap(base_sql, pivot_config.columns[0], connection)
 
     # 检查是否设置了列数量限制
     # 如果设置了限制，我们不能使用动态 PIVOT（因为它会返回所有列），
@@ -198,9 +260,8 @@ def _generate_pivot_transformation_sql(
             # 当需要小计/总计时，构建额外结果集
             if pivot_config.include_subtotals or pivot_config.include_grand_totals:
                 if not manual_values:
-                    # 动态透视的列名在执行期才确定，_derive_pivot_value_aliases 无法
-                    # 预知（会引用不存在的列 → Binder Error），故降级为不注入并告警。
-                    # 需要小计请提供 manual_column_values 或 column_value_limit。
+                    # 动态透视的列值在执行期才确定,无从据此从 base 重算合计口径,
+                    # 故降级为不注入并告警。需要小计请提供 manual_column_values 或 column_value_limit。
                     native_candidate["warnings"].append(
                         "Subtotals/grand totals require explicit column values "
                         "(manual_column_values or column_value_limit); skipped for dynamic pivot"
@@ -209,6 +270,7 @@ def _generate_pivot_transformation_sql(
                     native_candidate = _inject_pivot_totals(
                         native_candidate,
                         row_dimensions,
+                        _quote_identifier(pivot_config.columns[0]),
                         pivot_config.values,
                         manual_values,
                         include_subtotals=pivot_config.include_subtotals,
@@ -243,6 +305,7 @@ def _generate_pivot_transformation_sql(
                     native_candidate = _inject_pivot_totals(
                         native_candidate,
                         row_dimensions,
+                        _quote_identifier(pivot_config.columns[0]),
                         pivot_config.values,
                         sampled,
                         include_subtotals=pivot_config.include_subtotals,
@@ -294,15 +357,12 @@ def _try_generate_native_pivot(
     for v in pivot_config.values:
         column_expr = _quote_identifier(v.column)
 
-        # 应用类型转换（如果指定了且不是自动）
-        if (
-            hasattr(v, "typeConversion")
-            and v.typeConversion
-            and v.typeConversion != "auto"
-        ):
-            column_expr = f"TRY_CAST({column_expr} AS {v.typeConversion.upper()})"
+        # 应用类型转换（指定且非 auto 哨兵）。typeConversion 已由模型层
+        # validate_cast_type 归一为规范拼写并白名单校验,此处直接用。
+        if v.typeConversion and v.typeConversion != "auto":
+            column_expr = f"TRY_CAST({column_expr} AS {v.typeConversion})"
 
-        agg_items.append(f"{v.aggregation.value}({column_expr})")
+        agg_items.append(_aggregation_sql_expr(v.aggregation, column_expr))
 
     col_dim = _quote_identifier(pivot_config.columns[0])
     
@@ -337,91 +397,87 @@ def _try_generate_native_pivot(
     }
 
 
-def _derive_pivot_value_aliases(
-    values: List[PivotValueConfig],
-    manual_values: Optional[List[str]],
-) -> List[str]:
-    """Derive the exact column names DuckDB's native PIVOT emits, so the
-    totals/subtotal SELECTs reference columns that actually exist (otherwise
-    UNION ALL fails with a Binder Error).
+def _aggregation_sql_expr(aggregation: AggregationFunction, column_expr: str) -> str:
+    """聚合枚举 → DuckDB 聚合表达式。
 
-    Verified against the DuckDB build used here — for ``PIVOT(<aggs> FOR col
-    IN (<values>))`` with unaliased aggregates (which is what
-    ``_try_generate_native_pivot`` emits):
-      - single aggregate   -> bare pivot value, e.g. ``Q1``
-      - multiple aggregates -> ``{value}_{agg}({column})``, e.g.
-        ``Q1_sum(amount)`` / ``Q1_count(amount)`` — ordered value-outer,
-        aggregate-inner (matching PIVOT's output column order for UNION ALL).
-
-    Totals require explicit column values, so ``manual_values`` is
-    authoritative; without them the caller skips totals entirely.
+    COUNT_DISTINCT 是 UI 枚举名而非 DuckDB 函数——直接拼 ``COUNT_DISTINCT(col)``
+    会报 "Aggregate Function with name count_distinct does not exist"，
+    必须展开为 ``count(DISTINCT col)``。
     """
-    manual = manual_values or []
-    if not manual or not values:
-        return []
+    if aggregation == AggregationFunction.COUNT_DISTINCT:
+        return f"count(DISTINCT {column_expr})"
+    return f"{aggregation.value}({column_expr})"
+
+
+def _aggregation_alias_suffix(aggregation: AggregationFunction, column: str) -> str:
+    """多聚合原生 PIVOT 输出列名里的聚合段（与 DuckDB 实测命名一致：
+    ``{值}_sum(col)`` / ``{值}_count(DISTINCT col)``，列名不带引号）。"""
+    if aggregation == AggregationFunction.COUNT_DISTINCT:
+        return f"count(DISTINCT {column})"
+    return f"{aggregation.value.lower()}({column})"
+
+
+def _totals_value_exprs(
+    col_dim: str,
+    column_values: List[str],
+    values: List[PivotValueConfig],
+) -> List[str]:
+    """每个透视输出列的【条件聚合】表达式,从 base 用原聚合函数重算(而非对已聚合单元格再 SUM)。
+
+    关键:小计/总计不能对透视结果再 SUM——只有 SUM/COUNT 这样恰好正确,AVG/MIN/MAX/COUNT_DISTINCT
+    全错(SUM(AVG)≠AVG、SUM(MIN)≠MIN、SUM(count(distinct))≠count(distinct))。用
+    ``<原agg>(CASE WHEN col_dim = 值 THEN 源列 END)`` 从 base 复现每个透视列的原口径:非匹配行为
+    NULL,被所有这些聚合忽略。顺序为【列值外层 × 值配置内层】,与 _derive_pivot_value_aliases /
+    PIVOT 输出列顺序一致(UNION ALL 按位置对齐)。
+    """
     single = len(values) == 1
-    aliases: List[str] = []
-    for manual_val in manual:
-        for value in values:
-            if single:
-                aliases.append(str(manual_val))
-            else:
-                aliases.append(
-                    f"{manual_val}_{value.aggregation.value.lower()}({value.column})"
-                )
-    return aliases
+    exprs: List[str] = []
+    for cv in column_values:
+        for v in values:
+            column_expr = _quote_identifier(v.column)
+            if v.typeConversion and v.typeConversion != "auto":
+                column_expr = f"TRY_CAST({column_expr} AS {v.typeConversion})"
+            cond = f"CASE WHEN {col_dim} = {_format_literal(cv)} THEN {column_expr} END"
+            agg_expr = _aggregation_sql_expr(v.aggregation, cond)
+            alias = str(cv) if single else f"{cv}_{_aggregation_alias_suffix(v.aggregation, v.column)}"
+            exprs.append(f"{agg_expr} AS {_quote_identifier(alias)}")
+    return exprs
 
 
 def _build_totals_selects(
     row_dimensions: List[str],
-    value_aliases: List[str],
-    pivot_alias: str = "pivot",
+    col_dim: str,
+    column_values: List[str],
+    values: List[PivotValueConfig],
+    base_alias: str = "base",
     include_subtotals: bool = False,
     include_grand_totals: bool = False,
 ) -> List[str]:
-    """Construct SELECT statements for subtotal and grand-total rows."""
+    """小计/总计的 SELECT——从 base CTE 用原聚合函数按分组层级重算(见 _totals_value_exprs)。"""
+    value_exprs = _totals_value_exprs(col_dim, column_values, values)
+    if not value_exprs:
+        return []
+
     selects: List[str] = []
 
     if include_subtotals and row_dimensions:
-        # Generate subtotal for each prefix of the row dimensions (bottom-up)
-        for depth in range(len(row_dimensions), 0, -1):
+        # 小计 = 对行维度【真前缀】的卷积(深度 N-1 → 1)。深度=N(全部行维度)即基础粒度,
+        # 不是小计;单行维度无真前缀、无小计(总计已覆盖其汇总)。
+        for depth in range(len(row_dimensions) - 1, 0, -1):
             prefix = row_dimensions[:depth]
             remaining = row_dimensions[depth:]
-
-            select_parts: List[str] = []
-            group_by_parts: List[str] = []
-
-            for dim in prefix:
-                select_parts.append(f"{pivot_alias}.{dim} AS {dim}")
-                group_by_parts.append(f"{pivot_alias}.{dim}")
-
-            # Fill remaining row dimensions with label '全部' (All)
-            select_parts.extend([f"'全部' AS {dim}" for dim in remaining])
-
-            select_parts.extend(
-                [
-                    f"SUM({pivot_alias}.{_quote_identifier(alias)}) AS {_quote_identifier(alias)}"
-                    for alias in value_aliases
-                ]
+            select_parts = [f"{base_alias}.{dim} AS {dim}" for dim in prefix]
+            # 卷掉的尾部维度填 '全部'(All)
+            select_parts += [f"'全部' AS {dim}" for dim in remaining]
+            select_parts += value_exprs
+            group_by = ", ".join(f"{base_alias}.{dim}" for dim in prefix)
+            selects.append(
+                f"SELECT {', '.join(select_parts)} FROM {base_alias} GROUP BY {group_by}"
             )
 
-            subtotal_select = f"SELECT {', '.join(select_parts)} FROM {pivot_alias}"
-            if group_by_parts:
-                subtotal_select = (
-                    f"{subtotal_select} GROUP BY {', '.join(group_by_parts)}"
-                )
-            selects.append(subtotal_select)
-
     if include_grand_totals:
-        all_dim_aliases = [f"'总计' AS {dim}" for dim in row_dimensions]
-        total_values = [
-            f"SUM({pivot_alias}.{_quote_identifier(alias)}) AS {_quote_identifier(alias)}"
-            for alias in value_aliases
-        ]
-        grand_total_select = (
-            f"SELECT {', '.join(all_dim_aliases + total_values)} FROM {pivot_alias}"
-        )
-        selects.append(grand_total_select)
+        select_parts = [f"'总计' AS {dim}" for dim in row_dimensions] + value_exprs
+        selects.append(f"SELECT {', '.join(select_parts)} FROM {base_alias}")
 
     return selects
 
@@ -429,12 +485,17 @@ def _build_totals_selects(
 def _inject_pivot_totals(
     native_candidate: Dict[str, Any],
     row_dimensions: List[str],
+    col_dim: str,
     values: List[PivotValueConfig],
     manual_values: List[str],
     include_subtotals: bool,
     include_grand_totals: bool,
 ) -> Dict[str, Any]:
-    """Augment native pivot SQL to include subtotal / grand-total rows."""
+    """Augment native pivot SQL to include subtotal / grand-total rows.
+
+    合计行从 base CTE 用【原聚合函数】重算(见 _totals_value_exprs),不对已聚合的透视单元格
+    再 SUM——后者只有 SUM/COUNT 恰好正确,AVG/MIN/MAX/COUNT_DISTINCT 全错(复审 P1)。
+    """
 
     if not include_subtotals and not include_grand_totals:
         return native_candidate
@@ -447,14 +508,16 @@ def _inject_pivot_totals(
     if not pivot_sql or not base_cte or not pivot_cte:
         return native_candidate
 
-    value_aliases = _derive_pivot_value_aliases(values, manual_values)
-    if not value_aliases:
+    # 需显式列值(manual / 自动采样)才能重算 totals;动态透视的列值执行期才定,无从重算 → 跳过
+    if not manual_values or not values:
         return native_candidate
 
     totals_selects = _build_totals_selects(
         row_dimensions=row_dimensions,
-        value_aliases=value_aliases,
-        pivot_alias=pivot_alias,
+        col_dim=col_dim,
+        column_values=manual_values,
+        values=values,
+        base_alias="base",
         include_subtotals=include_subtotals,
         include_grand_totals=include_grand_totals,
     )

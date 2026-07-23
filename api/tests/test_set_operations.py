@@ -16,12 +16,19 @@ sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
 
 from fastapi.testclient import TestClient
 from unittest.mock import Mock, patch, MagicMock
-import pandas as pd
 from tests.pool_mock import bind_mock_duckdb_pool
 import json
 from pydantic import ValidationError
 
 from main import app
+
+
+def bind_query_records(mock_con, columns, rows):
+    """新传输路径 mock:fetch_query_records 读 description + fetchall。"""
+    mock_con.execute.return_value.description = [(c, "VARCHAR") for c in columns]
+    mock_con.execute.return_value.fetchall.return_value = [tuple(r) for r in rows]
+
+
 from models.set_operation_models import (
     SetOperationType,
     SetOperationConfig,
@@ -357,10 +364,11 @@ class TestSetOperationAPI:
             mock_con.execute.return_value.description = []
 
             # 模拟预览数据
-            preview_data = pd.DataFrame(
-                {"id": [1, 2, 3], "name": ["Alice", "Bob", "Charlie"]}
+            bind_query_records(
+                mock_con,
+                ["id", "name"],
+                [(1, "Alice"), (2, "Bob"), (3, "Charlie")],
             )
-            mock_con.execute.return_value.fetchdf.return_value = preview_data
 
             response = client.post("/api/set-operations/preview", json=request_data)
 
@@ -408,8 +416,7 @@ class TestSetOperationAPI:
             bind_mock_duckdb_pool(mock_get_db, mock_con)
             mock_con.execute.return_value.description = []
 
-            preview_frame = pd.DataFrame({"id": [1], "name": ["Alice"]})
-            mock_con.execute.return_value.fetchdf.return_value = preview_frame
+            bind_query_records(mock_con, ["id", "name"], [(1, "Alice")])
 
             response = client.post("/api/set-operations/preview", json=request_data)
 
@@ -448,9 +455,9 @@ class TestSetOperationAPI:
             mock_con.execute.return_value.description = []
 
             # 模拟表存在检查
-            mock_con.execute.return_value.fetchdf.return_value = pd.DataFrame(
-                {"name": ["users", "customers"]}
-            )
+            mock_con.execute.return_value.fetchall.return_value = [
+                ("users",), ("customers",),
+            ]
 
             response = client.post("/api/set-operations/validate", json=request_data)
 
@@ -495,13 +502,11 @@ class TestSetOperationAPI:
             mock_con.execute.return_value.description = []
 
             # 模拟执行结果
-            result_data = pd.DataFrame(
-                {
-                    "id": [1, 2, 3, 4, 5],
-                    "name": ["Alice", "Bob", "Charlie", "David", "Eve"],
-                }
+            bind_query_records(
+                mock_con,
+                ["id", "name"],
+                [(1, "Alice"), (2, "Bob"), (3, "Charlie"), (4, "David"), (5, "Eve")],
             )
-            mock_con.execute.return_value.fetchdf.return_value = result_data
 
             response = client.post("/api/set-operations/execute", json=request_data)
 
@@ -593,10 +598,11 @@ class TestSetOperationIntegration:
             preview_request = {"config": generate_request["config"], "limit": 5}
 
             # 模拟预览数据
-            preview_data = pd.DataFrame(
-                {"id": [1, 2, 3], "name": ["Alice", "Bob", "Charlie"]}
+            bind_query_records(
+                mock_con,
+                ["id", "name"],
+                [(1, "Alice"), (2, "Bob"), (3, "Charlie")],
             )
-            mock_con.execute.return_value.fetchdf.return_value = preview_data
 
             response = client.post("/api/set-operations/preview", json=preview_request)
             assert response.status_code == 200
@@ -607,13 +613,11 @@ class TestSetOperationIntegration:
             execute_request = {"config": generate_request["config"]}
 
             # 模拟执行结果
-            result_data = pd.DataFrame(
-                {
-                    "id": [1, 2, 3, 4, 5],
-                    "name": ["Alice", "Bob", "Charlie", "David", "Eve"],
-                }
+            bind_query_records(
+                mock_con,
+                ["id", "name"],
+                [(1, "Alice"), (2, "Bob"), (3, "Charlie"), (4, "David"), (5, "Eve")],
             )
-            mock_con.execute.return_value.fetchdf.return_value = result_data
 
             response = client.post("/api/set-operations/execute", json=execute_request)
             assert response.status_code == 200
@@ -683,3 +687,40 @@ class TestSetOperationErrorHandling:
 
 if __name__ == "__main__":
     pytest.main([__file__, "-v"])
+
+
+class TestSetOperationColumnEscaping:
+    """回归:selected_columns 曾直接 f'"{col}"' 拼进 SQL,漏了双引号转义,
+    构成注入面(注释写'转义列名'却没转)。现走共享 quote_identifier。"""
+
+    def test_quotes_in_column_names_are_escaped(self):
+        from models.set_operation_models import (
+            SetOperationConfig, SetOperationType, TableConfig,
+        )
+        cfg = SetOperationConfig(
+            operation_type=SetOperationType.UNION,
+            tables=[
+                TableConfig(table_name="t1", selected_columns=['a"b', 'c']),
+                TableConfig(table_name="t2", selected_columns=['a"b', 'c']),
+            ],
+        )
+        sql = generate_set_operation_sql(cfg)
+        # 内嵌双引号必须翻倍成 ""——不得出现未转义的裸 "a"b"
+        assert '"a""b"' in sql, sql
+        assert '"a"b"' not in sql.replace('"a""b"', ''), sql
+
+    def test_injection_shaped_column_is_neutralized(self):
+        from models.set_operation_models import (
+            SetOperationConfig, SetOperationType, TableConfig,
+        )
+        evil = 'x" ; DROP TABLE users; --'
+        cfg = SetOperationConfig(
+            operation_type=SetOperationType.UNION,
+            tables=[
+                TableConfig(table_name="t1", selected_columns=[evil]),
+                TableConfig(table_name="t2", selected_columns=[evil]),
+            ],
+        )
+        sql = generate_set_operation_sql(cfg)
+        # 整个恶意串被包成单个转义标识符,分号/DROP 不再是可执行 SQL
+        assert '"x"" ; DROP TABLE users; --"' in sql, sql

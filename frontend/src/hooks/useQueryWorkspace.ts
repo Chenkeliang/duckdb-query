@@ -65,7 +65,11 @@ export interface UseQueryWorkspaceReturn {
   handleTableSelect: (table: SelectedTable) => void;
   handleRemoveTable: (table: SelectedTable) => void;
   handleTabChange: (tab: string) => void;
-  handleQueryExecute: (sql: string, source?: TableSource) => Promise<void>;
+  handleQueryExecute: (
+    sql: string,
+    source?: TableSource,
+    options?: { baseSql?: string }
+  ) => Promise<void>;
   refreshActiveResult: () => Promise<void>;
   /** 仅刷新指定结果 Tab（默认当前选中 Tab） */
   refreshResultTab: (tabId?: string) => Promise<void>;
@@ -85,7 +89,8 @@ export interface UseQueryWorkspaceReturn {
       preview_limit_applied?: number | null;
     },
     sql?: string,
-    source?: TableSource
+    source?: TableSource,
+    options?: { baseSql?: string }
   ) => void;
   cancelQuery: () => Promise<void>;
   isCancelling: boolean;
@@ -242,7 +247,10 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
         const result = await executeFederatedQuery({
           sql,
           attachDatabases,
-          isPreview: false,
+          // 页面查询=预览语义:与本地 DuckDB 路径(executeDuckDBSQL 默认 is_preview:true)一致,
+          // 最外层缺用户 LIMIT 时由后端补系统默认。此前恒 false,联邦查询在页面上会无上限全量
+          // 执行(复审:联邦 isPreview)。后端按 AST 判定,面板烤入的外层 LIMIT/用户 LIMIT 不受影响。
+          isPreview: true,
           requestId,
           signal,
         });
@@ -268,9 +276,14 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
   );
 
   const commitSuccessfulResult = useCallback(
-    (sql: string, source: TableSource, response: Parameters<typeof buildQueryResult>[0]) => {
+    (
+      sql: string,
+      source: TableSource,
+      response: Parameters<typeof buildQueryResult>[0],
+      baseSql?: string
+    ) => {
       const result = buildQueryResult(response);
-      const query: LastQuery = { sql, source };
+      const query: LastQuery = { sql, source, ...(baseSql ? { baseSql } : {}) };
       const slotLabel = deriveSingleResultSlotLabel(sql);
 
       if (retainQueryResults) {
@@ -299,10 +312,11 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
       sql: string,
       source: TableSource,
       response: Parameters<typeof buildQueryResult>[0],
-      tabId: string
+      tabId: string,
+      baseSql?: string
     ) => {
       const result = buildQueryResult(response);
-      const query: LastQuery = { sql, source };
+      const query: LastQuery = { sql, source, ...(baseSql ? { baseSql } : {}) };
 
       if (retainQueryResults) {
         setResultTabs((prev) =>
@@ -394,7 +408,7 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
     async (
       sql: string,
       source?: TableSource,
-      options?: { refresh?: boolean; tabId?: string }
+      options?: { refresh?: boolean; tabId?: string; baseSql?: string }
     ) => {
       const querySource: TableSource = source || { type: 'duckdb' };
       const { requestId, key, signal } = beginQueryExecution(options);
@@ -410,9 +424,9 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
         }
 
         if (options?.refresh && options.tabId) {
-          updateActiveTabResult(sql, querySource, response, options.tabId);
+          updateActiveTabResult(sql, querySource, response, options.tabId, options?.baseSql);
         } else {
-          commitSuccessfulResult(sql, querySource, response);
+          commitSuccessfulResult(sql, querySource, response, options?.baseSql);
         }
         setLastFailure(null);
       } catch (error) {
@@ -457,8 +471,8 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
   );
 
   const handleQueryExecute = useCallback(
-    async (sql: string, source?: TableSource) => {
-      await executeQuery(sql, source);
+    async (sql: string, source?: TableSource, options?: { baseSql?: string }) => {
+      await executeQuery(sql, source, options);
     },
     [executeQuery]
   );
@@ -468,7 +482,10 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
       // 单结果槽（不保留多 Tab）没有 activeResultTabId/resultTabs 记录，靠 singleLastQuery 重跑
       if (!retainQueryResults) {
         if (!singleLastQuery?.sql) return;
-        await executeQuery(singleLastQuery.sql, singleLastQuery.source, { refresh: true });
+        await executeQuery(singleLastQuery.sql, singleLastQuery.source, {
+          refresh: true,
+          baseSql: singleLastQuery.baseSql, // 重跑保留 baseSql,异步/导出仍能拿到真全量
+        });
         return;
       }
 
@@ -481,6 +498,7 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
       await executeQuery(tab.query.sql, tab.query.source, {
         refresh: true,
         tabId: targetId,
+        baseSql: tab.query.baseSql,
       });
     },
     [retainQueryResults, singleLastQuery, activeResultTabId, executeQuery, resultTabs]
@@ -707,7 +725,8 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
         preview_limit_applied?: number | null;
       },
       sql?: string,
-      source: TableSource = { type: 'duckdb' }
+      source: TableSource = { type: 'duckdb' },
+      options?: { baseSql?: string }
     ) => {
       if (!sql) {
         const built = buildQueryResult({
@@ -730,14 +749,19 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
         return;
       }
 
-      commitSuccessfulResult(sql, source, {
-        ...response,
-        columns:
-          response.columns ??
-          (response.data?.length
-            ? Object.keys(response.data[0] as Record<string, unknown>)
-            : []),
-      });
+      commitSuccessfulResult(
+        sql,
+        source,
+        {
+          ...response,
+          columns:
+            response.columns ??
+            (response.data?.length
+              ? Object.keys(response.data[0] as Record<string, unknown>)
+              : []),
+        },
+        options?.baseSql
+      );
     },
     [activeResultTabId, buildQueryResult, commitSuccessfulResult, retainQueryResults]
   );

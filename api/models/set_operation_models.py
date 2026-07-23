@@ -1,7 +1,7 @@
 """Pydantic models for set operations (UNION / EXCEPT / INTERSECT)."""
 
 from enum import Enum
-from typing import Dict, List, Literal, Optional
+from typing import Dict, List, Optional
 
 from models.query_models import AttachDatabase
 from pydantic import BaseModel, Field, field_validator, model_validator
@@ -166,11 +166,3 @@ SET_OPERATION_LABELS = {
     SetOperationType.EXCEPT: "差集",
     SetOperationType.INTERSECT: "交集",
 }
-
-
-class SetOperationExportRequest(BaseModel):
-    """集合操作导出请求模型"""
-
-    config: SetOperationConfig
-    format: Literal["excel", "csv", "parquet"] = Field(..., description="导出格式")
-    filename: Optional[str] = Field(None, description="自定义文件名（可选）")

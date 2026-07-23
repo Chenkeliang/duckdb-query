@@ -19,6 +19,7 @@ import {
 import { SQLHighlight } from '@/components/SQLHighlight';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
+import { Checkbox } from '@/components/ui/checkbox';
 import { Label } from '@/components/ui/label';
 import { showSuccessToast, showErrorToast } from '@/utils/toastHelpers';
 import { invalidateAfterTableCreate } from '@/utils/cacheInvalidation';
@@ -90,6 +91,8 @@ export const ImportToDuckDBDialog: React.FC<ImportToDuckDBDialogProps> = ({
   );
   const [isImporting, setIsImporting] = useState(false);
   const [validationError, setValidationError] = useState<string | null>(null);
+  // 行数范围:默认全量落表;勾选后仅为无外层 LIMIT 的 SQL 追加系统默认值。
+  const [applyRowLimit, setApplyRowLimit] = useState(false);
 
   // 验证表名
   const handleTableNameChange = useCallback((value: string) => {
@@ -131,7 +134,8 @@ export const ImportToDuckDBDialog: React.FC<ImportToDuckDBDialogProps> = ({
         datasource,
         tableName.trim(),
         null,
-        attachDatabases
+        attachDatabases,
+        applyRowLimit
       );
 
       if (!result.success) {
@@ -164,7 +168,7 @@ export const ImportToDuckDBDialog: React.FC<ImportToDuckDBDialogProps> = ({
     } finally {
       setIsImporting(false);
     }
-  }, [tableName, sql, source, queryClient, onOpenChange, t]);
+  }, [tableName, sql, source, queryClient, onOpenChange, t, applyRowLimit]);
 
   // 仅在对话框打开瞬间重置：弹窗开着时 source/defaultTableName 引用变化
   // （如后台任务轮询触发的父级重渲染）不应清掉用户已输入的表名
@@ -173,6 +177,7 @@ export const ImportToDuckDBDialog: React.FC<ImportToDuckDBDialogProps> = ({
       setTableName(defaultTableName || generateDefaultTableName(source));
       setValidationError(null);
       setIsImporting(false);
+      setApplyRowLimit(false); // 常驻挂载,重开须复位(否则上次的"限制行数"残留,复审)
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [open]);
@@ -220,6 +225,25 @@ export const ImportToDuckDBDialog: React.FC<ImportToDuckDBDialogProps> = ({
             <p className="text-xs text-muted-foreground">
               {t('query.import.tableNameHint', '表名只能包含字母、数字和下划线')}
             </p>
+          </div>
+
+          {/* 行数范围:默认全量落表;勾选后仅为无外层 LIMIT 的 SQL 追加系统默认值 */}
+          <div className="flex items-start gap-2">
+            <Checkbox
+              id="importApplyRowLimit"
+              checked={applyRowLimit}
+              onCheckedChange={(v) => setApplyRowLimit(v === true)}
+              disabled={isImporting}
+              className="mt-0.5"
+            />
+            <div className="space-y-0.5">
+              <Label htmlFor="importApplyRowLimit" className="cursor-pointer">
+                {t('query.import.limitRows', '限制行数')}
+              </Label>
+              <p className="text-xs text-muted-foreground">
+                {t('query.import.limitRowsHint', '默认落表全部行；勾选后，仅当 SQL 没有最外层 LIMIT 时追加系统预览行数。SQL 中手写的 LIMIT 始终原样保留')}
+              </p>
+            </div>
           </div>
 
           {/* SQL 预览 */}

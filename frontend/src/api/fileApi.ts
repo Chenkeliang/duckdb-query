@@ -631,7 +631,7 @@ export interface ServerExcelImportResponse {
         row_count: number;
         column_count: number;
         columns: string[];
-        import_engine: 'duckdb' | 'pandas';
+        import_engine: 'duckdb' | 'rows';
     }>;
 }
 

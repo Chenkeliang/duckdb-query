@@ -7,7 +7,6 @@ Tests SQL generation, validation, and performance estimation functionality.
 import pytest
 from contextlib import contextmanager
 from unittest.mock import Mock, patch
-import pandas as pd
 
 from core.services.pivot_query_generator import (
     generate_pivot_query_sql,
@@ -48,7 +47,6 @@ class TestPivotQueryModeGeneration:
                 PivotValueConfig(
                     column="revenue",
                     aggregation=AggregationFunction.SUM,
-                    alias="total_revenue",
                 )
             ],
             manual_column_values=["2022", "2023"],
@@ -85,7 +83,6 @@ class TestPivotQueryModeGeneration:
                 PivotValueConfig(
                     column="revenue",
                     aggregation=AggregationFunction.SUM,
-                    alias="total_revenue",
                 )
             ],
             manual_column_values=["2022", "2023"],
@@ -111,6 +108,94 @@ class TestPivotQueryModeGeneration:
         )
         assert result.metadata.get("strategy") == "native"
         assert result.metadata.get("uses_pivot_extension") is False
+
+    def test_pivot_value_type_conversion_wraps_try_cast(self):
+        """文本列按数值聚合:typeConversion=DECIMAL(38,6) → SUM(TRY_CAST(col AS DECIMAL(38,6))),
+        避免 sum(VARCHAR) Binder Error 且保精度(DOUBLE 会丢 >2^53 大整数)。DECIMAL(p,s)
+        须经 validate_cast_type 白名单原样通过。"""
+        config = PivotQueryConfig(table_name="Qqq1", filters=[])
+        pivot_config = PivotConfig(
+            rows=["创建时间"],
+            columns=["店铺"],
+            values=[
+                PivotValueConfig(
+                    column="用友出库单",
+                    aggregation=AggregationFunction.SUM,
+                    typeConversion="DECIMAL(38,6)",
+                )
+            ],
+            manual_column_values=["SC0058"],
+            strategy="native",
+        )
+
+        with patch("core.services.pivot_query_generator.config_manager") as mock_manager:
+            mock_manager.get_app_config.return_value = Mock(
+                enable_pivot_tables=True,
+                pivot_table_extension="pivot_table",
+            )
+            result = generate_pivot_query_sql(config, pivot_config=pivot_config)
+
+        assert 'SUM(TRY_CAST("用友出库单" AS DECIMAL(38,6)))' in result.final_sql
+
+    def test_pivot_column_limit_exceeded_raises(self):
+        """Codex #3:列维度去重值超过 pivot_max_columns 时报 PivotColumnLimitError,
+        而非静默采样出少算的结果。"""
+        import duckdb
+        from contextlib import contextmanager
+        from core.services.pivot_query_generator import PivotColumnLimitError
+
+        con = duckdb.connect(":memory:")
+        con.execute(
+            "CREATE TABLE t AS SELECT range AS r, ('c' || (range % 400)) AS cat FROM range(400)"
+        )
+
+        @contextmanager
+        def _fake_conn():
+            yield con
+
+        config = PivotQueryConfig(table_name="t", filters=[])
+        pivot_config = PivotConfig(
+            rows=["r"],
+            columns=["cat"],
+            values=[PivotValueConfig(column="r", aggregation=AggregationFunction.SUM)],
+        )
+        with patch("core.services.pivot_query_generator.config_manager") as mock_mgr, patch(
+            "core.database.duckdb_engine.with_duckdb_connection", _fake_conn
+        ):
+            mock_mgr.get_app_config.return_value = Mock(
+                enable_pivot_tables=True,
+                pivot_table_extension="pivot_table",
+                pivot_max_columns=300,
+            )
+            with pytest.raises(PivotColumnLimitError):
+                generate_pivot_query_sql(config, pivot_config=pivot_config)
+
+    def test_pivot_cap_uses_passed_connection_for_federated(self):
+        """回归:联邦透视时列上限探测必须用路由传入的【已 ATTACH】连接,而非自开新连接
+        (自开的看不到外部表→吞错→'Native PIVOT conditions not met')。这里用一个只在
+        传入连接里可见的表,验证探测确实走了它。"""
+        import duckdb
+        from core.services.pivot_query_generator import PivotColumnLimitError
+
+        con = duckdb.connect(":memory:")
+        con.execute(
+            "CREATE TABLE ext_only AS SELECT range AS r, ('c' || (range % 400)) AS cat FROM range(400)"
+        )
+        config = PivotQueryConfig(table_name="ext_only", filters=[])
+        pivot_config = PivotConfig(
+            rows=["r"],
+            columns=["cat"],
+            values=[PivotValueConfig(column="r", aggregation=AggregationFunction.SUM)],
+        )
+        with patch("core.services.pivot_query_generator.config_manager") as mock_mgr:
+            mock_mgr.get_app_config.return_value = Mock(
+                enable_pivot_tables=True,
+                pivot_table_extension="pivot_table",
+                pivot_max_columns=300,
+            )
+            # 不 patch with_duckdb_connection:若生成器自开连接,ext_only 不存在会吞错、不报超限
+            with pytest.raises(PivotColumnLimitError):
+                generate_pivot_query_sql(config, pivot_config=pivot_config, connection=con)
 
     def test_generate_pivot_query_sql_pivot_native_with_totals(self):
         config = PivotQueryConfig(
@@ -166,7 +251,6 @@ class TestPivotQueryModeGeneration:
                 PivotValueConfig(
                     column="revenue",
                     aggregation=AggregationFunction.SUM,
-                    alias="total_revenue",
                 )
             ],
             # 无手动列值，强制走扩展；并设置列数量上限
@@ -175,7 +259,7 @@ class TestPivotQueryModeGeneration:
         )
 
         mock_execute = Mock()
-        mock_execute.fetchdf.return_value = pd.DataFrame({"v": ["2022", "2023"]})
+        mock_execute.fetchall.return_value = [("2022",), ("2023",)]
 
         @contextmanager
         def fake_duckdb_connection():
@@ -216,7 +300,6 @@ class TestPivotQueryModeGeneration:
                 PivotValueConfig(
                     column="revenue",
                     aggregation=AggregationFunction.SUM,
-                    alias="total_revenue",
                 )
             ],
         )
@@ -333,6 +416,77 @@ class TestPivotQueryModeGeneration:
         )
         rows = conn.execute(result.final_sql).fetchall()  # 不应抛 Binder Error
         assert len(rows) == 2
+
+    def test_subtotals_single_row_dim_no_duplicate_base_rows(self):
+        """回归: 小计的深度范围曾含【深度=N】(全部行维度=基础粒度),把每条基础行原样
+        再发一次。单行维度尤甚:开 include_subtotals 后每条基础行重复两次。修复后单行维度
+        无真前缀 → 无小计行,基础行仅一次;总计仍在。"""
+        import duckdb
+
+        config = PivotQueryConfig(table_name="sales", filters=[])
+        pivot_config = PivotConfig(
+            rows=["region"],
+            columns=["year"],
+            values=[PivotValueConfig(column="revenue", aggregation=AggregationFunction.SUM)],
+            manual_column_values=["2022", "2023"],
+            include_subtotals=True,
+            include_grand_totals=True,
+            strategy="native",
+        )
+        with patch("core.services.pivot_query_generator.config_manager") as mock_manager:
+            mock_manager.get_app_config.return_value = Mock(
+                enable_pivot_tables=True, pivot_table_extension="pivot_table"
+            )
+            result = generate_pivot_query_sql(config, pivot_config=pivot_config)
+
+        conn = duckdb.connect()
+        conn.execute(
+            "CREATE TABLE sales(region VARCHAR, year VARCHAR, revenue INT);"
+            "INSERT INTO sales VALUES('北京','2022',100),('北京','2023',200),"
+            "('上海','2022',300),('上海','2023',50)"
+        )
+        rows = conn.execute(result.final_sql).fetchall()
+        regions = [r[0] for r in rows]
+        # 单行维度:每个真实 region 恰一次(不重复)+ 总计;无 '全部' 小计行
+        assert regions.count("北京") == 1
+        assert regions.count("上海") == 1
+        assert regions.count("总计") == 1
+        assert "全部" not in regions
+        assert len(rows) == 3
+
+    def test_subtotals_two_row_dims_rollup(self):
+        """双行维度:小计对真前缀(depth=1)卷积,第二维填 '全部';基础行不重复。"""
+        import duckdb
+
+        config = PivotQueryConfig(table_name="s2", filters=[])
+        pivot_config = PivotConfig(
+            rows=["region", "city"],
+            columns=["year"],
+            values=[PivotValueConfig(column="amt", aggregation=AggregationFunction.SUM)],
+            manual_column_values=["2022", "2023"],
+            include_subtotals=True,
+            include_grand_totals=True,
+            strategy="native",
+        )
+        with patch("core.services.pivot_query_generator.config_manager") as mock_manager:
+            mock_manager.get_app_config.return_value = Mock(
+                enable_pivot_tables=True, pivot_table_extension="pivot_table"
+            )
+            result = generate_pivot_query_sql(config, pivot_config=pivot_config)
+
+        conn = duckdb.connect()
+        conn.execute(
+            "CREATE TABLE s2(region VARCHAR, city VARCHAR, year VARCHAR, amt INT);"
+            "INSERT INTO s2 VALUES('west','A','2022',10),('west','A','2023',20),"
+            "('west','B','2022',5),('east','A','2022',30)"
+        )
+        rows = conn.execute(result.final_sql).fetchall()
+        # region 小计:city='全部'(west 汇总、east 汇总各一条)
+        region_subtotals = {r[0]: (r[2], r[3]) for r in rows if r[1] == "全部"}
+        assert region_subtotals["west"] == (15, 20)   # 2022=10+5, 2023=20
+        assert region_subtotals["east"] == (30, None)
+        # 总计一条
+        assert sum(1 for r in rows if r[0] == "总计") == 1
 
     def test_native_pivot_single_agg_totals_executes(self):
         """回归: 静态 pivot(manual_column_values)+ 总计 曾用错误别名
@@ -504,23 +658,15 @@ class TestColumnStatistics:
         mock_con.execute.return_value.description = []
 
         # Mock DESCRIBE table result
-        describe_df = pd.DataFrame(
-            {"column_name": ["test_column"], "column_type": ["INTEGER"]}
-        )
-        mock_con.execute.return_value.fetchdf.side_effect = [
-            describe_df,  # DESCRIBE result
-            pd.DataFrame(
-                {  # Statistics result
-                    "total_count": [1000],
-                    "non_null_count": [950],
-                    "null_count": [50],
-                    "distinct_count": [100],
-                }
-            ),
-            pd.DataFrame(
-                {"min_val": [1], "max_val": [100], "avg_val": [50.5]}  # Min/Max result
-            ),
-            pd.DataFrame({"sample_value": [1, 2, 3, 4, 5]}),  # Sample values - use 'sample_value' column name
+        # 新取数形态：DESCRIBE/样本走 fetchall，统计/极值走 fetchone
+        mock_con.execute.return_value.fetchall.side_effect = [
+            [("test_column", "INTEGER")],  # DESCRIBE result
+            [(1,), (2,), (3,), (4,), (5,)],  # Sample values
+        ]
+        # 数值列的 count 统计 + min/max/avg 现合并为一次查询(7 列):
+        # COUNT(*), COUNT(col), null_count, distinct, MIN, MAX, AVG
+        mock_con.execute.return_value.fetchone.side_effect = [
+            (1000, 950, 50, 100, 1, 100, 50.5),
         ]
 
         result = get_column_statistics("test_table", "test_column", mock_con)
@@ -541,8 +687,7 @@ class TestColumnStatistics:
         mock_con.execute.return_value.description = []
 
         # Mock empty DESCRIBE result
-        describe_df = pd.DataFrame({"column_name": [], "column_type": []})
-        mock_con.execute.return_value.fetchdf.return_value = describe_df
+        mock_con.execute.return_value.fetchall.return_value = []
 
         with pytest.raises(ValueError, match="does not exist in table"):
             get_column_statistics("test_table", "nonexistent", mock_con)
@@ -557,15 +702,11 @@ class TestTableMetadata:
         mock_con = Mock()
         mock_con.execute.return_value.description = []
 
-        # Mock row count result
-        mock_con.execute.return_value.fetchdf.side_effect = [
-            pd.DataFrame({"row_count": [1000]}),  # Row count
-            pd.DataFrame(
-                {  # Column info
-                    "column_name": ["col1", "col2"],
-                    "column_type": ["INTEGER", "VARCHAR"],
-                }
-            ),
+        # Mock row count (fetchone) 与列信息 (fetchall)
+        mock_con.execute.return_value.fetchone.return_value = (1000,)
+        mock_con.execute.return_value.fetchall.return_value = [
+            ("col1", "INTEGER"),
+            ("col2", "VARCHAR"),
         ]
 
         # Mock column statistics
@@ -603,15 +744,8 @@ class TestTableMetadata:
         mock_con = Mock()
         mock_con.execute.return_value.description = []
 
-        mock_con.execute.return_value.fetchdf.side_effect = [
-            pd.DataFrame({"row_count": [50]}),
-            pd.DataFrame(
-                {
-                    "column_name": ["col1"],
-                    "column_type": ["INTEGER"],
-                }
-            ),
-        ]
+        mock_con.execute.return_value.fetchone.return_value = (50,)
+        mock_con.execute.return_value.fetchall.return_value = [("col1", "INTEGER")]
 
         mock_get_column_stats.return_value = ColumnStatistics(
             column_name="col1",
@@ -631,3 +765,124 @@ class TestTableMetadata:
 
 if __name__ == "__main__":
     pytest.main([__file__])
+
+
+def test_manual_column_values_dedup_order_preserving():
+    """复审 P2:重复列值会让 DuckDB PIVOT ... IN (...) 报 'specified multiple times
+    in the IN clause';模型层入口保序去重(并去空白)。"""
+    pc = PivotConfig(
+        rows=["region"],
+        columns=["cat"],
+        values=[PivotValueConfig(column="amt", aggregation=AggregationFunction.SUM)],
+        manual_column_values=["A", "B", "A", " B ", "", "C"],
+    )
+    assert pc.manual_column_values == ["A", "B", "C"]  # 保序 + 去重 + 去空白
+
+
+class TestCountDistinctAggregation:
+    """回归：COUNT_DISTINCT 是 UI 枚举名而非 DuckDB 函数。曾直接拼成
+    COUNT_DISTINCT(col) 下发，DuckDB 报 "Aggregate Function with name
+    count_distinct does not exist"——必须展开为 count(DISTINCT col)。"""
+
+    @staticmethod
+    def _generate(pivot_config):
+        config = PivotQueryConfig(table_name="sales", filters=[])
+        with patch(
+            "core.services.pivot_query_generator.config_manager"
+        ) as mock_manager:
+            mock_manager.get_app_config.return_value = Mock(
+                enable_pivot_tables=True,
+                pivot_table_extension="pivot_table",
+            )
+            return generate_pivot_query_sql(config, pivot_config=pivot_config)
+
+    def test_count_distinct_renders_sql_distinct_form(self):
+        result = self._generate(PivotConfig(
+            rows=["region"],
+            columns=["month"],
+            values=[PivotValueConfig(
+                column="product_id",
+                aggregation=AggregationFunction.COUNT_DISTINCT,
+            )],
+            manual_column_values=["1月", "2月"],
+        ))
+        assert 'count(DISTINCT "product_id")' in result.final_sql
+        assert "COUNT_DISTINCT(" not in result.final_sql
+
+    def test_count_distinct_generated_sql_executes_on_duckdb(self):
+        import duckdb
+
+        result = self._generate(PivotConfig(
+            rows=["region"],
+            columns=["month"],
+            values=[PivotValueConfig(
+                column="product_id",
+                aggregation=AggregationFunction.COUNT_DISTINCT,
+            )],
+            manual_column_values=["1月", "2月"],
+            include_grand_totals=True,
+        ))
+        con = duckdb.connect()
+        con.execute(
+            "CREATE TABLE sales AS SELECT * FROM (VALUES "
+            "('华北','1月',1),('华北','1月',2),('华北','2月',1),('华东','1月',2)"
+            ") t(region, month, product_id)"
+        )
+        rows = con.execute(result.final_sql.rstrip(";")).fetchall()
+        by_region = {r[0]: r for r in rows}
+        assert by_region["华北"][1] == 2      # 1月两个不同商品
+        # 复审 P1:总计须【从 base 重算原聚合】= 全局去重,而非对各单元格再 SUM。
+        # 1月全部行 product_id = {1(华北),2(华北),2(华东)} → 去重 2(旧错口径 SUM(2,1)=3)
+        assert by_region["总计"][1] == 2
+        # 2月仅 华北 product_id=1 → 去重 1
+        assert by_region["总计"][2] == 1
+
+    def test_totals_reaggregate_avg_min_max_from_base(self):
+        """复审 P1:小计/总计对 AVG/MIN/MAX 不能对已聚合单元格再 SUM(SUM(AVG)≠AVG 等),
+        须从 base 用原聚合按分组层级重算。2 个 region 让总计≠各组值之和,能区分新旧口径。"""
+        import duckdb
+
+        con = duckdb.connect()
+        con.execute(
+            "CREATE TABLE sales AS SELECT * FROM (VALUES "
+            "('A','X',0),('A','X',100),('B','X',200)) t(region, month, product_id)"
+        )
+
+        def grand_total(agg):
+            result = self._generate(PivotConfig(
+                rows=["region"], columns=["month"],
+                values=[PivotValueConfig(column="product_id", aggregation=agg)],
+                manual_column_values=["X"], include_grand_totals=True,
+            ))
+            rows = con.execute(result.final_sql.rstrip(";")).fetchall()
+            return {r[0]: r[1] for r in rows}["总计"]
+
+        # X 全部值 = [0,100,200]
+        assert grand_total(AggregationFunction.AVG) == 100.0   # AVG(0,100,200);旧错 SUM(50,200)=250
+        assert grand_total(AggregationFunction.MIN) == 0        # MIN 全局;旧错 SUM(0,200)=200
+        assert grand_total(AggregationFunction.MAX) == 200      # MAX 全局;旧错 SUM(100,200)=300
+
+    def test_count_distinct_multi_agg_alias_matches_duckdb_naming(self):
+        import duckdb
+
+        result = self._generate(PivotConfig(
+            rows=["region"],
+            columns=["month"],
+            values=[
+                PivotValueConfig(column="product_id",
+                                 aggregation=AggregationFunction.SUM),
+                PivotValueConfig(column="product_id",
+                                 aggregation=AggregationFunction.COUNT_DISTINCT),
+            ],
+            manual_column_values=["1月"],
+            include_grand_totals=True,
+        ))
+        # 多聚合输出列名形如 {值}_count(DISTINCT col)（DuckDB 实测命名），
+        # 合计 SELECT 必须引用同名列，否则 UNION ALL 直接 Binder Error。
+        con = duckdb.connect()
+        con.execute(
+            "CREATE TABLE sales AS SELECT * FROM (VALUES "
+            "('华北','1月',1),('华北','1月',2)) t(region, month, product_id)"
+        )
+        rows = con.execute(result.final_sql.rstrip(";")).fetchall()
+        assert any(r[0] == "总计" for r in rows)

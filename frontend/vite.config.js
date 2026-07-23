@@ -19,12 +19,74 @@ export default defineConfig({
     rollupOptions: {
       output: {
         manualChunks(id) {
+          if (id.includes("commonjsHelpers")) {
+            return "vendor";
+          }
+          if (
+            id.includes("/src/Query/JoinQuery/") ||
+            id.includes("/src/Query/PivotTable/") ||
+            id.includes("/src/Query/SetOperations/")
+          ) {
+            return "query-builders";
+          }
+          if (
+            id.includes("/src/Query/DataGrid/") ||
+            id.includes("/src/Query/ResultPanel/")
+          ) {
+            return "query-results";
+          }
+          if (
+            id.includes("/src/DataSource/") ||
+            id.includes("/src/Query/DataSourcePanel/")
+          ) {
+            return "data-sources";
+          }
           if (id.includes("node_modules")) {
             if (id.includes("codemirror")) {
               return "codemirror";
             }
             if (id.includes("lucide-react")) {
               return "icons";
+            }
+            if (
+              id.includes("/recharts/") ||
+              id.includes("/d3-") ||
+              id.includes("/victory-vendor/")
+            ) {
+              return "charts";
+            }
+            if (
+              id.includes("/react-markdown/") ||
+              id.includes("/remark-") ||
+              id.includes("/micromark") ||
+              id.includes("/mdast-util-") ||
+              id.includes("/hast-util-") ||
+              id.includes("/unist-util-")
+            ) {
+              return "markdown";
+            }
+            if (id.includes("/sql-formatter/")) {
+              return "sql-formatter";
+            }
+            if (id.includes("/@radix-ui/")) {
+              return "radix-ui";
+            }
+            if (id.includes("/@tanstack/")) {
+              return "tanstack";
+            }
+            if (id.includes("/@tauri-apps/")) {
+              return "tauri";
+            }
+            if (
+              id.includes("/axios/") ||
+              id.includes("/@dnd-kit/") ||
+              id.includes("/i18next/") ||
+              id.includes("/sonner/") ||
+              id.includes("/cmdk/") ||
+              id.includes("/tailwind-merge/") ||
+              id.includes("/class-variance-authority/")
+            ) {
+              return "app-vendor";
             }
             if (id.includes("react")) {
               return "vendor";

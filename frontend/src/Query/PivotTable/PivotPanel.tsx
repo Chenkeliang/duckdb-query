@@ -8,7 +8,7 @@
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { Play, Trash2, Table2, Timer } from "lucide-react";
+import { Check, Copy, Play, Trash2, Table2, Timer } from "lucide-react";
 import { AsyncTaskDialog } from "../AsyncTasks/AsyncTaskDialog";
 import {
     Tooltip,
@@ -23,7 +23,7 @@ import { useTableColumns } from "@/hooks/useTableColumns";
 import { useAppConfig } from "@/hooks/useAppConfig";
 import type { SelectedTable } from "@/types/SelectedTable";
 import type { TableSource } from "@/hooks/useQueryWorkspace";
-import { generatePivotQuery, toAttachDatabasesPayload } from "@/api";
+import { generatePivotQuery, toAttachDatabasesPayload, inferColumnCast, getApiErrorCode, type InferCastResult, type ApiError } from "@/api";
 import { getTableName, normalizeSelectedTable } from "@/utils/tableUtils";
 import {
     quoteIdent,
@@ -33,8 +33,12 @@ import {
 import { sqlStringLiteral } from "@/utils/sqlLiteral";
 import {
     buildPivotQueryPayload,
+    buildLocalAggExpr,
+    buildPivotTableRef,
     canUseServerPivotPath,
+    hasPendingValueCast,
     getPivotQueryKey,
+    getInferenceContextKey,
     shouldUseLocalPivotSql,
     type PivotPanelValueConfig,
 } from "./buildPivotQueryPayload";
@@ -44,7 +48,7 @@ import { AiChatDrawer, ChatToggleButton } from "@/Query/SQLQuery/ai/AiChatDrawer
 
 interface PivotPanelProps {
     selectedTables: SelectedTable[];
-    onExecute: (sql: string, source?: TableSource) => Promise<void>;
+    onExecute: (sql: string, source?: TableSource, options?: { baseSql?: string }) => Promise<void>;
 }
 
 export const PivotPanel: React.FC<PivotPanelProps> = ({
@@ -52,7 +56,7 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
     onExecute,
 }) => {
     const { t, i18n } = useTranslation("common");
-    const { maxQueryRows } = useAppConfig();
+    const { maxQueryRows, pivotMaxColumns } = useAppConfig();
 
     const chatStatus = useAiStatus("chat");
     const [chatOpen, setChatOpen] = React.useState(false);
@@ -69,8 +73,12 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
     const [columns, setColumns] = React.useState<string[]>([]);
     const [values, setValues] = React.useState<PivotPanelValueConfig[]>([]);
     const [filterRows, setFilterRows] = React.useState<PivotFilterRow[]>([]);
+    const [includeSubtotals, setIncludeSubtotals] = React.useState(false);
+    const [includeGrandTotals, setIncludeGrandTotals] = React.useState(false);
+    const [manualColumnValues, setManualColumnValues] = React.useState<string[]>([]);
     const [isExecuting, setIsExecuting] = React.useState(false);
     const [asyncDialogOpen, setAsyncDialogOpen] = React.useState(false);
+    const [copied, setCopied] = React.useState(false);
 
     const { columns: tableColumns, isLoading: columnsLoading } = useTableColumns(
         selectedTable ? normalizeSelectedTable(selectedTable) : null
@@ -81,19 +89,65 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
         setColumns([]);
         setValues([]);
         setFilterRows([]);
+        setIncludeSubtotals(false);
+        setIncludeGrandTotals(false);
+        setManualColumnValues([]);
     }, []);
+
+    // 表身份(限定名 + attach/连接,不含筛选):切换到不同连接的【同名表】时裸表名相同、不会重置,
+    // 用完整身份才能触发 resetConfig 清掉旧表配置(含带旧 cast 的 values)。
+    const tableIdentity = React.useMemo(
+        () => getInferenceContextKey(selectedTable, []),
+        [selectedTable]
+    );
 
     React.useEffect(() => {
         resetConfig();
-    }, [tableName, resetConfig]);
+    }, [tableIdentity, resetConfig]);
+
+    // 手选列值绑定当前【单一透视列】:透视列变更/移除时清空,避免把旧列的值套到新列上。
+    const pivotColumnKey = columns.length === 1 ? columns[0] : "";
+    React.useEffect(() => {
+        setManualColumnValues([]);
+    }, [pivotColumnKey]);
 
     const apiFilters = React.useMemo(
         () => pivotFiltersToApi(filterRows),
         [filterRows]
     );
 
+    // cast 推断上下文键:表身份 + 归一筛选。任一变化 → 设计器对"系统推断"的值重推(手填不覆盖)。
+    // 含表身份可防"切到同名异连接表沿用旧 cast";含筛选可防"小范围推 DECIMAL(38,2),扩大筛选后
+    // 仍用旧标度静默舍入"。与 getPivotQueryKey/getInferenceContextKey 同口径。
+    const inferenceContextKey = React.useMemo(
+        () => getInferenceContextKey(selectedTable, apiFilters),
+        [selectedTable, apiFilters]
+    );
+
+    // 文本列选 SUM/AVG 时,在当前筛选后的数据上做数据感知 cast 推断(供设计器预填安全推荐)
+    const handleInferCast = React.useCallback(
+        async (column: string): Promise<InferCastResult | null> => {
+            if (!selectedTable) return null;
+            try {
+                const ref = buildPivotTableRef(selectedTable);
+                return await inferColumnCast({
+                    table_name: ref.tableName,
+                    column,
+                    filters: apiFilters,
+                    attach_databases: toAttachDatabasesPayload(ref.attachDatabases),
+                });
+            } catch {
+                return null;
+            }
+        },
+        [selectedTable, apiFilters]
+    );
+
     const useServerPivot = canUseServerPivotPath(selectedTable, rows, values)
         && !shouldUseLocalPivotSql(columns);
+
+    // 小计仅在【行维度≥2】时有意义(单行维度小计=基础粒度,后端已修为不产生行);总计需列维度。
+    const effectiveSubtotals = includeSubtotals && rows.length >= 2;
 
     const pivotPayload = React.useMemo(
         () =>
@@ -104,10 +158,15 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
                       columns,
                       values,
                       maxQueryRows,
+                      pivotMaxColumns,
                       filters: apiFilters,
+                      includeSubtotals: effectiveSubtotals,
+                      includeGrandTotals,
+                      manualColumnValues,
                   })
                 : null,
-        [selectedTable, useServerPivot, rows, columns, values, maxQueryRows, apiFilters]
+        [selectedTable, useServerPivot, rows, columns, values, maxQueryRows, pivotMaxColumns,
+         apiFilters, effectiveSubtotals, includeGrandTotals, manualColumnValues]
     );
 
     const pivotQueryKey = getPivotQueryKey(
@@ -115,10 +174,20 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
         rows,
         columns,
         values,
-        apiFilters
+        apiFilters,
+        maxQueryRows,
+        pivotMaxColumns,
+        effectiveSubtotals,
+        includeGrandTotals,
+        manualColumnValues
     );
 
-    const { data: serverGenerated, isFetching: isGeneratingSql } = useQuery({
+    const {
+        data: serverGenerated,
+        isFetching: isGeneratingSql,
+        isError: isGenerateError,
+        error: generateError,
+    } = useQuery({
         queryKey: pivotQueryKey,
         queryFn: async () => {
             if (!pivotPayload) return null;
@@ -132,6 +201,22 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
         enabled: Boolean(pivotPayload),
         staleTime: 30_000,
     });
+
+    // 服务端生成失败:据结构化 code/details 提示(不解析消息文本)。列超限时给出可操作建议。
+    const generateErrorInfo = React.useMemo(() => {
+        if (!isGenerateError || !generateError) return null;
+        const code = getApiErrorCode(generateError, "OPERATION_FAILED");
+        const details = (generateError as ApiError).details ?? {};
+        if (code === "PIVOT_COLUMN_LIMIT_EXCEEDED") {
+            return {
+                code,
+                column: String(details.column ?? ""),
+                cap: Number(details.cap ?? 0),
+                observed: Number(details.observed_at_least ?? 0),
+            };
+        }
+        return { code, column: "", cap: 0, observed: 0 };
+    }, [isGenerateError, generateError]);
 
     const buildLocalWhereClause = React.useCallback(
         (dialect: ReturnType<typeof getDialectFromSource>): string | null => {
@@ -166,9 +251,13 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
             : quoteIdent(normalized.name, dialect);
 
         const rowColumns = rows.map((r) => quoteIdent(r, dialect));
-        const aggExpressions = values
-            .map((v) => `${v.aggregation}(${quoteIdent(v.column, dialect)})`)
-            .join(", ");
+        // 本地 SQL 最终在 DuckDB 执行(本机/联邦 ATTACH 皆然),cast 恒用 TRY_CAST(见 buildLocalAggExpr)。
+        // buildLocalAggExpr 遇非法 typeConversion 返回 null(入口已挡,此为纵深防御)→ 整体不生成、阻断执行。
+        const aggExprList = values.map((v) =>
+            buildLocalAggExpr(v.aggregation, quoteIdent(v.column, dialect), v.typeConversion));
+        if (aggExprList.some((e) => e === null)) return null;
+        const aggExprs = aggExprList as string[]; // 已排除 null
+        const aggExpressions = aggExprs.join(", ");
 
         if (columns.length === 1) {
             const pivotColumn = quoteIdent(columns[0], dialect);
@@ -180,15 +269,14 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
             parts.push(`  GROUP BY ${rowColumns.join(", ")}`);
             parts.push(")");
             if (whereClause) parts.push(whereClause);
-            parts.push(`LIMIT ${maxQueryRows}`);
             return parts.join("\n");
         }
 
         const selectParts: string[] = [];
         rows.forEach((r) => selectParts.push(quoteIdent(r, dialect)));
-        values.forEach((v) => {
+        values.forEach((v, i) => {
             selectParts.push(
-                `${v.aggregation}(${quoteIdent(v.column, dialect)}) AS ${quoteIdent(`${v.aggregation}_${v.column}`, dialect)}`
+                `${aggExprs[i]} AS ${quoteIdent(`${v.aggregation}_${v.column}`, dialect)}`
             );
         });
 
@@ -198,14 +286,38 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
         if (whereClause) parts.push(whereClause);
         parts.push(`GROUP BY ${rowColumns.join(", ")}`);
         parts.push(`ORDER BY ${rowColumns.join(", ")}`);
-        parts.push(`LIMIT ${maxQueryRows}`);
         return parts.join("\n");
-    }, [selectedTable, rows, columns, values, maxQueryRows, buildLocalWhereClause]);
+    }, [selectedTable, rows, columns, values, buildLocalWhereClause]);
 
-    const sql =
-        (useServerPivot && serverGenerated?.final_sql?.trim()) ||
-        generateLocalSQL() ||
-        null;
+    // 有值的 cast 仍在推断中 / 无法安全推断 → 阻断服务端与本地两条路径(不静默用有损默认出结果)
+    const castPending = hasPendingValueCast(values);
+
+    // 服务端路径激活时 SQL 只来自服务端生成:加载中/出错都为 null,绝不回退到无列上限保护的
+    // 本地 PIVOT(否则后端刚拒绝的超限查询会被本地 SQL 原样执行——复审 P1)。本地路径仅用于
+    // useServerPivot 为 false(如多列/含特殊字符列走 shouldUseLocalPivotSql)的情形。
+    // baseSql = 无系统 LIMIT 的基础 SQL(异步/导出用它才是真全量,复审 P1):
+    // 服务端 final_sql 本就不含 LIMIT;本地 generateLocalSQL 现只产基础 SQL,预览再补 LIMIT
+    // (执行走 /api/duckdb/execute 预览模式,缺 LIMIT 时服务端也会补,双保险)。
+    const baseSql = castPending
+        ? null
+        : useServerPivot
+          ? serverGenerated?.final_sql?.trim() || null
+          : generateLocalSQL() || null;
+    const sql = baseSql
+        ? useServerPivot
+            ? baseSql
+            : `${baseSql}\nLIMIT ${maxQueryRows}`
+        : null;
+
+    React.useEffect(() => {
+        setCopied(false);
+    }, [sql]);
+
+    const handleCopySql = React.useCallback(async () => {
+        if (!sql) return;
+        await navigator.clipboard.writeText(sql);
+        setCopied(true);
+    }, [sql]);
 
     const tableSource = selectedTable
         ? getSourceFromSelectedTable(selectedTable)
@@ -218,7 +330,7 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
         if (!sql) return;
         setIsExecuting(true);
         try {
-            await onExecute(sql, tableSource);
+            await onExecute(sql, tableSource, { baseSql: baseSql ?? undefined });
         } finally {
             setIsExecuting(false);
         }
@@ -239,6 +351,12 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
                             <Play className="w-3.5 h-3.5 fill-current" />
                             {t("query.execute", "执行")}
                         </Button>
+
+                        {castPending && (
+                            <span className="text-xs text-destructive whitespace-nowrap">
+                                {t("query.pivot.castBlockedHint", "有聚合值的类型还在推断或需手动选择,已暂停执行")}
+                            </span>
+                        )}
 
                         <TooltipProvider>
                             <Tooltip>
@@ -301,6 +419,14 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
                     onColumnsChange={setColumns}
                     onValuesChange={setValues}
                     isLoading={columnsLoading}
+                    onInferCast={handleInferCast}
+                    inferenceContextKey={inferenceContextKey}
+                    includeSubtotals={includeSubtotals}
+                    onIncludeSubtotalsChange={setIncludeSubtotals}
+                    includeGrandTotals={includeGrandTotals}
+                    onIncludeGrandTotalsChange={setIncludeGrandTotals}
+                    manualColumnValues={manualColumnValues}
+                    onManualColumnValuesChange={setManualColumnValues}
                 />
 
                 <PivotFilters
@@ -310,16 +436,54 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
                     disabled={columnsLoading || !selectedTable}
                 />
 
+                {generateErrorInfo && (
+                    <div className="bg-destructive/10 border border-destructive/40 rounded-xl p-3 text-sm text-destructive">
+                        {generateErrorInfo.code === "PIVOT_COLUMN_LIMIT_EXCEEDED"
+                            ? t("query.pivot.columnLimitHint", {
+                                  column: generateErrorInfo.column,
+                                  cap: generateErrorInfo.cap,
+                                  observed: generateErrorInfo.observed,
+                              })
+                            : t("query.pivot.generateFailed", "透视查询生成失败,请检查配置或稍后重试")}
+                    </div>
+                )}
+
                 {sql && (
                     <div className="bg-muted/30 border border-border rounded-xl p-4">
-                        <h3 className="text-sm font-semibold mb-3">
-                            {t("query.sqlPreview", "SQL 预览")}
-                            {isGeneratingSql ? (
-                                <span className="text-muted-foreground font-normal ml-2">
-                                    {t("query.generating", "生成中…")}
-                                </span>
-                            ) : null}
-                        </h3>
+                        <div className="flex items-center justify-between mb-3">
+                            <h3 className="text-sm font-semibold">
+                                {t("query.sqlPreview", "SQL 预览")}
+                                {isGeneratingSql ? (
+                                    <span className="text-muted-foreground font-normal ml-2">
+                                        {t("query.generating", "生成中…")}
+                                    </span>
+                                ) : null}
+                            </h3>
+                            <TooltipProvider>
+                                <Tooltip>
+                                    <TooltipTrigger asChild>
+                                        <Button
+                                            variant="ghost"
+                                            size="icon"
+                                            className="h-8 w-8"
+                                            onClick={handleCopySql}
+                                            aria-label={copied
+                                                ? t("common.copied", "已复制")
+                                                : t("common.copy", "复制")}
+                                        >
+                                            {copied
+                                                ? <Check className="h-4 w-4" />
+                                                : <Copy className="h-4 w-4" />}
+                                        </Button>
+                                    </TooltipTrigger>
+                                    <TooltipContent>
+                                        <p>{copied
+                                            ? t("common.copied", "已复制")
+                                            : t("common.copy", "复制")}</p>
+                                    </TooltipContent>
+                                </Tooltip>
+                            </TooltipProvider>
+                        </div>
                         <SQLHighlight sql={sql} minHeight="80px" maxHeight="200px" scrollable />
                     </div>
                 )}
@@ -328,7 +492,7 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
             <AsyncTaskDialog
                 open={asyncDialogOpen}
                 onOpenChange={setAsyncDialogOpen}
-                sql={sql?.trim() ?? ""}
+                sql={baseSql?.trim() ?? ""}
                 datasource={
                     tableSource?.type === "federated" && tableSource.connectionId
                         ? {

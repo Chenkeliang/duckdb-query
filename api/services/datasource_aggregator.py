@@ -16,6 +16,7 @@ from models.datasource_models import (
     DataSourceFilter,
 )
 from models.query_models import ConnectionStatus
+from core.common.sql_identifiers import quote_identifier
 from core.database.database_manager import db_manager  # 使用全局实例
 from core.database.duckdb_pool import get_connection_pool
 
@@ -187,7 +188,6 @@ class DataSourceAggregator:
                 tables_query = """
                     SELECT
                         table_name,
-                        estimated_size as size_bytes,
                         column_count
                     FROM duckdb_tables()
                     WHERE schema_name = 'main'
@@ -196,15 +196,15 @@ class DataSourceAggregator:
 
                 for row in result:
                     table_name = row[0]
-                    size_bytes = row[1] if len(row) > 1 else None
-                    column_count = row[2] if len(row) > 2 else None
+                    column_count = row[1] if len(row) > 1 else None
+                    # duckdb_tables().estimated_size 是**行数估计**而非字节数,
+                    # 不可当 size_bytes;真实字节大小 DuckDB 不便宜地暴露,置 None
+                    size_bytes = None
 
-                    # 获取行数（表名必须双引号定界并转义内嵌引号，否则含空格/关键字
-                    # /特殊字符的表名会让 COUNT(*) 语法出错）
+                    # 获取行数(表名走共享 quote_identifier 转义)
                     try:
-                        quoted = '"' + str(table_name).replace('"', '""') + '"'
                         count_result = conn.execute(
-                            f"SELECT COUNT(*) FROM {quoted}"
+                            f"SELECT COUNT(*) FROM {quote_identifier(table_name)}"
                         ).fetchone()
                         row_count = count_result[0] if count_result else None
                     except Exception:  # pylint: disable=broad-exception-caught
@@ -283,31 +283,33 @@ class DataSourceAggregator:
     async def _get_file_source_by_id(self, source_id: str) -> Optional[DataSourceResponse]:
         """根据 ID 获取文件数据源（DuckDB 表）"""
         try:
-            # 移除 table_ 或 file_ 前缀
-            table_name = source_id.replace("table_", "").replace("file_", "")
+            # 文件/表源 id 恒为 table_ 前缀(见 _get_file_sources_sync 的 id=f"table_{name}"),
+            # 只剥这一个;不再链式 removeprefix("file_")——那会误伤真名以 file_ 开头的表
+            # (如 file_2026 → 2026)。removeprefix 只动开头,不像旧 .replace 会删名字中间文本。
+            table_name = source_id.removeprefix("table_")
 
             with self.duckdb_pool.get_connection() as conn:
-                # 检查表是否存在
-                check_query = f"""
+                # 检查表是否存在:表名是值,用参数化(? 占位)而非拼进字面量
+                check_query = """
                     SELECT
                         table_name,
-                        estimated_size as size_bytes,
                         column_count
                     FROM duckdb_tables()
-                    WHERE schema_name = 'main' AND table_name = '{table_name}'
+                    WHERE schema_name = 'main' AND table_name = ?
                 """
-                result = conn.execute(check_query).fetchone()
+                result = conn.execute(check_query, [table_name]).fetchone()
 
                 if not result:
                     return None
 
-                size_bytes = result[1] if len(result) > 1 else None
-                column_count = result[2] if len(result) > 2 else None
+                column_count = result[1] if len(result) > 1 else None
+                # estimated_size 是行数估计而非字节;真实字节大小不便宜暴露,置 None
+                size_bytes = None
 
-                # 获取行数
+                # 获取行数:表名是标识符,走 quote_identifier 转义
                 try:
                     count_result = conn.execute(
-                        f"SELECT COUNT(*) FROM {table_name}"
+                        f"SELECT COUNT(*) FROM {quote_identifier(table_name)}"
                     ).fetchone()
                     row_count = count_result[0] if count_result else None
                 except Exception:  # pylint: disable=broad-exception-caught
@@ -349,12 +351,12 @@ class DataSourceAggregator:
     async def _delete_file_source(self, source_id: str) -> bool:
         """删除文件数据源（DuckDB 表）"""
         try:
-            # 移除 table_ 或 file_ 前缀
-            table_name = source_id.replace("table_", "").replace("file_", "")
+            # 仅剥 table_ 前缀(见 _get_file_source_by_id 说明,不再链式剥 file_)
+            table_name = source_id.removeprefix("table_")
 
             with self.duckdb_pool.get_connection() as conn:
-                # 删除表
-                conn.execute(f"DROP TABLE IF EXISTS {table_name}")
+                # 删除表:表名走 quote_identifier 转义(IF EXISTS 保证不存在也安全)
+                conn.execute(f"DROP TABLE IF EXISTS {quote_identifier(table_name)}")
                 logger.info("Successfully deleted DuckDB table: %s", table_name)
                 return True
 

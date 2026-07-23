@@ -12,8 +12,9 @@
 import sys
 import os
 import pytest
-import pandas as pd
 from unittest.mock import Mock, patch
+
+import duckdb
 from fastapi.testclient import TestClient
 
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
@@ -252,6 +253,83 @@ class TestJoinQueryGenerator:
         assert 'INNER JOIN "orders"' in join_chain
         assert 'ON "users"."id" = "orders"."user_id"' in join_chain
 
+    def test_build_join_chain_no_hardcoded_table_casts(self):
+        """回归:曾按表名/列名硬编码改写连接键(uid+0711/0702 REGEXP_EXTRACT、
+        iget_uid/buyer_id+query_result* 强制 CAST,来自 a816e4e 的临时补丁)。
+        通用 left_cast/right_cast 上线后该硬编码已删,任何用户的同名表不得再被静默改写。"""
+        source_left = DataSource(
+            id="0711",
+            type=DataSourceType.DUCKDB,
+            params={"table_name": "0711"},
+            columns=[{"name": "uid", "type": "VARCHAR"}],
+        )
+        source_right = DataSource(
+            id="query_result_20250725",
+            type=DataSourceType.DUCKDB,
+            params={"table_name": "query_result_20250725"},
+            columns=[{"name": "iget_uid", "type": "VARCHAR"}],
+        )
+        join = Join(
+            left_source_id="0711",
+            right_source_id="query_result_20250725",
+            join_type=JoinType.INNER,
+            conditions=[
+                JoinCondition(left_column="uid", right_column="iget_uid", operator="=")
+            ],
+        )
+        table_columns = {"0711": ["uid"], "query_result_20250725": ["iget_uid"]}
+
+        join_chain = build_join_chain([source_left, source_right], [join], table_columns)
+
+        assert "REGEXP_EXTRACT" not in join_chain
+        assert "CAST" not in join_chain
+        assert '"0711"."uid" = "query_result_20250725"."iget_uid"' in join_chain
+
+        conn = duckdb.connect(":memory:")
+        try:
+            conn.execute('CREATE TABLE "0711" (uid VARCHAR)')
+            conn.execute(
+                'CREATE TABLE "query_result_20250725" (iget_uid VARCHAR)'
+            )
+            conn.execute("INSERT INTO \"0711\" VALUES ('123abc'), ('00123')")
+            conn.execute("INSERT INTO \"query_result_20250725\" VALUES ('123')")
+            rows = conn.execute(
+                'SELECT "0711"."uid", "query_result_20250725"."iget_uid" '
+                f"FROM {join_chain} ORDER BY 1"
+            ).fetchall()
+            assert rows == []
+
+            # 显式 cast 机制不受影响:同样的条件加 cast 应生成并执行 TRY_CAST
+            join_with_cast = Join(
+                left_source_id="0711",
+                right_source_id="query_result_20250725",
+                join_type=JoinType.INNER,
+                conditions=[
+                    JoinCondition(
+                        left_column="uid",
+                        right_column="iget_uid",
+                        operator="=",
+                        left_cast="BIGINT",
+                        right_cast="BIGINT",
+                    )
+                ],
+            )
+            chain_with_cast = build_join_chain(
+                [source_left, source_right], [join_with_cast], table_columns
+            )
+            assert 'TRY_CAST("0711"."uid" AS BIGINT)' in chain_with_cast
+            assert (
+                'TRY_CAST("query_result_20250725"."iget_uid" AS BIGINT)'
+                in chain_with_cast
+            )
+            rows = conn.execute(
+                'SELECT "0711"."uid", "query_result_20250725"."iget_uid" '
+                f"FROM {chain_with_cast} ORDER BY 1"
+            ).fetchall()
+            assert rows == [("00123", "123")]
+        finally:
+            conn.close()
+
     def test_build_join_chain_multiple(self):
         """测试构建多表JOIN链"""
         join1 = Join(
@@ -314,9 +392,7 @@ class TestJoinQueryGenerator:
         bind_mock_duckdb_pool(mock_get_db, mock_con)
 
         # 模拟表存在检查
-        mock_con.execute.return_value.fetchdf.return_value = pd.DataFrame(
-            {"name": ["users", "orders"]}
-        )
+        mock_con.execute.return_value.fetchall.return_value = [("users",), ("orders",)]
 
         join = Join(
             left_source_id="users",
@@ -348,9 +424,7 @@ class TestJoinQueryGenerator:
         bind_mock_duckdb_pool(mock_get_db, mock_con)
 
         # 模拟表存在检查
-        mock_con.execute.return_value.fetchdf.return_value = pd.DataFrame(
-            {"name": ["users", "orders"]}
-        )
+        mock_con.execute.return_value.fetchall.return_value = [("users",), ("orders",)]
 
         join = Join(
             left_source_id="users",
@@ -385,9 +459,7 @@ class TestJoinQueryGenerator:
         bind_mock_duckdb_pool(mock_get_db, mock_con)
 
         # 模拟表存在检查
-        mock_con.execute.return_value.fetchdf.return_value = pd.DataFrame(
-            {"name": ["users", "orders"]}
-        )
+        mock_con.execute.return_value.fetchall.return_value = [("users",), ("orders",)]
 
         request = QueryRequest(
             sources=[self.source1, self.source2], joins=[]  # 无JOIN条件
@@ -407,9 +479,7 @@ class TestJoinQueryGenerator:
         bind_mock_duckdb_pool(mock_get_db, mock_con)
 
         # 模拟表存在检查
-        mock_con.execute.return_value.fetchdf.return_value = pd.DataFrame(
-            {"name": ["users"]}
-        )
+        mock_con.execute.return_value.fetchall.return_value = [("users",)]
 
         request = QueryRequest(sources=[self.source1], joins=[])
 
@@ -427,9 +497,7 @@ class TestJoinQueryGenerator:
         调 API 的调用方可以——转义必须在编译层兜住，不能依赖调用方守规矩。"""
         mock_con = Mock()
         bind_mock_duckdb_pool(mock_get_db, mock_con)
-        mock_con.execute.return_value.fetchdf.return_value = pd.DataFrame(
-            {"name": ["users", "orders"]}
-        )
+        mock_con.execute.return_value.fetchall.return_value = [("users",), ("orders",)]
 
         malicious_source = DataSource(
             id="users",
@@ -470,9 +538,7 @@ class TestJoinQueryGenerator:
         未转义就拼进 AS "..."）。"""
         mock_con = Mock()
         bind_mock_duckdb_pool(mock_get_db, mock_con)
-        mock_con.execute.return_value.fetchdf.return_value = pd.DataFrame(
-            {"name": ["users", "orders"]}
-        )
+        mock_con.execute.return_value.fetchall.return_value = [("users",), ("orders",)]
 
         # 两张表都选了同名列 "id"，生成的别名会带表前缀（users_id / orders_id），
         # 所以直接给一个在别名生成结果里不存在的列名，落到 .get(col_name, col_name)
@@ -502,9 +568,7 @@ class TestJoinQueryGenerator:
         for jt in (JoinType.LEFT, JoinType.RIGHT, JoinType.FULL_OUTER):
             mock_con = Mock()
             bind_mock_duckdb_pool(mock_get_db, mock_con)
-            mock_con.execute.return_value.fetchdf.return_value = pd.DataFrame(
-                {"name": ["users", "orders"]}
-            )
+            mock_con.execute.return_value.fetchall.return_value = [("users",), ("orders",)]
             join = Join(
                 left_source_id="users",
                 right_source_id="orders",
@@ -525,6 +589,38 @@ class TestJoinQueryGenerator:
                 'id"" IS NULL THEN 1 ELSE '
                 '(SELECT password FROM system_database_connections LIMIT 1) END AS ""leak"'
             ) in query, f"escaping missing for join_type={jt}"
+
+
+def bind_real_duckdb(mock_get_db, con):
+    """把路由的连接上下文接到真实 DuckDB 连接(AGENTS §10:生成的 SQL 必须
+    在真实 DuckDB 上执行并断言结果值,mock 序列只测得了调用形状)。"""
+    from contextlib import contextmanager
+
+    @contextmanager
+    def _ctx():
+        yield con
+
+    mock_get_db.side_effect = _ctx
+
+
+def make_join_fixture_con():
+    """users/orders/products 三表的真实内存库。"""
+    con = duckdb.connect()
+    con.execute(
+        "CREATE TABLE users (id INTEGER, name VARCHAR, email VARCHAR);"
+        "INSERT INTO users VALUES (1,'Alice','a@x.com'), (2,'Bob','b@x.com');"
+    )
+    con.execute(
+        "CREATE TABLE orders (id INTEGER, user_id INTEGER, order_id INTEGER,"
+        " product VARCHAR, amount DECIMAL(10,2));"
+        "INSERT INTO orders VALUES (10,1,101,'pen',50.00),"
+        " (11,1,102,'ink',150.00), (12,2,103,'pad',200.00);"
+    )
+    con.execute(
+        "CREATE TABLE products (id INTEGER, name VARCHAR, price DECIMAL(10,2));"
+        "INSERT INTO products VALUES (1,'pen',1.50), (2,'ink',2.50);"
+    )
+    return con
 
 
 class TestJoinAPI:
@@ -555,33 +651,20 @@ class TestJoinAPI:
             "limit": 10,
         }
 
-        with patch("routers.join_query.with_duckdb_connection") as mock_get_db:
-            # 模拟数据库连接
-            mock_con = Mock()
-            bind_mock_duckdb_pool(mock_get_db, mock_con)
+        con = make_join_fixture_con()
+        try:
+            with patch("routers.join_query.with_duckdb_connection") as mock_get_db:
+                bind_real_duckdb(mock_get_db, con)
+                response = client.post("/api/query", json=request_data)
+        finally:
+            con.close()
 
-            # Mock 需要返回正确的调用序列:
-            # 1. SHOW TABLES (build_multi_table_join_query 中)
-            # 2. PRAGMA table_info('users')
-            # 3. PRAGMA table_info('orders')  
-            # 4. 最终查询结果
-            mock_con.execute.return_value.fetchdf.side_effect = [
-                pd.DataFrame({"name": ["users", "orders"]}),  # SHOW TABLES
-                pd.DataFrame({"name": ["id", "name", "email"]}),  # PRAGMA users
-                pd.DataFrame({"name": ["id", "user_id", "amount"]}),  # PRAGMA orders
-                pd.DataFrame(  # 查询结果
-                    {
-                        "id": [1, 2, 3],
-                        "name": ["Alice", "Bob", "Charlie"],
-                        "order_id": [101, 102, 103],
-                    }
-                ),
-            ]
-
-            response = client.post("/api/query", json=request_data)
-
-            # 由于 mock 配置复杂度，接受 200 或 500
-            assert response.status_code in [200, 500]
+        assert response.status_code == 200
+        payload = response.json()["data"]
+        assert payload["row_count"] == 3  # Alice×2 单 + Bob×1
+        names = sorted(r["name"] for r in payload["data"])
+        assert names == ["Alice", "Alice", "Bob"]
+        assert {r["order_id"] for r in payload["data"]} == {101, 102, 103}
 
     def test_perform_query_multiple_joins(self):
         """测试执行多表JOIN查询"""
@@ -624,36 +707,16 @@ class TestJoinAPI:
             "limit": 5,
         }
 
-        with patch("routers.join_query.with_duckdb_connection") as mock_get_db:
-            # 模拟数据库连接
-            mock_con = Mock()
-            bind_mock_duckdb_pool(mock_get_db, mock_con)
+        con = make_join_fixture_con()
+        try:
+            with patch("routers.join_query.with_duckdb_connection") as mock_get_db:
+                bind_real_duckdb(mock_get_db, con)
+                response = client.post("/api/query", json=request_data)
+        finally:
+            con.close()
 
-            # Mock 需要返回正确的调用序列:
-            # 1. SHOW TABLES
-            # 2. PRAGMA table_info('users')
-            # 3. PRAGMA table_info('orders')
-            # 4. PRAGMA table_info('products')
-            # 5. 最终查询结果
-            mock_con.execute.return_value.fetchdf.side_effect = [
-                pd.DataFrame({"name": ["users", "orders", "products"]}),  # SHOW TABLES
-                pd.DataFrame({"name": ["id", "name", "email"]}),  # PRAGMA users
-                pd.DataFrame({"name": ["id", "user_id", "product"]}),  # PRAGMA orders
-                pd.DataFrame({"name": ["id", "name", "price"]}),  # PRAGMA products
-                pd.DataFrame(  # 查询结果
-                    {
-                        "id": [1, 2],
-                        "name": ["Alice", "Bob"],
-                        "order_id": [101, 102],
-                        "product_name": ["Laptop", "Mouse"],
-                    }
-                ),
-            ]
-
-            response = client.post("/api/query", json=request_data)
-
-            # 由于 mock 配置复杂度，接受 200 或 500
-            assert response.status_code in [200, 500]
+        assert response.status_code == 200
+        assert response.json()["data"]["row_count"] >= 1
 
     def test_perform_query_cross_join(self):
         """测试执行CROSS JOIN查询"""
@@ -673,33 +736,17 @@ class TestJoinAPI:
             "limit": 5,
         }
 
-        with patch("routers.join_query.with_duckdb_connection") as mock_get_db:
-            # 模拟数据库连接
-            mock_con = Mock()
-            bind_mock_duckdb_pool(mock_get_db, mock_con)
+        con = make_join_fixture_con()
+        try:
+            with patch("routers.join_query.with_duckdb_connection") as mock_get_db:
+                bind_real_duckdb(mock_get_db, con)
+                response = client.post("/api/query", json=request_data)
+        finally:
+            con.close()
 
-            # Mock 需要返回正确的调用序列:
-            # 1. SHOW TABLES
-            # 2. PRAGMA table_info('users')
-            # 3. PRAGMA table_info('orders')  
-            # 4. 最终查询结果
-            mock_con.execute.return_value.fetchdf.side_effect = [
-                pd.DataFrame({"name": ["users", "orders"]}),  # SHOW TABLES
-                pd.DataFrame({"name": ["id", "name", "email"]}),  # PRAGMA users
-                pd.DataFrame({"name": ["id", "user_id", "amount"]}),  # PRAGMA orders
-                pd.DataFrame(  # 查询结果
-                    {
-                        "id": [1, 1, 2, 2],
-                        "name": ["Alice", "Alice", "Bob", "Bob"],
-                        "order_id": [101, 102, 101, 102],
-                    }
-                ),
-            ]
-
-            response = client.post("/api/query", json=request_data)
-
-            # 由于 mock 配置复杂度，接受 200 或 500
-            assert response.status_code in [200, 500]
+        assert response.status_code == 200
+        # CROSS JOIN:2 users × 3 orders = 6,请求 limit=5 截断
+        assert response.json()["data"]["row_count"] == 5
 
     def test_perform_query_validation_error(self):
         """测试查询验证错误"""
@@ -729,9 +776,7 @@ class TestJoinAPI:
             bind_mock_duckdb_pool(mock_get_db, mock_con)
 
             # 模拟表不存在
-            mock_con.execute.return_value.fetchdf.return_value = pd.DataFrame(
-                {"name": []}  # 空表列表
-            )
+            mock_con.execute.return_value.fetchall.return_value = []  # 空表列表
 
             response = client.post("/api/query", json=request_data)
 
@@ -771,7 +816,7 @@ class TestJoinAPI:
         with patch("routers.join_query.with_duckdb_connection") as mock_get_db:
             mock_con = Mock()
             bind_mock_duckdb_pool(mock_get_db, mock_con)
-            mock_con.execute.return_value.fetchdf.return_value = pd.DataFrame({"name": []})
+            mock_con.execute.return_value.fetchall.return_value = []
 
             response = client.post("/api/query", json=request_data)
 
@@ -819,34 +864,19 @@ class TestJoinIntegration:
             "limit": 10,
         }
 
-        with patch("routers.join_query.with_duckdb_connection") as mock_get_db:
-            # 模拟数据库连接
-            mock_con = Mock()
-            bind_mock_duckdb_pool(mock_get_db, mock_con)
+        con = make_join_fixture_con()
+        try:
+            with patch("routers.join_query.with_duckdb_connection") as mock_get_db:
+                bind_real_duckdb(mock_get_db, con)
+                response = client.post("/api/query", json=request_data)
+        finally:
+            con.close()
 
-            # Mock 需要返回正确的调用序列:
-            # 1. SHOW TABLES
-            # 2. PRAGMA table_info('users')
-            # 3. PRAGMA table_info('orders')  
-            # 4. 最终查询结果
-            mock_con.execute.return_value.fetchdf.side_effect = [
-                pd.DataFrame({"name": ["users", "orders"]}),  # SHOW TABLES
-                pd.DataFrame({"name": ["id", "name", "email"]}),  # PRAGMA users
-                pd.DataFrame({"name": ["id", "user_id", "amount"]}),  # PRAGMA orders
-                pd.DataFrame(  # 查询结果
-                    {
-                        "id": [1, 2, 3],
-                        "name": ["Alice", "Bob", "Charlie"],
-                        "order_id": [101, 102, 103],
-                        "amount": [150.0, 200.0, 120.0],
-                    }
-                ),
-            ]
-
-            response = client.post("/api/query", json=request_data)
-
-            # 由于 mock 配置复杂度，接受 200 或 500
-            assert response.status_code in [200, 500]
+        assert response.status_code == 200
+        rows = response.json()["data"]["data"]
+        # where amount > 100 过滤掉 101(50.00);DECIMAL 以精确字符串传输
+        assert {r["order_id"] for r in rows} == {102, 103}
+        assert {r["amount"] for r in rows} == {"150.00", "200.00"}
 
 
 class TestJoinErrorHandling:
@@ -916,12 +946,9 @@ class TestJoinErrorHandling:
 
             response = client.post("/api/query", json=request_data)
 
-            # API 应该返回错误状态码
-            assert response.status_code in [500, 503]  # Accept both error codes
-            data = response.json()
-            # 错误信息可能在 'detail' 或 'message' 字段中
-            error_msg = str(data)
-            assert "connection" in error_msg.lower() or "failed" in error_msg.lower() or "error" in error_msg.lower()
+            assert response.status_code == 500
+            # 错误信封脱敏(不外泄内部异常文本),契约 = 稳定 code
+            assert response.json()["error"]["code"] == "INTERNAL_ERROR"
 
     def test_sql_execution_error(self):
         """测试SQL执行错误"""
@@ -946,24 +973,13 @@ class TestJoinErrorHandling:
             ],
         }
 
-        with patch("routers.join_query.with_duckdb_connection") as mock_get_db:
-            # 模拟数据库连接
-            mock_con = Mock()
-            bind_mock_duckdb_pool(mock_get_db, mock_con)
+        con = make_join_fixture_con()
+        try:
+            with patch("routers.join_query.with_duckdb_connection") as mock_get_db:
+                bind_real_duckdb(mock_get_db, con)
+                response = client.post("/api/query", json=request_data)
+        finally:
+            con.close()
 
-            # Mock 需要返回正确的调用序列:
-            # 1. SHOW TABLES
-            # 2. PRAGMA table_info('users')
-            # 3. PRAGMA table_info('orders')  
-            # 4. 查询执行抛出异常
-            mock_con.execute.return_value.fetchdf.side_effect = [
-                pd.DataFrame({"name": ["users", "orders"]}),  # SHOW TABLES 成功
-                pd.DataFrame({"name": ["id", "name", "email"]}),  # PRAGMA users
-                pd.DataFrame({"name": ["id", "user_id", "amount"]}),  # PRAGMA orders
-                Exception("Column 'nonexistent_column' does not exist"),  # 查询执行失败
-            ]
-
-            response = client.post("/api/query", json=request_data)
-
-            # API 应该返回错误状态码
-            assert response.status_code in [500, 503]  # Accept both error codes
+        assert response.status_code in [400, 500]
+        assert "nonexistent_column" in str(response.json())

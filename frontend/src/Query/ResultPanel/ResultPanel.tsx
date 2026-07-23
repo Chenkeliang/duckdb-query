@@ -66,6 +66,8 @@ export interface ResultPanelProps {
   emptyMessage?: string;
   showToolbar?: boolean;
   currentSQL?: string;
+  /** 无系统 LIMIT 的基础 SQL(生成式面板的 sql 烤入了预览 LIMIT);服务端导出优先用它 */
+  currentBaseSQL?: string;
   source?: TableSource;
   autoOpenImportDialog?: boolean;
   onAutoOpenImportDialogConsumed?: () => void;
@@ -81,8 +83,6 @@ export interface ResultPanelProps {
   onTogglePinResultTab?: (id: string) => void;
   /** 未开启保留时的单槽标题 */
   singleResultSlotLabel?: string;
-  /** 联邦导出时 ATTACH 配置 */
-  attachDatabases?: { alias: string; connectionId: string }[];
   /** 图表下钻:收到明细 SQL,由调用方负责填入编辑器(不自动执行) */
   onDrilldown?: (sql: string) => void;
 }
@@ -111,6 +111,7 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
   emptyMessage,
   showToolbar = true,
   currentSQL,
+  currentBaseSQL,
   source,
   autoOpenImportDialog = false,
   onAutoOpenImportDialogConsumed,
@@ -124,7 +125,6 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
   onCloseResultTabsToRight,
   onTogglePinResultTab,
   singleResultSlotLabel,
-  attachDatabases,
   onDrilldown,
 }) => {
   const actualExecTime = executionTime ?? execTime;
@@ -285,10 +285,12 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
   }, [autoOpenImportDialog, handleImportClick, onAutoOpenImportDialogConsumed]);
 
 
-  const handleExportParquetServer = useCallback(async () => {
+  const handleExportParquetServer = useCallback(async (applyRowLimit: boolean) => {
+    // 基础 SQL 优先(无系统预览 LIMIT):全量导出才是真全量;生成式面板(JOIN/SET/Pivot)的
+    // query.sql 烤入了预览 LIMIT,不能用作导出输入(复审 P1)
     const sql = useMultiTabGrids
-      ? activeTab?.query.sql?.trim()
-      : currentSQL?.trim();
+      ? (activeTab?.query.baseSql ?? activeTab?.query.sql)?.trim()
+      : (currentBaseSQL ?? currentSQL)?.trim();
     if (!sql) {
       showErrorToast(t, 'EXPORT_NO_SQL', t('query.result.exportNoSql', '无 SQL 可导出'));
       return;
@@ -304,7 +306,11 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
       const result = await exportQueryResults({
         sql,
         format: 'parquet',
-        attach_databases: toAttachDatabasesPayload(attachDatabases),
+        apply_row_limit: applyRowLimit,
+        // attach 必须取自 effectiveSource(单槽=source / 多页=activeTab.query.source),
+        // 与图表视图同源;原来的 attachDatabases prop 父级并不可靠传递,联邦导出会
+        // 拿不到 ATTACH → "schema xxx does not exist"(与 effectiveSQL 配套)。
+        attach_databases: toAttachDatabasesPayload(effectiveAttachDatabases),
       });
       if (targetPath) {
         await saveQueryExportToPath(result.file_id, { targetPath });
@@ -324,8 +330,10 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
   }, [
     useMultiTabGrids,
     activeTab?.query.sql,
+    activeTab?.query.baseSql,
     currentSQL,
-    attachDatabases,
+    currentBaseSQL,
+    effectiveAttachDatabases,
     t,
   ]);
 
@@ -409,6 +417,9 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
 
   if (useMultiTabGrids) {
     const activeSql = activeTab?.query.sql;
+    // 保存到 DuckDB 用基础 SQL(无系统预览 LIMIT):生成式面板(JOIN/SET/Pivot)的 query.sql
+    // 烤入了预览 LIMIT,"全量"落表会只存预览行数;与服务端导出同一口径(复审 P1)
+    const activeSaveSql = activeTab?.query.baseSql ?? activeSql;
     const activeSource = activeTab?.query.source;
 
     return (
@@ -437,11 +448,11 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
               ))
             : chartViewEl}
         </div>
-        {activeSql && (
+        {activeSaveSql && (
           <ImportToDuckDBDialog
             open={importDialogOpen}
             onOpenChange={setImportDialogOpen}
-            sql={activeSql}
+            sql={activeSaveSql}
             source={activeSource}
           />
         )}
@@ -601,11 +612,12 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
         ) : chartViewEl}
       </div>
 
-      {currentSQL && (
+      {/* 保存到 DuckDB 用基础 SQL(无系统预览 LIMIT),与服务端导出同一口径(复审 P1) */}
+      {(currentBaseSQL ?? currentSQL) && (
         <ImportToDuckDBDialog
           open={importDialogOpen}
           onOpenChange={setImportDialogOpen}
-          sql={currentSQL}
+          sql={(currentBaseSQL ?? currentSQL)!}
           source={source}
         />
       )}

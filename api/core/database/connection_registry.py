@@ -18,8 +18,8 @@
 import threading
 import time
 import logging
-from dataclasses import dataclass
-from typing import Dict, Optional
+from dataclasses import dataclass, field
+from typing import Callable, Dict, List, Optional
 
 import duckdb
 
@@ -34,6 +34,7 @@ class ConnectionRecord:
     thread_id: int
     start_time: float
     sql_preview: str  # 前 200 字符，用于调试
+    remote_interrupts: List[Callable[[], bool]] = field(default_factory=list)
 
 
 class ConnectionRegistry:
@@ -80,6 +81,44 @@ class ConnectionRegistry:
         """获取连接记录"""
         with self._lock:
             return self._registry.get(task_id)
+
+    def register_remote_interrupt(
+        self, task_id: str, remote_interrupt: Callable[[], bool]
+    ) -> bool:
+        """为活跃查询登记远端数据库取消器。"""
+        with self._lock:
+            record = self._registry.get(task_id)
+            if not record:
+                return False
+            record.remote_interrupts.append(remote_interrupt)
+            return True
+
+    def interrupt_with_remote(self, task_id: str) -> bool:
+        """中断 DuckDB，并调用查询已登记的远端数据库取消器。"""
+        with self._lock:
+            record = self._registry.get(task_id)
+            if not record:
+                logger.warning("Cannot interrupt task %s: not found in registry", task_id)
+                return False
+            connection = record.connection
+            remote_interrupts = list(record.remote_interrupts)
+
+        local_interrupted = False
+        try:
+            connection.interrupt()
+            local_interrupted = True
+            logger.info("Interrupted local query for task %s", task_id)
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            logger.warning("Failed to interrupt local query for task %s: %s", task_id, exc)
+
+        remote_interrupted = False
+        for remote_interrupt in remote_interrupts:
+            try:
+                remote_interrupted = remote_interrupt() or remote_interrupted
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                logger.warning("Failed to interrupt remote query for task %s: %s", task_id, exc)
+
+        return local_interrupted or remote_interrupted
     
     def interrupt(self, task_id: str) -> bool:
         """

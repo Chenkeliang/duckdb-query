@@ -7,15 +7,19 @@ from typing import Any, Dict, List, Optional
 import duckdb
 from fastapi import APIRouter, Header
 
-from core.common.utils import normalize_dataframe_output
 from core.database.duckdb_engine import (
-    execute_query,
-    fetch_query_dataframe,
+    timed_fetch_query_records,
     with_duckdb_connection,
 )
 from core.database.duckdb_pool import interruptible_connection
-from core.database.federated_attach import execute_sql_with_attach
+from core.database.federated_attach import (
+    attach_databases_on_connection,
+    detach_databases_on_connection,
+    execute_sql_with_attach,
+    resolve_attach_configs,
+)
 from core.services.pivot_query_generator import (
+    PivotColumnLimitError,
     generate_pivot_query_sql,
     validate_query_config,
 )
@@ -78,11 +82,26 @@ def _generate_pivot_query(request: PivotQueryRequest):
 
         resolved_casts_map = _map_resolved_casts(request.resolved_casts)
 
-        generation = generate_pivot_query_sql(
-            request.config,
-            pivot_config=request.pivot_config,
-            resolved_casts=resolved_casts_map,
-        )
+        # 列上限探测/列值采样须在【已 ATTACH】连接上跑,否则联邦透视看不到外部表(回归修复)。
+        # 生成器保持纯:不自开连接,用这里 ATTACH 好的连接。
+        attach_list = getattr(request, "attach_databases", None) or None
+        with with_duckdb_connection() as con:
+            try:
+                if attach_list:
+                    attach_databases_on_connection(con, resolve_attach_configs(attach_list))
+                generation = generate_pivot_query_sql(
+                    request.config,
+                    pivot_config=request.pivot_config,
+                    resolved_casts=resolved_casts_map,
+                    connection=con,
+                )
+            finally:
+                # 防御性 detach:按【意图 attach 的别名】清理——即使 attach 中途失败(前面已成功
+                # 部分),也不把带残留 ATTACH 的连接放回池(detach 对不存在别名安全跳过)。
+                if attach_list:
+                    detach_databases_on_connection(
+                        con, [db.alias for db in attach_list if getattr(db, "alias", None)]
+                    )
 
         combined_warnings = list(validation_result.warnings or [])
         combined_warnings.extend(generation.warnings)
@@ -102,6 +121,19 @@ def _generate_pivot_query(request: PivotQueryRequest):
             message_code=MessageCode.PIVOT_QUERY_GENERATED,
         )
 
+    except PivotColumnLimitError as exc:
+        # 专用契约:400 + 结构化 details,前端据字段提示(增加筛选/减少分类),不解析中文消息。
+        # 须在通用 except 之前——它是 ValueError 子类,否则会落到 classify_exception → 500。
+        return error_json_response(
+            400,
+            MessageCode.PIVOT_COLUMN_LIMIT_EXCEEDED,
+            f"Pivot column '{exc.column}' exceeds the {exc.cap}-value limit",
+            details={
+                "column": exc.column,
+                "cap": exc.cap,
+                "observed_at_least": exc.observed_at_least,
+            },
+        )
     except Exception as exc:
         logger.error("Failed to generate pivot query: %s", exc, exc_info=True)
         code, status = classify_exception(str(exc))
@@ -134,12 +166,25 @@ def _preview_pivot_query(
             )
 
         resolved_casts_map = _map_resolved_casts(request.resolved_casts)
+        attach_list = getattr(request, "attach_databases", None) or None
 
-        generation = generate_pivot_query_sql(
-            request.config,
-            pivot_config=request.pivot_config,
-            resolved_casts=resolved_casts_map,
-        )
+        # 生成期的列上限探测/采样须在已 ATTACH 连接上(联邦透视看得到外部表);生成器不自开连接。
+        with with_duckdb_connection() as con:
+            try:
+                if attach_list:
+                    attach_databases_on_connection(con, resolve_attach_configs(attach_list))
+                generation = generate_pivot_query_sql(
+                    request.config,
+                    pivot_config=request.pivot_config,
+                    resolved_casts=resolved_casts_map,
+                    connection=con,
+                )
+            finally:
+                # 防御性 detach:按【意图 attach 的别名】清理(部分 attach 失败也不残留,见 generate 路由)
+                if attach_list:
+                    detach_databases_on_connection(
+                        con, [db.alias for db in attach_list if getattr(db, "alias", None)]
+                    )
 
         preview_limit = request.limit
         if preview_limit is None or preview_limit <= 0:
@@ -147,51 +192,47 @@ def _preview_pivot_query(
 
             preview_limit = config_manager.get_app_config().max_query_rows or 10
         preview_sql = ensure_query_has_limit(generation.final_sql, preview_limit)
-        attach_list = getattr(request, "attach_databases", None) or None
 
         if attach_list:
-            preview_df = execute_sql_with_attach(
+            columns, data, _ = execute_sql_with_attach(
                 preview_sql,
                 attach_databases=attach_list,
                 query_id=query_id,
             )
-            total_rows = len(preview_df)
+            total_rows = len(data)
             try:
                 count_sql = _build_preview_count_sql(generation.final_sql)
-                count_df = execute_sql_with_attach(
+                _, count_records, _ = execute_sql_with_attach(
                     count_sql,
                     attach_databases=attach_list,
                     query_id=None,
                 )
-                if not count_df.empty:
-                    total_rows = int(count_df.iloc[0, 0])
+                if count_records:
+                    total_rows = int(next(iter(count_records[0].values())))
             except Exception as count_exc:
                 logger.warning("Failed to calculate preview total rows: %s", count_exc)
         elif query_id:
             with interruptible_connection(query_id, preview_sql) as conn:
-                preview_df = fetch_query_dataframe(conn, preview_sql)
-                total_rows = len(preview_df)
+                columns, data, _ = timed_fetch_query_records(conn, preview_sql)
+                total_rows = len(data)
                 try:
                     count_sql = _build_preview_count_sql(generation.final_sql)
-                    count_df = conn.execute(count_sql).fetchdf()
-                    if not count_df.empty:
-                        total_rows = int(count_df.iloc[0, 0])
+                    count_row = conn.execute(count_sql).fetchone()
+                    if count_row is not None:
+                        total_rows = int(count_row[0])
                 except Exception as count_exc:
                     logger.warning("Failed to calculate preview total rows: %s", count_exc)
         else:
             with with_duckdb_connection() as con:
-                preview_df = execute_query(preview_sql, con)
-                total_rows = len(preview_df)
+                columns, data, _ = timed_fetch_query_records(con, preview_sql)
+                total_rows = len(data)
                 try:
                     count_sql = _build_preview_count_sql(generation.final_sql)
-                    count_df = execute_query(count_sql, con)
-                    if not count_df.empty:
-                        total_rows = int(count_df.iloc[0, 0])
+                    count_row = con.execute(count_sql).fetchone()
+                    if count_row is not None:
+                        total_rows = int(count_row[0])
                 except Exception as count_exc:
                     logger.warning("Failed to calculate preview total rows: %s", count_exc)
-
-        data = normalize_dataframe_output(preview_df)
-        columns = [str(col) for col in preview_df.columns.tolist()]
 
         combined_warnings = list(validation_result.warnings or [])
         combined_warnings.extend(generation.warnings)
@@ -220,6 +261,18 @@ def _preview_pivot_query(
             MessageCode.QUERY_CANCELLED,
             "Query cancelled by client",
             details={"query_id": query_id},
+        )
+    except PivotColumnLimitError as exc:
+        # 专用契约:400 + 结构化 details(见 generate 路由),须在通用 except 前
+        return error_json_response(
+            400,
+            MessageCode.PIVOT_COLUMN_LIMIT_EXCEEDED,
+            f"Pivot column '{exc.column}' exceeds the {exc.cap}-value limit",
+            details={
+                "column": exc.column,
+                "cap": exc.cap,
+                "observed_at_least": exc.observed_at_least,
+            },
         )
     except Exception as exc:
         logger.error("Failed to preview pivot query: %s", exc, exc_info=True)

@@ -130,3 +130,66 @@ jobs:
           releaseDraft: true
           prerelease: false
           args: --target ${{ matrix.rust_target }} --bundles ${{ matrix.bundles }}
+
+      # ---- 离线全量包(第二资产,不进更新通道) ----
+      # 标准包只含 excel 扩展、Windows 用 WebView2 downloadBootstrapper(~90MB);
+      # -offline 包给内网/无外网环境:全量 DuckDB 扩展(excel/httpfs/mysql/postgres),
+      # Windows 另内嵌 WebView2 离线安装器。overlay 配置关闭 updater 产物,
+      # latest.json/更新通道始终指向瘦包(已装用户的扩展在用户目录,更新不受影响)。
+      - name: Fetch full extensions (offline bundle)
+        run: python api/scripts/fetch_duckdb_extensions.py ${{ matrix.duck_platform }} --full
+
+      - name: Refresh staged sidecar extensions (macOS)
+        if: runner.os == 'macOS'
+        run: |
+          rm -rf frontend/src-tauri/binaries/duckquery-api/extensions
+          cp -R api/extensions frontend/src-tauri/binaries/duckquery-api/extensions
+
+      - name: Refresh staged sidecar extensions (Windows)
+        if: runner.os == 'Windows'
+        shell: pwsh
+        run: |
+          $dst = "frontend/src-tauri/binaries/duckquery-api/extensions"
+          if (Test-Path $dst) { Remove-Item -Recurse -Force $dst }
+          Copy-Item -Recurse api/extensions $dst
+
+      - name: Build offline bundle (macOS)
+        if: runner.os == 'macOS'
+        working-directory: frontend
+        run: npx tauri build --target ${{ matrix.rust_target }} --bundles dmg --config src-tauri/tauri.offline.conf.json
+
+      - name: Build offline bundle (Windows)
+        if: runner.os == 'Windows'
+        working-directory: frontend
+        shell: pwsh
+        run: npx tauri build --target ${{ matrix.rust_target }} --bundles nsis --config src-tauri/tauri.offline.conf.json
+
+      - name: Upload offline bundle (macOS)
+        if: runner.os == 'macOS' && github.ref_type == 'tag'
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          VERSION="${GITHUB_REF_NAME#v}"
+          case "${{ matrix.rust_target }}" in
+            aarch64-*) ARCH=aarch64 ;;
+            *) ARCH=x64 ;;
+          esac
+          DMG=$(ls frontend/src-tauri/target/${{ matrix.rust_target }}/release/bundle/dmg/*.dmg | head -1)
+          OUT="DuckQuery_${VERSION}_${ARCH}-offline.dmg"
+          cp "$DMG" "$OUT"
+          gh release upload "${GITHUB_REF_NAME}" "$OUT" --clobber
+
+      - name: Upload offline bundle (Windows)
+        if: runner.os == 'Windows' && github.ref_type == 'tag'
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ secrets.GITHUB_TOKEN }}
+        run: |
+          $version = "${env:GITHUB_REF_NAME}".TrimStart("v")
+          $bundleDir = "frontend/src-tauri/target/${{ matrix.rust_target }}/release/bundle/nsis"
+          $installer = Get-ChildItem $bundleDir -Filter "*.exe" |
+            Sort-Object LastWriteTimeUtc -Descending | Select-Object -First 1
+          if (!$installer) { Write-Error "Missing offline NSIS installer in $bundleDir"; exit 1 }
+          $out = "DuckQuery_${version}_x64-offline-setup.exe"
+          Copy-Item $installer.FullName $out -Force
+          gh release upload "${env:GITHUB_REF_NAME}" $out --repo "${env:GITHUB_REPOSITORY}" --clobber

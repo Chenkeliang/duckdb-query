@@ -65,6 +65,12 @@ export interface TypeConflict {
   resolvedType?: string;
 }
 
+/** 单个冲突的分侧转换(用后端 left_cast/right_cast:只转与目标类型不同的一侧) */
+export interface ResolvedCast {
+  leftCast?: string;
+  rightCast?: string;
+}
+
 /**
  * Hook 返回值
  */
@@ -85,8 +91,10 @@ export interface UseTypeConflictReturn {
   clearResolutions: () => void;
   /** 根据 key 获取冲突 */
   getConflict: (key: string) => TypeConflict | undefined;
-  /** 获取已解决的类型映射 { key: resolvedType } */
+  /** 获取已解决的类型映射 { key: resolvedType }（目标类型,供 UI 显示） */
   resolvedTypes: Record<string, string>;
+  /** 分侧转换 { key: { leftCast?, rightCast? } }（供 payload:只转与目标不同的一侧） */
+  resolvedCasts: Record<string, ResolvedCast>;
 }
 
 /**
@@ -199,7 +207,11 @@ export function useTypeConflict(columnPairs: ColumnPair[]): UseTypeConflictRetur
     setResolutions(prev => {
       const updated = { ...prev };
       for (const conflict of conflicts) {
-        updated[conflict.key] = conflict.recommendedType;
+        // 跳过无安全类型推荐的冲突(如大整数×浮点,recommendedType 为 '');
+        // 它们要靠数据感知"推断"或用户手填,不能被一键套一个不安全的默认
+        if (conflict.recommendedType) {
+          updated[conflict.key] = conflict.recommendedType;
+        }
       }
       return updated;
     });
@@ -226,6 +238,23 @@ export function useTypeConflict(columnPairs: ColumnPair[]): UseTypeConflictRetur
     return result;
   }, [conflicts]);
 
+  // 分侧转换:目标类型 T 只套到"当前类型 ≠ T"的一侧(用完整类型串比较,DECIMAL 的
+  // scale 差异也会被视为不同→转)。这样数值侧已是 T 就不动,避免把一侧无谓/有损地转换。
+  const resolvedCasts = useMemo(() => {
+    const out: Record<string, ResolvedCast> = {};
+    const norm = (t: string) => String(t || '').trim().toUpperCase();
+    for (const conflict of conflicts) {
+      const target = conflict.resolvedType;
+      if (!target) continue;
+      const targetN = norm(target);
+      out[conflict.key] = {
+        ...(norm(conflict.leftType) !== targetN ? { leftCast: target } : {}),
+        ...(norm(conflict.rightType) !== targetN ? { rightCast: target } : {}),
+      };
+    }
+    return out;
+  }, [conflicts]);
+
   return {
     conflicts,
     unresolvedCount,
@@ -236,6 +265,7 @@ export function useTypeConflict(columnPairs: ColumnPair[]): UseTypeConflictRetur
     clearResolutions,
     getConflict,
     resolvedTypes,
+    resolvedCasts,
   };
 }
 

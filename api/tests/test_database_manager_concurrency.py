@@ -1,14 +1,12 @@
-"""DatabaseManager.connections/.engines 并发安全性。
+"""DatabaseManager.connections 并发安全性。
 
-背景：这两个字典曾经完全没有锁保护，被处理同步请求的事件循环线程和跑
-BackgroundTasks 的工作线程共同读写。两类具体风险：
-1. list_connections() 的 list(self.connections.values()) 在遍历时如果有另一个
-   线程并发 add_connection/remove_connection，CPython 会抛
-   RuntimeError: dictionary changed size during iteration。
-2. execute_query() 的"没有引擎就现建一个"是 check-then-create-then-assign，
-   两个线程并发首次查询同一个 connection_id 会各自建一个引擎，后赋值的把
-   先创建的覆盖掉，先创建的那个连接池泄漏（与 duckdb_pool.py 的
-   get_connection_pool 单例竞态同一类问题）。
+背景：连接字典曾经完全没有锁保护，被处理同步请求的事件循环线程和跑
+BackgroundTasks 的工作线程共同读写。典型风险：list_connections() 的
+list(self.connections.values()) 在遍历时如果有另一个线程并发
+add_connection/remove_connection，CPython 会抛
+RuntimeError: dictionary changed size during iteration。
+（历史上还存在 .engines 字典与 execute_query() 的引擎竞态，二者已随
+SQLAlchemy 引擎层退役一并删除。）
 """
 
 from __future__ import annotations
@@ -31,51 +29,6 @@ def _register(mgr: DatabaseManager, connection_id: str) -> DatabaseConnection:
     )
     mgr.add_connection(connection, test_connection=False, save_to_metadata=False)
     return connection
-
-
-class TestExecuteQueryEngineRace:
-    def test_concurrent_first_calls_create_exactly_one_engine(self, monkeypatch):
-        mgr = DatabaseManager()
-        _register(mgr, "race_conn")
-
-        construction_count = []
-        original_create_engine = DatabaseManager._create_engine
-
-        def counting_create_engine(self, db_type, params):
-            construction_count.append(1)
-            return original_create_engine(self, db_type, params)
-
-        monkeypatch.setattr(DatabaseManager, "_create_engine", counting_create_engine)
-
-        n_threads = 8
-        barrier = threading.Barrier(n_threads)
-        results = []
-        results_lock = threading.Lock()
-        errors = []
-
-        def worker():
-            barrier.wait()
-            try:
-                df = mgr.execute_query("race_conn", "SELECT 1 AS n")
-                with results_lock:
-                    results.append(df)
-            except Exception as exc:  # pragma: no cover - failure path surfaced via errors
-                with results_lock:
-                    errors.append(exc)
-
-        threads = [threading.Thread(target=worker) for _ in range(n_threads)]
-        for t in threads:
-            t.start()
-        for t in threads:
-            t.join()
-
-        assert not errors, f"execute_query raised under concurrency: {errors}"
-        assert len(results) == n_threads
-        assert len(construction_count) == 1, (
-            f"expected exactly 1 engine construction for the same connection_id, "
-            f"got {len(construction_count)} — concurrent first calls raced past the check"
-        )
-        assert len(mgr.engines) == 1
 
 
 class TestListConnectionsDuringMutation:

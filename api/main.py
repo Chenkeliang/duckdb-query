@@ -4,9 +4,7 @@ import logging
 import json
 import os
 import traceback
-import base64
 from datetime import datetime
-from cryptography.fernet import Fernet
 from contextlib import asynccontextmanager
 from core.security.security import security_validator
 from core.common.config_manager import config_manager
@@ -32,17 +30,16 @@ from routers import (
     set_operations,  # /api/set-operations/*
     query_export,  # /api/query-results/export
     duckdb_extensions,  # DuckDB 扩展管理：/api/duckdb/extensions/*
+    column_analysis,  # /api/columns/infer-cast
 )
 from routers import config_api
 from routers import ai as ai_router
 from core.database.database_manager import db_manager
 from models.query_models import DatabaseConnection, DataSourceType
 from core.data.file_datasource_manager import reload_all_file_datasources_to_duckdb
-from core.database.duckdb_engine import (
-    with_duckdb_connection,
-    create_persistent_table,
-)
+from core.database.duckdb_engine import with_duckdb_connection
 from core.services.cleanup_scheduler import start_cleanup_scheduler, stop_cleanup_scheduler
+from core.common.timezone_utils import get_current_time_iso
 
 logger = logging.getLogger(__name__)
 
@@ -75,8 +72,22 @@ async def app_lifespan(app: FastAPI):
 
     try:
         from routers.async_tasks import cleanup_old_files
+        from routers.chunked_upload import reap_stale_upload_sessions
 
-        start_cleanup_scheduler(cleanup_old_files)
+        def _scheduled_cleanup() -> int:
+            # 调度器是单回调,此组合点是唯一隔离层:一个回收失败不吞掉另一个
+            cleaned = 0
+            try:
+                cleaned += cleanup_old_files()
+            except Exception as exc:
+                logger.error(f"cleanup_old_files failed: {exc}")
+            try:
+                cleaned += reap_stale_upload_sessions()
+            except Exception as exc:
+                logger.error(f"reap_stale_upload_sessions failed: {exc}")
+            return cleaned
+
+        start_cleanup_scheduler(_scheduled_cleanup)
         logger.info("File cleanup scheduler started successfully")
     except Exception as e:
         logger.error(f"Failed to start file cleanup scheduler: {str(e)}")
@@ -144,6 +155,7 @@ app.include_router(join_query.router)
 app.include_router(pivot_query.router)
 app.include_router(set_operations.router)
 app.include_router(query_export.router)
+app.include_router(column_analysis.router)
 app.include_router(paste_data.router)
 app.include_router(chunked_upload.router)
 app.include_router(url_reader.router)
@@ -179,52 +191,6 @@ async def root():
     }
 
 
-def initialize_encryption_key():
-    """
-    Initializes the encryption key for the application.
-    It follows a strict order:
-    1. Check for SECRET_KEY environment variable.
-    2. Check for a persisted key file in the data directory.
-    3. If neither exists, generate a new key and save it to the file.
-    """
-    logger.info("Initializing encryption key...")
-    secret_key_env = os.getenv("SECRET_KEY")
-    key_file_path = os.path.join("data", ".secret_key")
-
-    secret_key = None
-
-    if secret_key_env:
-        logger.info("Found SECRET_KEY in environment variables.")
-        # Ensure the key is properly encoded for Fernet
-        secret_key = base64.urlsafe_b64encode(
-            secret_key_env.encode("utf-8").ljust(32)[:32]
-        )
-    elif os.path.exists(key_file_path):
-        logger.info(f"Found persisted secret key file at {key_file_path}.")
-        with open(key_file_path, "rb") as f:
-            secret_key = f.read()
-    else:
-        logger.warning("No SECRET_KEY found. Generating a new one.")
-        secret_key = Fernet.generate_key()
-        try:
-            os.makedirs("data", exist_ok=True)
-            with open(key_file_path, "wb") as f:
-                f.write(secret_key)
-            logger.info(f"New secret key generated and saved to {key_file_path}.")
-        except Exception as e:
-            logger.error(f"Failed to save new secret key: {e}")
-            # Fallback to using the key in memory without persisting
-
-    # Note: The password_encryptor is already initialized in core/encryption.py
-    # We don't need to re-initialize it here
-    if secret_key:
-        logger.info("Encryption key initialized successfully.")
-    else:
-        logger.error(
-            "CRITICAL: Could not initialize encryption key. Password encryption will fail."
-        )
-
-
 @app.get("/health", tags=["Health"])
 async def health_check():
-    return {"status": "healthy", "timestamp": "2025-01-18"}
+    return {"status": "healthy", "timestamp": get_current_time_iso()}

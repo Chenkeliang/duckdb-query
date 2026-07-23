@@ -104,6 +104,11 @@ class ExcelImportSheet(BaseModel):
             self.header_row_index = None
         elif self.header_row_index is None or self.header_row_index <= 0:
             self.header_row_index = 1
+        elif self.header_row_index > 1_048_576:  # xlsx 物理行上限
+            raise ValueError(
+                f"header_row_index {self.header_row_index} exceeds the xlsx "
+                "row limit (1048576)"
+            )
         return self
 
 
@@ -142,6 +147,7 @@ async def upload_file(
     csv_encoding: Optional[str] = Form(None),
 ) -> Any:
     """上传文件并返回详细信息，支持CSV、Excel、JSON、Parquet格式"""
+    temp_file_path = None  # 校验用临时文件;无论走哪条成功/失败路径,finally 统一兜底删除
     try:
         try:
             normalize_import_mode(import_mode)
@@ -235,7 +241,11 @@ async def upload_file(
                 message="Excel file uploaded, please select the worksheets to import.",
             )
 
-        preview_info = get_file_preview(save_path, rows=10)
+        preview_info = get_file_preview(
+            save_path,
+            rows=10,
+            csv_encoding=csv_encoding if file_type == "csv" else None,
+        )
 
         # Build reader_options for CSV files only
         reader_options: Optional[Dict[str, Any]] = None
@@ -313,6 +323,15 @@ async def upload_file(
             MessageCode.OPERATION_FAILED,
             f"File upload processing failed: {str(e)}",
         )
+    finally:
+        # 兜底清理校验用临时文件——散落的 os.remove 只覆盖部分路径,任何未预期的
+        # 异常都会漏删(Codex S-17)。幂等:已删/未创建都安全跳过。
+        if temp_file_path:
+            try:
+                if os.path.exists(temp_file_path):
+                    os.remove(temp_file_path)
+            except OSError:
+                pass
 
 
 @router.post("/api/data-sources/excel/inspect", tags=["Data Sources"])

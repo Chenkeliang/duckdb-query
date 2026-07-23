@@ -11,10 +11,35 @@ from typing import Any, Dict, List, Optional
 from functools import lru_cache
 
 from core.database.duckdb_pool import with_system_connection
-from core.common.timezone_utils import get_current_time
+from core.common.timezone_utils import get_current_time, normalize_to_storage_timezone
 from utils.encryption_utils import encrypt_json, decrypt_json, json_needs_key_migration
 
+# 元数据表里的时间字段:入库前统一归一成 UTC naive(§7.3 存储口径)
+_TIMESTAMP_FIELDS = {"created_at", "updated_at", "upload_time", "last_accessed"}
+
+
+def _normalize_timestamp_for_storage(value: Any) -> Any:
+    """时间值统一成 UTC naive 再入库。
+
+    DuckDB 把带偏移的字符串隐式转 TIMESTAMP 时会丢弃偏移、保留钟面时间
+    (2026-07-22 实测:+08:00 的 created_at 被存成"伪 UTC",列表排序整体偏 8 小时),
+    因此带时区的输入必须先转 UTC;naive 输入视为已是存储时间,原样通过。
+    """
+    raw = value
+    if isinstance(raw, str):
+        try:
+            raw = datetime.fromisoformat(raw.replace("Z", "+00:00"))
+        except ValueError:
+            return value
+    if isinstance(raw, datetime):
+        return normalize_to_storage_timezone(raw)
+    return value
+
 logger = logging.getLogger(__name__)
+
+_REBUILD_CONNECTION_INDEXES_MIGRATION = (
+    "rebuild_database_connection_indexes_20260721"
+)
 
 
 class MetadataManager:
@@ -80,7 +105,39 @@ class MetadataManager:
                 )
             """)
 
-            # 创建索引
+            migration_status = conn.execute(
+                """
+                SELECT status
+                FROM system_migration_status
+                WHERE migration_name = ?
+                """,
+                [_REBUILD_CONNECTION_INDEXES_MIGRATION],
+            ).fetchone()
+            if not migration_status or migration_status[0] != "completed":
+                logger.info("Rebuilding database connection indexes")
+                conn.execute("DROP INDEX IF EXISTS idx_db_conn_type")
+                conn.execute("DROP INDEX IF EXISTS idx_db_conn_status")
+                conn.execute(
+                    "CREATE INDEX idx_db_conn_type ON system_database_connections(type)"
+                )
+                conn.execute(
+                    "CREATE INDEX idx_db_conn_status ON system_database_connections(status)"
+                )
+                conn.execute(
+                    """
+                    INSERT INTO system_migration_status (
+                        migration_name, status, started_at, completed_at
+                    )
+                    VALUES (?, 'completed', CURRENT_TIMESTAMP, CURRENT_TIMESTAMP)
+                    ON CONFLICT (migration_name) DO UPDATE SET
+                        status = EXCLUDED.status,
+                        completed_at = EXCLUDED.completed_at,
+                        error_message = NULL
+                    """,
+                    [_REBUILD_CONNECTION_INDEXES_MIGRATION],
+                )
+
+            # Keep indexes present if they are removed after the one-time rebuild.
             conn.execute(
                 "CREATE INDEX IF NOT EXISTS idx_db_conn_type ON system_database_connections(type)"
             )
@@ -240,8 +297,8 @@ class MetadataManager:
 
                 # 获取表的实际列名，过滤掉不存在的字段
                 try:
-                    table_columns_df = conn.execute(f"DESCRIBE {table}").fetchdf()
-                    valid_columns = set(table_columns_df["column_name"].tolist())
+                    describe_rows = conn.execute(f"DESCRIBE {table}").fetchall()
+                    valid_columns = {str(row[0]) for row in describe_rows}
                 except Exception as e:
                     logger.warning(f"Unable to get table {table} column info: {e}")
                     valid_columns = None
@@ -253,6 +310,12 @@ class MetadataManager:
                         removed_fields = set(data.keys()) - set(filtered_data.keys())
                         logger.debug(f"Filtered out non-existent fields: {removed_fields}")
                     data = filtered_data
+
+                # 时间字段统一 UTC naive(见 _normalize_timestamp_for_storage)
+                data = {
+                    k: _normalize_timestamp_for_storage(v) if k in _TIMESTAMP_FIELDS else v
+                    for k, v in data.items()
+                }
 
                 # 构建插入语句
                 columns = list(data.keys())
@@ -448,6 +511,8 @@ class MetadataManager:
 
                 for key, value in updates.items():
                     set_clauses.append(f"{key} = ?")
+                    if key in _TIMESTAMP_FIELDS:
+                        value = _normalize_timestamp_for_storage(value)
                     if isinstance(value, (dict, list)):
                         values.append(json.dumps(value))
                     else:

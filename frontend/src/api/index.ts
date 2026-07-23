@@ -178,7 +178,6 @@ export {
     validateSetOperation,
     executeSetOperation,
     simpleUnionSetOperation,
-    exportSetOperation,
     type SetOperationTypeApi,
     type SetOperationConfigPayload,
     type SetOperationRequestPayload,
@@ -188,9 +187,6 @@ export {
     type SetOperationExecuteResult,
     type SimpleUnionSetOperationPayload,
     type SimpleUnionSetOperationResult,
-    type SetOperationExportFormat,
-    type SetOperationExportPayload,
-    type SetOperationExportResult,
 } from './setOperationsApi';
 
 // ==================== Pivot API & SQL Favorites ====================
@@ -206,6 +202,12 @@ export {
     getAppConfig,
     type AppConfigResponse,
 } from './pivotQueryApi';
+export {
+    inferColumnCast,
+    type InferCastResult,
+    type InferCastReason,
+    type InferColumnCastPayload,
+} from './columnAnalysisApi';
 
 // ==================== AI API ====================
 export {

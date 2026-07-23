@@ -175,7 +175,8 @@ def test_explain_sql_route_returns_explanation(tmp_path, monkeypatch):
     assert resp.json()["data"]["explanation"]
 
 
-def test_nl_to_sql_route_returns_safe_select(tmp_path, monkeypatch):
+def _put_enabled_ai_settings(tmp_path, monkeypatch):
+    """启用 AI 并配好一个 provider(nl-to-sql 系列用例的公共前置)。"""
     monkeypatch.setenv("LLM_KEY_SECRET", "test-secret")
     settings_path = tmp_path / "ai_settings.json"
     monkeypatch.setattr(ai_router.ai_config, "ai_settings_path", lambda: settings_path)
@@ -184,15 +185,119 @@ def test_nl_to_sql_route_returns_safe_select(tmp_path, monkeypatch):
         "providers": [{"id": "p1", "type": "openai", "api_key": "sk-x",
                        "models": ["gpt-4o-mini"], "enabled": True}],
         "features": {}})
-    fake = '{"sql":"SELECT count(*) FROM orders","used_tables":["orders"]}'
-    with patch("core.services.llm_service.llm_client.complete", return_value=fake):
-        resp = client.post("/api/ai/nl-to-sql", json={
-            "question": "多少订单", "tables": ["orders"], "locale": "zh"})
-    assert resp.status_code == 200
-    data = resp.json()["data"]
-    assert data["safe"] is True
-    assert data["sql"] == "SELECT count(*) FROM orders"
-    assert data["used_tables"] == ["orders"]
+
+
+def _with_real_table(name: str, create_sql: str, insert_sql: str | None = None):
+    """在共享测试库里建一张确定性的真实表,返回清理函数。"""
+    from core.database.duckdb_engine import with_duckdb_connection
+
+    with with_duckdb_connection() as con:
+        con.execute(f"DROP TABLE IF EXISTS {name}")
+        con.execute(create_sql)
+        if insert_sql:
+            con.execute(insert_sql)
+
+    def _cleanup():
+        with with_duckdb_connection() as con:
+            con.execute(f"DROP TABLE IF EXISTS {name}")
+
+    return _cleanup
+
+
+def test_nl_to_sql_route_returns_safe_select(tmp_path, monkeypatch):
+    _put_enabled_ai_settings(tmp_path, monkeypatch)
+    t = "_ai_nlsql_ok"
+    cleanup = _with_real_table(t, f"CREATE TABLE {t}(a INTEGER)", f"INSERT INTO {t} VALUES (1)")
+    try:
+        fake = f'{{"sql":"SELECT count(*) FROM {t}","used_tables":["{t}"]}}'
+        with patch("core.services.llm_service.llm_client.complete",
+                   return_value=fake) as mock_completion:
+            resp = client.post("/api/ai/nl-to-sql", json={
+                "question": "多少行", "tables": [t], "locale": "zh"})
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data["safe"] is True
+        assert data["sql"] == f"SELECT count(*) FROM {t}"
+        assert data["used_tables"] == [t]
+        # 表真实存在 → EXPLAIN 一次通过,不触发修复轮
+        assert mock_completion.call_count == 1
+    finally:
+        cleanup()
+
+
+def test_nl_to_sql_route_self_repairs_end_to_end(tmp_path, monkeypatch):
+    """列名写错的生成 → EXPLAIN 失败 → 报错医生修一轮 → 返回修复后 SQL。"""
+    _put_enabled_ai_settings(tmp_path, monkeypatch)
+    t = "_ai_nlsql_repair"
+    cleanup = _with_real_table(
+        t,
+        f"CREATE TABLE {t}(order_id INTEGER, status VARCHAR)",
+        f"INSERT INTO {t} VALUES (1,'active'),(2,'closed')",
+    )
+    try:
+        good = f"SELECT count(*) FROM {t} WHERE status = 'active'"
+        responses = [
+            f'{{"sql":"SELECT count(*) FROM {t} WHERE statuss = \'active\'",'
+            f'"used_tables":["{t}"]}}',
+            f'{{"explanation":"列名写错","fixed_sql":"{good}"}}',
+        ]
+        with patch("core.services.llm_service.llm_client.complete",
+                   side_effect=responses) as mock_completion:
+            resp = client.post("/api/ai/nl-to-sql", json={
+                "question": "活跃的多少", "tables": [t], "locale": "zh"})
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data["sql"] == good
+        assert data["safe"] is True
+        assert mock_completion.call_count == 2
+    finally:
+        cleanup()
+
+
+def test_nl_to_sql_route_falls_back_when_repair_fails(tmp_path, monkeypatch):
+    """修复轮也没救回来 → 回退首轮 SQL(响应形状不变),且只修一轮。"""
+    _put_enabled_ai_settings(tmp_path, monkeypatch)
+    t = "_ai_nlsql_fallback"
+    cleanup = _with_real_table(t, f"CREATE TABLE {t}(a INTEGER)")
+    try:
+        bad = f"SELECT nope FROM {t}"
+        responses = [
+            f'{{"sql":"{bad}","used_tables":["{t}"]}}',
+            f'{{"explanation":"还是错","fixed_sql":"SELECT still_nope FROM {t}"}}',
+        ]
+        with patch("core.services.llm_service.llm_client.complete",
+                   side_effect=responses) as mock_completion:
+            resp = client.post("/api/ai/nl-to-sql", json={
+                "question": "?", "tables": [t], "locale": "zh"})
+        assert resp.status_code == 200
+        data = resp.json()["data"]
+        assert data["sql"] == bad
+        assert data["safe"] is True  # 语义仍是只读 SELECT;能否执行由用户点击后揭晓(维持旧行为)
+        assert mock_completion.call_count == 2
+    finally:
+        cleanup()
+
+
+def test_nl_to_sql_prompt_includes_data_samples(tmp_path, monkeypatch):
+    """真实表的取值样例必须进 prompt——这是 WHERE 条件不靠猜的关键。"""
+    _put_enabled_ai_settings(tmp_path, monkeypatch)
+    t = "_ai_nlsql_samples"
+    cleanup = _with_real_table(
+        t,
+        f"CREATE TABLE {t}(id INTEGER, status VARCHAR)",
+        f"INSERT INTO {t} VALUES (1,'active'),(2,'closed')",
+    )
+    try:
+        fake = f'{{"sql":"SELECT count(*) FROM {t}","used_tables":["{t}"]}}'
+        with patch("core.services.llm_service.llm_client.complete",
+                   return_value=fake) as mock_completion:
+            client.post("/api/ai/nl-to-sql", json={
+                "question": "多少行", "tables": [t], "locale": "zh"})
+        user_msg = mock_completion.call_args_list[0].kwargs["messages"][1]["content"]
+        assert "'active'" in user_msg
+        assert "status values:" in user_msg
+    finally:
+        cleanup()
 
 
 def test_build_schema_text_logs_when_truncating(caplog):
@@ -202,6 +307,30 @@ def test_build_schema_text_logs_when_truncating(caplog):
         ai_router._build_schema_text(names)
     assert any("truncat" in r.getMessage().lower() for r in caplog.records), \
         "tables 超过 10 个时应记录截断提示，避免静默丢弃"
+
+
+def test_build_schema_text_samples_local_but_not_qualified_tables(tmp_path, monkeypatch):
+    """本地裸表名带样例 + 免责声明;限定名(联邦形态,带 \".\")只出结构不采样。"""
+    from core.services import schema_sampler
+
+    t = "_ai_schema_sample_probe"
+    cleanup = _with_real_table(
+        t,
+        f"CREATE TABLE {t}(id INTEGER, status VARCHAR)",
+        f"INSERT INTO {t} VALUES (1,'active'),(2,'closed')",
+    )
+    try:
+        text = ai_router._build_schema_text([t])
+        assert schema_sampler.SAMPLE_DISCLAIMER in text
+        assert "sample rows:" in text
+        assert "status values:" in text and "'active'" in text
+
+        qualified = ai_router._build_schema_text([f"main.{t}"])
+        assert f"main.{t}(" in qualified  # 结构照常
+        assert "sample rows:" not in qualified  # 但不采样
+        assert schema_sampler.SAMPLE_DISCLAIMER not in qualified
+    finally:
+        cleanup()
 
 
 def test_chat_route_returns_content(tmp_path, monkeypatch):

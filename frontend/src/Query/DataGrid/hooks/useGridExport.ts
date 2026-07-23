@@ -5,7 +5,7 @@
  * - 支持导出 CSV 和 JSON 格式
  * - 支持导出范围选择（全部/筛选后/选中）
  * - 正确处理特殊类型（BigInt、LIST、STRUCT、Date）
- * - UTF-8 BOM 支持（Excel 兼容）
+ * - CSV 支持 UTF-8 BOM（Excel 兼容）
  * - RFC 4180 标准 CSV 格式
  */
 
@@ -154,10 +154,14 @@ function jsonReplacer(_key: string, value: unknown): unknown {
 /**
  * 下载文件
  */
-function downloadFile(content: string, filename: string, mimeType: string): void {
-  // 添加 UTF-8 BOM（Excel 兼容）
+function downloadFile(
+  content: string,
+  filename: string,
+  mimeType: string,
+  includeBom = true
+): void {
   const BOM = '\uFEFF';
-  const blob = new Blob([BOM + content], { type: `${mimeType};charset=utf-8` });
+  const blob = new Blob([includeBom ? BOM + content : content], { type: `${mimeType};charset=utf-8` });
   const url = URL.createObjectURL(blob);
   const a = document.createElement('a');
   a.href = url;
@@ -177,15 +181,16 @@ function downloadFile(content: string, filename: string, mimeType: string): void
 async function deliverTextFile(
   content: string,
   filename: string,
-  mimeType: string
+  mimeType: string,
+  includeBom = true
 ): Promise<{ path?: string } | null> {
   if (isTauri()) {
     const target = await pickSavePath(filename);
     if (!target) return null;
-    await writeTextToPath(target, content, { bom: true });
+    await writeTextToPath(target, content, { bom: includeBom });
     return { path: target };
   }
-  downloadFile(content, filename, mimeType);
+  downloadFile(content, filename, mimeType, includeBom);
   return {};
 }
 
@@ -419,7 +424,12 @@ export function useGridExport({
 
         // 使用 jsonReplacer 处理 BigInt
         const content = JSON.stringify(filteredExportData, jsonReplacer, 2);
-        const delivered = await deliverTextFile(content, `${filename}.json`, 'application/json');
+        const delivered = await deliverTextFile(
+          content,
+          `${filename}.json`,
+          'application/json',
+          false
+        );
         if (!delivered) return; // 用户取消存盘对话框
         if (delivered.path) {
           showSavedToToast(t, delivered.path);

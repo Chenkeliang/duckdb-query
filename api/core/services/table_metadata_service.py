@@ -7,7 +7,8 @@ import math
 from typing import List, Optional
 
 from models.pivot_query_models import ColumnStatistics, TableMetadata
-from core.database.duckdb_engine import fetch_query_dataframe
+from core.common.duckdb_types import is_numeric_type
+from core.common.sql_identifiers import quote_identifier
 from core.database.table_metadata_cache import table_metadata_cache
 
 logger = logging.getLogger(__name__)
@@ -39,7 +40,9 @@ def _normalize_json_like_string(raw: str) -> Optional[str]:
         return None
 
 
-def get_column_statistics(table_name: str, column_name: str, con) -> ColumnStatistics:
+def get_column_statistics(
+    table_name: str, column_name: str, con, data_type: str = None
+) -> ColumnStatistics:
     """
     Get statistics for a specific column
 
@@ -47,75 +50,52 @@ def get_column_statistics(table_name: str, column_name: str, con) -> ColumnStati
         table_name: Name of the table
         column_name: Name of the column
         con: DuckDB connection
+        data_type: 列类型;调用方(如 get_table_metadata)已有 DESCRIBE 结果时传入,
+            避免逐列重复 DESCRIBE(Codex S-16 的 N+1 之一)。缺省时本函数自行 DESCRIBE。
 
     Returns:
         ColumnStatistics object with column metadata
     """
     try:
-        # Get basic column info
-        column_info_sql = f'DESCRIBE "{table_name}"'
-        columns_df = con.execute(column_info_sql).fetchdf()
-
-        column_row = columns_df[columns_df["column_name"] == column_name]
-        if column_row.empty:
-            raise ValueError(f"Column '{column_name}' does not exist in table '{table_name}'")
-
-        data_type = column_row.iloc[0]["column_type"]
-
-        # Get statistics
-        stats_sql = f"""
-        SELECT 
-            COUNT(*) as total_count,
-            COUNT("{column_name}") as non_null_count,
-            COUNT(*) - COUNT("{column_name}") as null_count,
-            COUNT(DISTINCT "{column_name}") as distinct_count
-        FROM "{table_name}"
-        """
-
-        stats_df = con.execute(stats_sql).fetchdf()
-        stats_row = stats_df.iloc[0]
-
-        # Get min/max for numeric columns
-        min_value = None
-        max_value = None
-        avg_value = None
-
-        # 前缀匹配：DESCRIBE 返回的是 DECIMAL(38,2) 这类带参数的完整类型名
-        if str(data_type).upper().startswith(
-            (
-                "INTEGER",
-                "BIGINT",
-                "SMALLINT",
-                "TINYINT",
-                "HUGEINT",
-                "UBIGINT",
-                "UINTEGER",
-                "USMALLINT",
-                "UTINYINT",
-                "DOUBLE",
-                "FLOAT",
-                "REAL",
-                "DECIMAL",
-                "NUMERIC",
+        if data_type is None:
+            describe_rows = con.execute(
+                f"DESCRIBE {quote_identifier(table_name)}"
+            ).fetchall()
+            # DESCRIBE 行首两列固定为 column_name / column_type
+            data_type = next(
+                (row[1] for row in describe_rows if str(row[0]) == column_name), None
             )
-        ):
-            minmax_sql = f"""
-            SELECT
-                MIN("{column_name}") as min_val,
-                MAX("{column_name}") as max_val,
-                AVG(CAST("{column_name}" AS DOUBLE)) as avg_val
-            FROM "{table_name}"
-            WHERE "{column_name}" IS NOT NULL
-            """
-            minmax_df = fetch_query_dataframe(con, minmax_sql)
-            if not minmax_df.empty:
-                minmax_row = minmax_df.iloc[0]
-                min_value = minmax_row["min_val"]
-                max_value = minmax_row["max_val"]
-                avg_value = minmax_row["avg_val"]
+            if data_type is None:
+                raise ValueError(
+                    f"Column '{column_name}' does not exist in table '{table_name}'"
+                )
+
+        qt = quote_identifier(table_name)
+        qc = quote_identifier(column_name)
+
+        # count 类统计 + (数值列)min/max/avg 合并为一次全表扫描(原来是两条)
+        numeric = is_numeric_type(str(data_type))
+        min_value = max_value = avg_value = None
+        if numeric:
+            stats_sql = (
+                f"SELECT COUNT(*), COUNT({qc}), COUNT(*) - COUNT({qc}), "
+                f"COUNT(DISTINCT {qc}), MIN({qc}), MAX({qc}), "
+                f"AVG(CAST({qc} AS DOUBLE)) FROM {qt}"
+            )
+            row = con.execute(stats_sql).fetchone()
+            (total_count, non_null_count, null_count, distinct_count,
+             min_value, max_value, avg_value) = row
+        else:
+            stats_sql = (
+                f"SELECT COUNT(*), COUNT({qc}), COUNT(*) - COUNT({qc}), "
+                f"COUNT(DISTINCT {qc}) FROM {qt}"
+            )
+            total_count, non_null_count, null_count, distinct_count = con.execute(
+                stats_sql
+            ).fetchone()
 
         # Get sample values
-        column_ref = f'"{column_name}"'
+        column_ref = qc
         is_complex_type = any(
             marker in str(data_type).upper()
             for marker in ["STRUCT", "MAP", "LIST", "ARRAY", "JSON"]
@@ -123,13 +103,13 @@ def get_column_statistics(table_name: str, column_name: str, con) -> ColumnStati
         sample_expr = f"to_json({column_ref})" if is_complex_type else column_ref
         sample_sql = f"""
         SELECT DISTINCT {sample_expr} AS sample_value
-        FROM "{table_name}"
-        WHERE "{column_name}" IS NOT NULL
+        FROM {qt}
+        WHERE {qc} IS NOT NULL
         LIMIT 10
         """
-        sample_df = fetch_query_dataframe(con, sample_sql)
+        sample_rows = con.execute(sample_sql).fetchall()
         sample_values = []
-        for val in sample_df["sample_value"].tolist():
+        for (val,) in sample_rows:
             try:
                 if isinstance(val, str):
                     normalized = _normalize_json_like_string(val)
@@ -166,8 +146,8 @@ def get_column_statistics(table_name: str, column_name: str, con) -> ColumnStati
         return ColumnStatistics(
             column_name=column_name,
             data_type=data_type,
-            null_count=int(stats_row["null_count"]),
-            distinct_count=int(stats_row["distinct_count"]),
+            null_count=int(null_count),
+            distinct_count=int(distinct_count),
             min_value=safe_number(min_value),
             max_value=safe_number(max_value),
             avg_value=safe_float(avg_value),
@@ -194,17 +174,20 @@ def get_table_metadata(table_name: str, con, use_cache: bool = True) -> TableMet
     def _load_metadata() -> TableMetadata:
         # Get table row count
         count_sql = f'SELECT COUNT(*) as row_count FROM "{table_name}"'
-        row_count = con.execute(count_sql).fetchdf().iloc[0]["row_count"]
+        row_count = con.execute(count_sql).fetchone()[0]
 
-        # Get column information
+        # Get column information（DESCRIBE 行首两列固定为 column_name / column_type）
         columns_sql = f'DESCRIBE "{table_name}"'
-        columns_df = con.execute(columns_sql).fetchdf()
+        describe_rows = con.execute(columns_sql).fetchall()
 
         column_stats = []
-        for _, column_row in columns_df.iterrows():
-            column_name = column_row["column_name"]
+        for column_row in describe_rows:
+            column_name = str(column_row[0])
             try:
-                stats = get_column_statistics(table_name, column_name, con)
+                # 复用外层 DESCRIBE 得到的列类型,避免逐列再 DESCRIBE(S-16)
+                stats = get_column_statistics(
+                    table_name, column_name, con, data_type=str(column_row[1])
+                )
                 column_stats.append(stats)
             except Exception as e:
                 logger.warning(
@@ -214,7 +197,7 @@ def get_table_metadata(table_name: str, con, use_cache: bool = True) -> TableMet
                 column_stats.append(
                     ColumnStatistics(
                         column_name=column_name,
-                        data_type=column_row["column_type"],
+                        data_type=str(column_row[1]),
                         null_count=0,
                         distinct_count=0,
                         sample_values=[],

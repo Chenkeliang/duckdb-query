@@ -61,10 +61,70 @@ def local_tables():
 
 def test_catalog_includes_local_tables_with_columns(local_tables):
     text = ai_router._build_catalog_text(set())
-    assert "Local DuckDB tables:" in text
+    assert "Local DuckDB tables (newest created first):" in text
     for name in local_tables:
         assert name in text
     assert "id INTEGER" in text
+
+
+def test_catalog_lists_local_tables_newest_first(local_tables):
+    """Regression (2026-07-22 实测):目录曾按表名字母序排,模型只能靠表名里的
+    时间戳猜"最新的表"且猜错。无元数据时按 table_oid DESC 兜底(后建在前)。"""
+    older, newer = local_tables  # fixture 按顺序创建,第二张更新
+    text = ai_router._build_catalog_text(set())
+    assert text.index(newer) < text.index(older)
+
+
+def test_catalog_orders_by_registry_and_annotates_creation_time(monkeypatch, local_tables):
+    """Regression (2026-07-22/23):目录顺序与侧边栏同口径 = 登记表 sort_seq;
+    迁移种子按元数据 created_at 冻结(压过 oid 序),且逐行标注创建时间
+    (存储 UTC 08:49 → 应用时区 +08 显示 16:49)。"""
+    from core.database.duckdb_pool import with_system_connection
+    from core.services import table_registry
+
+    with with_system_connection() as conn:
+        table_registry._ensure_schema(conn)
+        conn.execute("DELETE FROM system_table_registry")
+
+    older, newer = local_tables  # oid 序:newer 在前
+    meta = {
+        older: {"created_at": "2026-07-22T08:49:51"},
+        newer: {"created_at": "2026-07-20T00:00:00"},
+    }
+    monkeypatch.setattr(
+        ai_router.file_datasource_manager, "get_file_datasource", meta.get
+    )
+    text = ai_router._build_catalog_text(set())
+    assert text.index(older) < text.index(newer)  # 迁移按元数据时间,压过 oid 序
+    assert "[created 2026-07-22 16:49]" in text
+
+
+def test_catalog_ignores_non_main_local_schema():
+    """Regression 2026-07-23:AI 与侧边栏都只登记 main schema，避免序号反复增删。"""
+    schema = f"cat_schema_{uuid.uuid4().hex[:8]}"
+    table = f"cat_other_{uuid.uuid4().hex[:8]}"
+    shared = f"cat_shared_{uuid.uuid4().hex[:8]}"
+    with with_duckdb_connection() as con:
+        con.execute(f'CREATE SCHEMA "{schema}"')
+        con.execute(f'CREATE TABLE "{schema}"."{table}" AS SELECT 1 AS id')
+        con.execute(f'CREATE TABLE "{shared}" AS SELECT 1 AS main_id')
+        con.execute(
+            f'CREATE TABLE "{schema}"."{shared}" AS SELECT 1 AS leaked_extra_column'
+        )
+    try:
+        text = ai_router._build_catalog_text(set())
+        assert table not in text
+        assert shared in text
+        assert "main_id INTEGER" in text
+        assert "leaked_extra_column" not in text
+    finally:
+        with with_duckdb_connection() as con:
+            con.execute(f'DROP SCHEMA "{schema}" CASCADE')
+            con.execute(f'DROP TABLE "{shared}"')
+        from core.services import table_registry
+
+        table_registry.remove(table)
+        table_registry.remove(shared)
 
 
 def test_catalog_includes_external_db_and_rules_table(sqlite_alarm_db, local_tables):
@@ -120,5 +180,5 @@ def test_catalog_attach_failure_does_not_raise(local_tables):
     """外部连接枚举失败（如 connection_id 不存在）应被吞掉，不影响本地段输出。"""
     attach = [AttachDatabase(alias="bogus", connection_id="does-not-exist")]
     text = ai_router._build_catalog_text(set(), attach)
-    assert "Local DuckDB tables:" in text
+    assert "Local DuckDB tables (newest created first):" in text
     assert "External database" not in text

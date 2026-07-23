@@ -278,13 +278,16 @@ export async function saveQueryToDuckDB(
     datasource: DataSource,
     tableAlias: string,
     queryData: Record<string, unknown>[] | null = null,
-    attachDatabases?: { alias: string; connection_id: string }[]
+    attachDatabases?: { alias: string; connection_id: string }[],
+    applyRowLimit: boolean = false
 ): Promise<{ success: boolean; table_name?: string; message?: string; messageCode?: string }> {
     try {
         const requestData: Record<string, unknown> = {
             sql,
             datasource,
-            table_alias: tableAlias
+            table_alias: tableAlias,
+            // 行数范围:false(默认)=全量落表,逐字执行尊重用户 LIMIT;true=缺则补 max_query_rows
+            apply_row_limit: applyRowLimit,
         };
 
         if (queryData && queryData.length > 0) {

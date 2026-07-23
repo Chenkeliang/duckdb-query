@@ -160,6 +160,7 @@ export interface AppConfigResponse {
     enable_pivot_tables: boolean;
     pivot_table_extension: string;
     max_query_rows: number;
+    pivot_max_columns?: number;
     max_file_size: number;
     max_file_size_display: string;
     federated_query_timeout?: number;

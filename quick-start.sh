@@ -81,7 +81,6 @@ setup_config() {
   "max_tables": 200,
   "timezone": "Asia/Shanghai",
   "duckdb_memory_limit": "8GB",
-  "duckdb_threads": 8,
   "duckdb_extensions": ["excel", "json", "parquet", "httpfs", "mysql", "postgres"],
   "server_data_mounts": [
     { "label": "Shared Data", "path": "/app/server_mounts" },

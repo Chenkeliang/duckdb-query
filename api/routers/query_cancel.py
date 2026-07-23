@@ -3,6 +3,7 @@
 提供取消正在执行的同步查询的能力
 """
 
+import asyncio
 import logging
 from fastapi import APIRouter
 
@@ -36,7 +37,9 @@ async def cancel_sync_query(request_id: str):
     logger.info("Received cancel request for query: %s (full_id: %s)", request_id, full_query_id)
 
     # 尝试中断查询
-    success = connection_registry.interrupt(full_query_id)
+    success = await asyncio.to_thread(
+        connection_registry.interrupt_with_remote, full_query_id
+    )
 
     if success:
         logger.info("Query %s cancelled successfully", request_id)

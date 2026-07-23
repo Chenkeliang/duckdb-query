@@ -1,3 +1,4 @@
+from datetime import datetime
 from uuid import uuid4
 
 import pytest
@@ -9,6 +10,7 @@ from fastapi.testclient import TestClient
 from core.database.duckdb_engine import with_duckdb_connection
 from core.data.file_datasource_manager import file_datasource_manager
 from main import app
+from routers import paste_data
 
 
 client = TestClient(app)
@@ -17,6 +19,14 @@ client = TestClient(app)
 def _cleanup_table(table_name: str):
     with with_duckdb_connection() as con:
         con.execute(f'DROP TABLE IF EXISTS "{table_name}"')
+
+
+def test_sanitize_table_name_uses_storage_time_for_fallback(monkeypatch):
+    """Regression (2026-07): fallback names must use the shared storage clock."""
+    fixed_time = datetime(2026, 7, 21, 10, 11, 12)
+    monkeypatch.setattr(paste_data, "get_storage_time", lambda: fixed_time)
+
+    assert paste_data._sanitize_table_name("!!!") == "pasted_table_20260721_101112"
 
 
 def test_paste_data_creates_typed_table():
@@ -77,6 +87,56 @@ def test_paste_data_creates_typed_table():
         _cleanup_table(table_name)
 
 
+def test_paste_data_dedupes_duplicate_column_names():
+    """复审 P1:重复列名会让底层 read_csv 静默重命名第二列,而 Python 侧仍按原名引用,
+    两列都取第一列值、第二列数据丢失。现按位置去重列名(id,id → id,id_1),两列数据都保留。"""
+    table_name = f"paste_dup_{uuid4().hex[:8]}"
+    payload = {
+        "table_name": table_name,
+        "column_names": ["id", "id"],
+        "column_types": ["VARCHAR", "VARCHAR"],
+        "data_rows": [["left1", "right1"], ["left2", "right2"]],
+        "delimiter": ",",
+        "has_header": False,
+    }
+    response = client.post("/api/paste-data", json=payload)
+    body = response.json()
+    try:
+        assert response.status_code == 200, response.text
+        assert body["success"] is True
+        with with_duckdb_connection() as con:
+            names = [r[1] for r in con.execute(f'PRAGMA table_info("{table_name}")').fetchall()]
+            assert names == ["id", "id_1"]  # 去重
+            rows = con.execute(f'SELECT * FROM "{table_name}" ORDER BY id').fetchall()
+            # 第二列的 right1/right2 未丢失(不是 left1/left2)
+            assert rows == [("left1", "right1"), ("left2", "right2")]
+    finally:
+        _cleanup_table(table_name)
+
+
+def test_paste_data_dedupes_case_insensitive_duplicates():
+    """复审 P1:id 与 ID 在 DuckDB 里是同一列名(大小写不敏感),大小写敏感去重会漏掉,
+    底层 read_csv 静默把 ID 改成 ID_1 而 Python 侧仍按原名引用 → 第二列数据丢失。"""
+    table_name = f"paste_ci_{uuid4().hex[:8]}"
+    payload = {
+        "table_name": table_name,
+        "column_names": ["id", "ID"],
+        "column_types": ["VARCHAR", "VARCHAR"],
+        "data_rows": [["left", "right"]],
+        "delimiter": ",",
+        "has_header": False,
+    }
+    response = client.post("/api/paste-data", json=payload)
+    try:
+        assert response.status_code == 200, response.text
+        with with_duckdb_connection() as con:
+            names = [r[1] for r in con.execute(f'PRAGMA table_info("{table_name}")').fetchall()]
+            assert names == ["id", "ID_1"]
+            assert con.execute(f'SELECT * FROM "{table_name}"').fetchall() == [("left", "right")]
+    finally:
+        _cleanup_table(table_name)
+
+
 def test_paste_data_defaults_for_empty_cells():
     table_name = f"paste_unit_{uuid4().hex[:8]}"
     payload = {
@@ -103,10 +163,154 @@ def test_paste_data_defaults_for_empty_cells():
 
         with with_duckdb_connection() as con:
             stored_row = con.execute(f'SELECT * FROM "{table_name}"').fetchone()
-            assert stored_row[0] == 0  # INTEGER 默认值
-            assert stored_row[1] == 0.0  # DOUBLE 默认值
-            assert stored_row[2] is False  # BOOLEAN 默认值
-            assert stored_row[3] is None  # DATE 无法解析为 NULL
-            assert stored_row[4] == ""  # VARCHAR 默认为空串
+            # 空数值格→NULL(不再造 0):INTEGER/DOUBLE 现与 DECIMAL/DATE 同语义,
+            # "缺失"不再被伪装成真实值 0
+            assert stored_row[0] is None  # INTEGER 空→NULL
+            assert stored_row[1] is None  # DOUBLE 空→NULL
+            assert stored_row[2] is False  # BOOLEAN 默认值(保持既有语义)
+            assert stored_row[3] is None  # DATE 空→NULL
+            assert stored_row[4] == ""  # VARCHAR 默认为空串(粘贴 VARCHAR 契约)
     finally:
         _cleanup_table(table_name)
+
+
+def test_paste_decimal_infers_scale_and_keeps_exact_text():
+    """DECIMAL 泛型:标度按列内最大小数位推断,12.50 原样保真(回归:曾只有
+    DOUBLE 选项,12.50 落库变 12.5)。"""
+    table_name = f"paste_dec_{uuid4().hex[:8]}"
+    payload = {
+        "table_name": table_name,
+        "column_names": ["amt"],
+        "column_types": ["DECIMAL"],
+        "data_rows": [["12.50"], ["3.00"], ["0.01"]],
+        "delimiter": ",",
+        "has_header": False,
+    }
+    response = client.post("/api/paste-data", json=payload)
+    try:
+        assert response.json()["success"] is True
+        with with_duckdb_connection() as con:
+            col_type = {r[1]: r[2] for r in con.execute(
+                f'PRAGMA table_info("{table_name}")').fetchall()}["amt"]
+            assert col_type == "DECIMAL(38,2)", col_type
+            vals = [str(r[0]) for r in con.execute(
+                f'SELECT amt FROM "{table_name}" ORDER BY amt').fetchall()]
+            assert vals == ["0.01", "3.00", "12.50"], vals
+    finally:
+        _cleanup_table(table_name)
+        file_datasource_manager.delete_file_datasource(table_name)
+
+
+def test_paste_decimal_mixed_scale_normalizes_without_rounding():
+    table_name = f"paste_dec_{uuid4().hex[:8]}"
+    payload = {
+        "table_name": table_name,
+        "column_names": ["v"],
+        "column_types": ["DECIMAL"],
+        "data_rows": [["1.5"], ["1.505"]],
+        "delimiter": ",",
+        "has_header": False,
+    }
+    response = client.post("/api/paste-data", json=payload)
+    try:
+        assert response.json()["success"] is True
+        with with_duckdb_connection() as con:
+            col_type = {r[1]: r[2] for r in con.execute(
+                f'PRAGMA table_info("{table_name}")').fetchall()}["v"]
+            assert col_type == "DECIMAL(38,3)", col_type  # 最大标度归一,数值不变
+            vals = [str(r[0]) for r in con.execute(
+                f'SELECT v FROM "{table_name}" ORDER BY v').fetchall()]
+            assert vals == ["1.500", "1.505"], vals
+    finally:
+        _cleanup_table(table_name)
+        file_datasource_manager.delete_file_datasource(table_name)
+
+
+def test_paste_decimal_falls_back_to_varchar_on_mixed_content():
+    """混杂文本/零前导编码列:宁保 VARCHAR 忠实文本,绝不静默变值。"""
+    for rows, expected in (
+        ([["12.50"], ["abc"]], ["12.50", "abc"]),          # 混杂文本
+        ([["007.50"], ["1.25"]], ["007.50", "1.25"]),      # 零前导=编码语义
+    ):
+        table_name = f"paste_dec_{uuid4().hex[:8]}"
+        payload = {
+            "table_name": table_name,
+            "column_names": ["v"],
+            "column_types": ["DECIMAL"],
+            "data_rows": rows,
+            "delimiter": ",",
+            "has_header": False,
+        }
+        response = client.post("/api/paste-data", json=payload)
+        try:
+            assert response.json()["success"] is True
+            with with_duckdb_connection() as con:
+                col_type = {r[1]: r[2] for r in con.execute(
+                    f'PRAGMA table_info("{table_name}")').fetchall()}["v"]
+                assert col_type == "VARCHAR", (rows, col_type)
+                vals = sorted(str(r[0]) for r in con.execute(
+                    f'SELECT v FROM "{table_name}"').fetchall())
+                assert vals == sorted(expected), vals
+        finally:
+            _cleanup_table(table_name)
+            file_datasource_manager.delete_file_datasource(table_name)
+
+
+def test_paste_decimal_integer_column_and_empty_cells():
+    table_name = f"paste_dec_{uuid4().hex[:8]}"
+    payload = {
+        "table_name": table_name,
+        "column_names": ["n", "amt"],
+        "column_types": ["DECIMAL", "DECIMAL"],
+        "data_rows": [["12", "12.50"], ["7", ""]],
+        "delimiter": ",",
+        "has_header": False,
+    }
+    response = client.post("/api/paste-data", json=payload)
+    try:
+        assert response.json()["success"] is True
+        with with_duckdb_connection() as con:
+            types = {r[1]: r[2] for r in con.execute(
+                f'PRAGMA table_info("{table_name}")').fetchall()}
+            assert types["n"] == "BIGINT", types      # 全整数列推断为 BIGINT(同样无损)
+            assert types["amt"] == "DECIMAL(38,2)", types
+            rows = con.execute(
+                f'SELECT n, amt FROM "{table_name}" ORDER BY n').fetchall()
+            assert (rows[0][0], str(rows[0][1])) == (7, "None"), rows  # 空值→NULL,不造 0
+            assert (rows[1][0], str(rows[1][1])) == (12, "12.50"), rows
+    finally:
+        _cleanup_table(table_name)
+        file_datasource_manager.delete_file_datasource(table_name)
+
+
+def test_paste_date_infers_pure_date_vs_timestamp():
+    """DATE 泛型按列内容定型(与 CSV 导入一致):纯日期列→DATE,
+    含时间→TIMESTAMP;有内容但非日期→VARCHAR 忠实文本。"""
+    cases = [
+        ([["2026-01-01"], ["2026-03-15"]], "DATE"),
+        ([["2026-01-01 10:30:00"], ["2026-03-15 08:00:00"]], "TIMESTAMP"),
+        ([["abc"], ["2026-01-01"]], "VARCHAR"),  # 混杂:保文本,不造 NULL
+    ]
+    for rows, expected_type in cases:
+        table_name = f"paste_date_{uuid4().hex[:8]}"
+        payload = {
+            "table_name": table_name,
+            "column_names": ["d"],
+            "column_types": ["DATE"],
+            "data_rows": rows,
+            "delimiter": ",",
+            "has_header": False,
+        }
+        response = client.post("/api/paste-data", json=payload)
+        try:
+            assert response.json()["success"] is True, (rows, response.text)
+            with with_duckdb_connection() as con:
+                col_type = {r[1]: r[2] for r in con.execute(
+                    f'PRAGMA table_info("{table_name}")').fetchall()}["d"]
+                assert col_type == expected_type, (rows, col_type)
+                n = con.execute(
+                    f'SELECT count(*) FROM "{table_name}"').fetchone()[0]
+                assert n == len(rows)
+        finally:
+            _cleanup_table(table_name)
+            file_datasource_manager.delete_file_datasource(table_name)

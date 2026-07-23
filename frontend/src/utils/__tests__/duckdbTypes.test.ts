@@ -19,8 +19,43 @@ import {
   isStringType,
   isDateTimeType,
   isComplexType,
+  validateCastType,
   DUCKDB_CAST_TYPES,
 } from '../duckdbTypes';
+
+describe('validateCastType (与后端 validate_cast_type 逐字镜像:复审 P1)', () => {
+  it("'auto' 任意大小写 → 哨兵 'auto'(不转换)", () => {
+    for (const v of ['auto', 'AUTO', 'Auto', ' auto ']) {
+      expect(validateCastType(v)).toEqual({ ok: true, normalized: 'auto' });
+    }
+  });
+
+  it('裸 DECIMAL 拒绝(隐性 DECIMAL(18,3) 静默舍入)', () => {
+    const r = validateCastType('DECIMAL');
+    expect(r.ok).toBe(false);
+    expect(r.reason).toBe('bare_decimal');
+    expect(validateCastType('numeric').reason).toBe('bare_decimal'); // 别名同拒
+  });
+
+  it('DECIMAL(p,s):p∈[1,38] 且 s≤p', () => {
+    expect(validateCastType('decimal(38,6)')).toEqual({ ok: true, normalized: 'DECIMAL(38,6)' });
+    expect(validateCastType('DECIMAL(40,2)').reason).toBe('decimal_range'); // p>38
+    expect(validateCastType('DECIMAL(10,20)').reason).toBe('decimal_range'); // s>p
+  });
+
+  it('规范标量类型通过并归一(别名 int8→BIGINT、text→VARCHAR)', () => {
+    expect(validateCastType('double')).toEqual({ ok: true, normalized: 'DOUBLE' });
+    expect(validateCastType('int8')).toEqual({ ok: true, normalized: 'BIGINT' });
+    expect(validateCastType('BIGINT')).toEqual({ ok: true, normalized: 'BIGINT' });
+  });
+
+  it('空串与注入形串拒绝', () => {
+    expect(validateCastType('').reason).toBe('empty');
+    expect(validateCastType('   ').reason).toBe('empty');
+    expect(validateCastType('VARCHAR),(1').ok).toBe(false);
+    expect(validateCastType('DROP TABLE').ok).toBe(false);
+  });
+});
 
 describe('duckdbTypes', () => {
   /**
@@ -38,7 +73,8 @@ describe('duckdbTypes', () => {
     it('should strip length from VARCHAR type', () => {
       expect(normalizeTypeName('VARCHAR(255)')).toBe('VARCHAR');
       expect(normalizeTypeName('varchar(100)')).toBe('VARCHAR');
-      expect(normalizeTypeName('CHAR(10)')).toBe('CHAR');
+      // CHAR 是 DuckDB 的 VARCHAR 别名(实测 typeof('a'::CHAR) = VARCHAR)
+      expect(normalizeTypeName('CHAR(10)')).toBe('VARCHAR');
     });
 
     it('should handle types without parameters', () => {
@@ -124,9 +160,16 @@ describe('duckdbTypes', () => {
     });
 
     describe('numeric cross-family compatibility', () => {
-      it('should return true for integer and float', () => {
+      it('should return true for small integer and float (lossless)', () => {
         expect(areTypesCompatible('INTEGER', 'DOUBLE')).toBe(true);
-        expect(areTypesCompatible('BIGINT', 'FLOAT')).toBe(true);
+        expect(areTypesCompatible('SMALLINT', 'FLOAT')).toBe(true);
+      });
+
+      it('should return false for large integer and float (lossy — S-18)', () => {
+        // BIGINT/HUGEINT 可超 2^53,与 double 比较会塌缩相邻整数 → 强制 cast 对话框
+        expect(areTypesCompatible('BIGINT', 'FLOAT')).toBe(false);
+        expect(areTypesCompatible('BIGINT', 'DOUBLE')).toBe(false);
+        expect(areTypesCompatible('HUGEINT', 'DOUBLE')).toBe(false);
       });
 
       it('should return true for integer and decimal', () => {
@@ -150,10 +193,18 @@ describe('duckdbTypes', () => {
     });
 
     describe('datetime family compatibility', () => {
-      it('should return true for datetime types', () => {
+      it('should return true within the date/timestamp family', () => {
         expect(areTypesCompatible('DATE', 'TIMESTAMP')).toBe(true);
-        expect(areTypesCompatible('TIME', 'TIMESTAMP')).toBe(true);
         expect(areTypesCompatible('TIMESTAMPTZ', 'TIMESTAMP')).toBe(true);
+        expect(areTypesCompatible('TIMESTAMP_NS', 'TIMESTAMP')).toBe(true);
+      });
+
+      it('should return false for time vs date/timestamp (not comparable — S-18)', () => {
+        // DuckDB 里 TIME 与 TIMESTAMP 直接比较会报错,不能判兼容跳过 cast 对话框
+        expect(areTypesCompatible('TIME', 'TIMESTAMP')).toBe(false);
+        expect(areTypesCompatible('TIME', 'DATE')).toBe(false);
+        // time 家族内部仍可比
+        expect(areTypesCompatible('TIME', 'TIME WITH TIME ZONE')).toBe(true);
       });
     });
 
@@ -196,10 +247,12 @@ describe('duckdbTypes', () => {
    */
   describe('getRecommendedCastType - Property 7', () => {
     describe('string + any type → VARCHAR', () => {
-      it('should recommend VARCHAR for string + numeric', () => {
-        expect(getRecommendedCastType('VARCHAR', 'INTEGER')).toBe('VARCHAR');
-        expect(getRecommendedCastType('INTEGER', 'VARCHAR')).toBe('VARCHAR');
-        expect(getRecommendedCastType('TEXT', 'BIGINT')).toBe('VARCHAR');
+      it('should return empty (no type-only rec) for string + numeric', () => {
+        // 复审:VARCHAR 会丢 1 vs '1.0' 匹配,而文本转数值类型对 '1.0'→BIGINT 又变 NULL——
+        // 安全的公共类型取决于实际数据,交数据感知推断
+        expect(getRecommendedCastType('VARCHAR', 'INTEGER')).toBe('');
+        expect(getRecommendedCastType('INTEGER', 'VARCHAR')).toBe('');
+        expect(getRecommendedCastType('TEXT', 'BIGINT')).toBe('');
       });
 
       it('should recommend VARCHAR for string + datetime', () => {
@@ -208,27 +261,39 @@ describe('duckdbTypes', () => {
       });
     });
 
-    describe('numeric + numeric → DOUBLE', () => {
-      it('should recommend DOUBLE for integer + float', () => {
-        expect(getRecommendedCastType('INTEGER', 'DOUBLE')).toBe('DOUBLE');
-        expect(getRecommendedCastType('BIGINT', 'FLOAT')).toBe('DOUBLE');
+    describe('numeric + numeric → no type-only recommendation', () => {
+      // 复审二次修正:固定 scale 的 DECIMAL 会因舍入制造假匹配(1.0000004→1.000000=1),
+      // VARCHAR 又把 1 与 1.0 比成不等丢匹配——类型层面没有安全默认,返回 '' 交由
+      // 数据感知推断(scale 取自实际数据)/ 用户手填
+      it('should return empty (no safe recommendation) for integer + float', () => {
+        expect(getRecommendedCastType('INTEGER', 'DOUBLE')).toBe('');
+        expect(getRecommendedCastType('BIGINT', 'FLOAT')).toBe('');
       });
 
-      it('should recommend DOUBLE for integer + decimal', () => {
-        expect(getRecommendedCastType('INTEGER', 'DECIMAL')).toBe('DOUBLE');
-        expect(getRecommendedCastType('DECIMAL(18,4)', 'BIGINT')).toBe('DOUBLE');
+      it('should return empty for integer + decimal', () => {
+        expect(getRecommendedCastType('INTEGER', 'DECIMAL')).toBe('');
+        expect(getRecommendedCastType('DECIMAL(18,4)', 'BIGINT')).toBe('');
       });
     });
 
-    describe('datetime types → TIMESTAMP', () => {
-      it('should recommend TIMESTAMP for datetime + numeric', () => {
-        expect(getRecommendedCastType('DATE', 'INTEGER')).toBe('TIMESTAMP');
-        expect(getRecommendedCastType('BIGINT', 'TIMESTAMP')).toBe('TIMESTAMP');
+    describe('datetime 组合', () => {
+      it('should recommend VARCHAR for datetime + numeric', () => {
+        // 把 INTEGER 硬转 TIMESTAMP 是纪元误读陷阱,改荐无损 VARCHAR
+        expect(getRecommendedCastType('DATE', 'INTEGER')).toBe('VARCHAR');
+        expect(getRecommendedCastType('BIGINT', 'TIMESTAMP')).toBe('VARCHAR');
       });
 
-      it('should recommend TIMESTAMP for different datetime types', () => {
-        expect(getRecommendedCastType('DATE', 'TIME')).toBe('TIMESTAMP');
+      it('should recommend TIMESTAMP only for date/timestamp-family pairs', () => {
+        // 同为"日期/时间戳族"(DATE、TIMESTAMP、TIMESTAMPTZ)才荐 TIMESTAMP
         expect(getRecommendedCastType('TIMESTAMPTZ', 'DATE')).toBe('TIMESTAMP');
+        expect(getRecommendedCastType('DATE', 'TIMESTAMP')).toBe('TIMESTAMP');
+      });
+
+      it('should recommend VARCHAR for TIME × date (TIME→TIMESTAMP 无意义)', () => {
+        // 复审修复:TIME 不属日期/时间戳族,硬荐 TIMESTAMP 是不可达的错误 cast,
+        // 退回无损 VARCHAR 作公共类型
+        expect(getRecommendedCastType('DATE', 'TIME')).toBe('VARCHAR');
+        expect(getRecommendedCastType('TIME', 'TIMESTAMP')).toBe('VARCHAR');
       });
     });
 
@@ -358,14 +423,17 @@ describe('duckdbTypes', () => {
   });
 
   describe('DUCKDB_CAST_TYPES', () => {
-    it('should contain common cast types', () => {
-      expect(DUCKDB_CAST_TYPES).toContain('VARCHAR');
+    it('should contain safe cast types with VARCHAR first', () => {
+      expect(DUCKDB_CAST_TYPES[0]).toBe('VARCHAR');
       expect(DUCKDB_CAST_TYPES).toContain('BIGINT');
-      expect(DUCKDB_CAST_TYPES).toContain('INTEGER');
       expect(DUCKDB_CAST_TYPES).toContain('DOUBLE');
+      expect(DUCKDB_CAST_TYPES).toContain('DECIMAL(38,6)');
       expect(DUCKDB_CAST_TYPES).toContain('TIMESTAMP');
       expect(DUCKDB_CAST_TYPES).toContain('DATE');
       expect(DUCKDB_CAST_TYPES).toContain('BOOLEAN');
+      // 回归:INTEGER(32 位溢出→NULL→JOIN 漏配)与 DECIMAL(18,4)(静默截断)已移除
+      expect(DUCKDB_CAST_TYPES).not.toContain('INTEGER');
+      expect(DUCKDB_CAST_TYPES).not.toContain('DECIMAL(18,4)');
     });
   });
 });

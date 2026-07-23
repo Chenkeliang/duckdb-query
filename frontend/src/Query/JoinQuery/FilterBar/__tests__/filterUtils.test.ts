@@ -28,8 +28,38 @@ import {
     getDefaultPlacement,
     canPlaceInOrGroup,
     groupContainsOnConditions,
+    parseNumericPreservingPrecision,
 } from '../filterUtils';
 import type { FilterGroup, FilterCondition, PlacementContext } from '../types';
+
+describe('parseNumericPreservingPrecision', () => {
+    it('converts safe numbers to number', () => {
+        expect(parseNumericPreservingPrecision('42')).toBe(42);
+        expect(parseNumericPreservingPrecision('-7')).toBe(-7);
+        expect(parseNumericPreservingPrecision('3.14')).toBe(3.14);
+        expect(parseNumericPreservingPrecision('0')).toBe(0);
+    });
+
+    it('keeps big integers as string to avoid float64 rounding', () => {
+        // Number('9007199254740993') === 9007199254740992(丢了最后一位)
+        expect(parseNumericPreservingPrecision('9007199254740993')).toBe('9007199254740993');
+        expect(parseNumericPreservingPrecision('123456789012345678')).toBe('123456789012345678');
+    });
+
+    it('keeps high-precision decimals as string', () => {
+        expect(parseNumericPreservingPrecision('123.456789012345678')).toBe('123.456789012345678');
+    });
+
+    it('keeps leading-zero / non-canonical numeric text as string', () => {
+        expect(parseNumericPreservingPrecision('007')).toBe('007');
+        expect(parseNumericPreservingPrecision('1.0')).toBe('1.0');
+    });
+
+    it('keeps non-numeric input as string', () => {
+        expect(parseNumericPreservingPrecision('abc')).toBe('abc');
+        expect(parseNumericPreservingPrecision('')).toBe('');
+    });
+});
 
 // ============================================
 // SQL 生成测试

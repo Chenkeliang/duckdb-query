@@ -16,13 +16,17 @@ from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
 import duckdb
+import sqlglot
+from sqlglot import exp
 from core.common.enhanced_error_handler import get_error_handler
 from core.common.config_manager import config_manager
+from core.common.sql_identifiers import quote_identifier
 from core.common.timezone_utils import (
     format_storage_time_for_response,
     get_current_time_iso,
 )
-from core.common.utils import describe_query_column_types, normalize_dataframe_output
+from core.services import table_registry
+from core.common.utils import describe_query_column_types
 from core.common.sql_mysql_quotes import (
     normalize_mysql_double_quoted_strings_for_duckdb,
 )
@@ -32,13 +36,13 @@ from core.data.file_datasource_manager import (
 )
 from core.database.database_manager import db_manager
 from core.database.duckdb_engine import (
-    create_persistent_table,
-    fetch_query_dataframe,
+    fetch_query_records,
     with_duckdb_connection,
 )
 from core.database.federated_attach import (
     attach_databases_on_connection,
     detach_databases_on_connection,
+    mysql_remote_cancellation_scope,
 )
 from core.database.duckdb_pool import interruptible_connection
 from core.common.connection_alias import normalize_connection_id
@@ -54,9 +58,13 @@ from core.common.exceptions import (
     ValidationError as APIValidationError,
 )
 from fastapi import APIRouter, Body, File, Form, Header, UploadFile
-from models.query_models import FederatedQueryRequest, FederatedQueryResponse
+from models.query_models import FederatedQueryRequest
 from pydantic import BaseModel
-from routers.query_sql_utils import statement_accepts_limit
+from routers.query_sql_utils import (
+    ensure_query_has_limit,
+    has_top_level_limit,
+    statement_accepts_limit,
+)
 from utils.response_helpers import (
     MessageCode,
     create_list_response,
@@ -91,6 +99,138 @@ def contains_keyword(sql_text: str, keyword: str) -> bool:
     """检测SQL文本中是否包含独立的关键字（忽略字符串字面量内的内容）"""
     pattern = rf"\b{keyword}\b"
     return re.search(pattern, sql_text) is not None
+
+
+def _uses_mysql_query_table_function(sql: str) -> bool:
+    """判断 SQL 是否真实调用 mysql_query，而非仅在注释或字面量中出现。"""
+    try:
+        tree = sqlglot.parse_one(sql, read="duckdb")
+    except Exception:  # pylint: disable=broad-exception-caught
+        return False
+    return any(
+        node.name.lower() == "mysql_query"
+        for node in tree.find_all(exp.Anonymous)
+    )
+
+
+_DANGEROUS_KEYWORDS = ("DROP", "DELETE", "TRUNCATE", "ALTER", "CREATE", "INSERT", "UPDATE")
+
+
+_SQL_CLEAN_RE = re.compile(
+    r"--[^\n]*|/\*.*?\*/|'(?:''|[^'])*'|\"(?:\"\"|[^\"])*\"", re.S
+)
+
+
+def _strip_sql_literals_upper(sql: str) -> str:
+    """大写化并抹平注释与单/双引号字面量内容。用于危险关键字判定与 LIMIT 判定:
+    - 抹字面量:避免把字符串里的关键字误判为写操作;
+    - 抹注释:避免 `-- LIMIT 5` / `/* LIMIT */` 里的 LIMIT 让 auto-LIMIT 失效
+      导致预览无上限(Codex P1-10)。"""
+    return _SQL_CLEAN_RE.sub(" ", (sql or "").upper())
+
+
+def assert_no_dangerous_write(sql_upper_cleaned: str, save_as_table: Optional[str]) -> None:
+    """拒绝写操作;save_as_table 时放行 CREATE(其 CTAS 由服务端包装)。
+    入参须为已剥离字面量的大写 SQL。execute 与 federated 端点共用,避免任一路径漏拦。"""
+    if save_as_table:
+        return
+    for keyword in _DANGEROUS_KEYWORDS:
+        if keyword != "CREATE" and contains_keyword(sql_upper_cleaned, keyword):
+            raise APIValidationError(
+                f"{keyword} operation is not allowed. Only query operations are supported."
+            )
+
+
+def _main_table_create_target(sql: str) -> tuple[Optional[str], bool]:
+    """返回直写 CREATE TABLE 的 main 表名及 IF NOT EXISTS 标记。"""
+    try:
+        tree = sqlglot.parse_one(sql, read="duckdb")
+    except Exception:  # pylint: disable=broad-exception-caught
+        return None, False
+    if not isinstance(tree, exp.Create) or str(tree.args.get("kind", "")).upper() != "TABLE":
+        return None, False
+    if tree.find(exp.TemporaryProperty) is not None:
+        return None, False
+    target = tree.this
+    if isinstance(target, exp.Schema):
+        target = target.this
+    if not isinstance(target, exp.Table) or target.catalog:
+        return None, False
+    schema_name = str(target.db or "")
+    if schema_name and schema_name.lower() != "main":
+        return None, False
+    return target.name or None, bool(tree.args.get("exists"))
+
+
+def _run_query_maybe_save(conn, sql_query, save_as_table, limit, original_sql=None):
+    """执行查询;若指定 save_as_table 则先 CTAS 物化(原查询只执行这一次),
+    预览行改从已建的表读取——既避免为预览重跑昂贵/有副作用的查询,也保证预览行
+    与落库数据一致(非确定性查询如 random()/now() 不再"预览≠落库",Codex P1-11)。
+    保存失败不再静默:save_error 带回,由调用方放进响应,前端据 saved_table 决定提示。
+    返回 (columns, records, cursor_types, column_types, saved_table, save_error)。
+    execute 与其两条连接路径共用,消除历史两处重复块。
+
+    CTAS 用【原始查询 original_sql】(未被追加预览 LIMIT 的版本),而非从带 LIMIT 的文本里
+    replace 反推——后者是全局子串替换,会误删字符串字面量内的 " LIMIT n"(如 'keep LIMIT 5'
+    被改成 'keep',静默改数据,复审 P1)。落库即全量(不带预览 LIMIT),与联邦路由一致。
+    """
+    def _types(cur_types, describe_sql):
+        return describe_query_column_types(conn, describe_sql) or [
+            {"name": n, "duckdb_type": t} for n, t in cur_types
+        ]
+
+    table_name = (save_as_table or "").strip()
+    if table_name:
+        save_sql = (original_sql if original_sql is not None else sql_query).strip().rstrip(";")
+        try:
+            conn.execute(
+                f"CREATE OR REPLACE TABLE {quote_identifier(table_name)} AS ({save_sql})"
+            )
+            logger.info("Query result saved as table: %s", table_name)
+            try:
+                snapshot = build_table_metadata_snapshot(conn, table_name)
+                file_datasource_manager.save_file_datasource({
+                    "source_id": table_name,
+                    "filename": "sql_query_result",
+                    "file_path": f"duckdb://{table_name}",
+                    "file_type": "duckdb_sql_query",
+                    "created_at": get_current_time_iso(),
+                    "source_sql": save_sql,
+                    "schema_version": 2,
+                    **snapshot,
+                })
+            except Exception as meta_error:  # pylint: disable=broad-except
+                logger.warning("Failed to save table metadata (non-fatal): %s", meta_error)
+            preview_sql = f"SELECT * FROM {quote_identifier(table_name)}"
+            if limit:
+                preview_sql = f"{preview_sql} LIMIT {limit}"
+            cols, recs, cur_types = fetch_query_records(conn, preview_sql)
+            return cols, recs, cur_types, _types(cur_types, preview_sql), table_name, None
+        except Exception as save_error:  # pylint: disable=broad-except
+            logger.warning("Failed to save query result as table: %s", save_error)
+            # 保存失败 → 退回直接执行原查询,至少把数据返回,并将错误带回响应
+            cols, recs, cur_types = fetch_query_records(conn, sql_query)
+            return cols, recs, cur_types, _types(cur_types, sql_query), None, str(save_error)
+
+    created_table, if_not_exists = _main_table_create_target(sql_query)
+    table_existed = False
+    if created_table and if_not_exists:
+        existing_names = conn.execute(
+            "SELECT table_name FROM duckdb_tables() WHERE NOT internal "
+            "AND database_name = current_database() AND schema_name = 'main'"
+        ).fetchall()
+        ascii_fold = str.maketrans(
+            "ABCDEFGHIJKLMNOPQRSTUVWXYZ", "abcdefghijklmnopqrstuvwxyz"
+        )
+        target_key = created_table.translate(ascii_fold)
+        table_existed = any(
+            str(row[0]).translate(ascii_fold) == target_key for row in existing_names
+        )
+
+    cols, recs, cur_types = fetch_query_records(conn, sql_query)
+    if created_table and not (if_not_exists and table_existed):
+        table_registry.record_creation(created_table)
+    return cols, recs, cur_types, _types(cur_types, sql_query), None, None
 
 
 def fix_table_names_in_sql(sql: str, available_tables: List[str]) -> str:
@@ -162,16 +302,17 @@ def list_duckdb_tables_summary():
         with with_duckdb_connection() as con:
             # 一次性从 DuckDB 元数据目录取行数估计与列数，
             # 避免逐表 DESCRIBE + COUNT(*)（N+1，且 COUNT 是全表扫描）
-            tables_df = con.execute(
+            table_rows = con.execute(
                 """
-                SELECT table_name AS name, estimated_size, column_count
+                SELECT table_name AS name, estimated_size, column_count, table_oid
                 FROM duckdb_tables()
                 WHERE NOT internal AND database_name = current_database()
-                ORDER BY table_name
+                  AND schema_name = 'main'
+                ORDER BY table_oid DESC
                 """
-            ).fetchdf()
+            ).fetchall()
 
-            if tables_df.empty:
+            if not table_rows:
                 return create_list_response(
                     items=[],
                     total=0,
@@ -181,25 +322,29 @@ def list_duckdb_tables_summary():
 
             # 获取每个表的概要信息
             table_info = []
-            for _, row in tables_df.iterrows():
-                table_name = row["name"]
+            physical_names = [
+                r[0] for r in table_rows if not r[0].lower().startswith("system_")
+            ]
+            # 顺序唯一权威 = 登记表 sort_seq(单调持久,免疫 oid 漂移/时区/同秒);
+            # created_at 仅展示。sync 失败返回空 map → 降级为目录序
+            registry = table_registry.sync(
+                physical_names, created_lookup=file_datasource_manager.get_file_datasource
+            )
+            for table_name, est, col_count, _table_oid in table_rows:
                 if table_name.lower().startswith("system_"):
                     continue
                 # 行数估计 + 列数直接来自 duckdb_tables()（无逐表扫描）
-                est = row["estimated_size"]
                 row_count = int(est) if est is not None else 0
-                column_count = (
-                    int(row["column_count"]) if row["column_count"] is not None else 0
-                )
+                column_count = int(col_count) if col_count is not None else 0
 
-                metadata = file_datasource_manager.get_file_datasource(table_name)
-                raw_created_at = metadata.get("created_at") if metadata else None
-                if isinstance(raw_created_at, datetime):
-                    created_at = raw_created_at.isoformat()
-                elif raw_created_at is not None:
-                    created_at = str(raw_created_at)
-                else:
-                    created_at = None
+                entry = registry.get(table_name) or {}
+                created_dt = entry.get("created_at")
+                # created_at 以应用时区 ISO 返回(§7.3:存储 UTC、响应本地)
+                created_at = (
+                    format_storage_time_for_response(created_dt)
+                    if isinstance(created_dt, datetime)
+                    else None
+                )
 
                 table_info.append(
                     {
@@ -207,31 +352,13 @@ def list_duckdb_tables_summary():
                         "column_count": column_count,
                         "row_count": row_count,
                         "created_at": created_at,
+                        "_seq": entry.get("sort_seq") or 0,
                     }
                 )
 
-            # 按创建时间排序：最新的在前，没有创建时间的在最后
-            from dateutil import parser as date_parser
-
-            def sort_key(table):
-                created_at = table.get("created_at")
-                if created_at is None:
-                    return datetime(1900, 1, 1)
-                # 如果是字符串，转换为 datetime
-                if isinstance(created_at, str):
-                    try:
-                        parsed = date_parser.parse(created_at)
-                        return parsed.replace(tzinfo=None)
-                    except Exception:
-                        return datetime(1900, 1, 1)
-                # 如果已经是 datetime，移除时区信息
-                if hasattr(created_at, "replace"):
-                    return (
-                        created_at.replace(tzinfo=None) if created_at.tzinfo else created_at
-                    )
-                return datetime(1900, 1, 1)
-
-            table_info.sort(key=sort_key, reverse=True)  # 降序排列，最新的在前
+            table_info.sort(key=lambda t: t["_seq"], reverse=True)
+            for info in table_info:
+                info.pop("_seq", None)
 
             return create_list_response(
                 items=table_info,
@@ -249,8 +376,7 @@ def list_duckdb_tables_summary():
 
 
 def _ensure_table_exists(con, table_name: str) -> None:
-    tables_df = con.execute("SHOW TABLES").fetchdf()
-    available_tables = tables_df["name"].tolist() if not tables_df.empty else []
+    available_tables = [row[0] for row in con.execute("SHOW TABLES").fetchall()]
     if table_name not in available_tables:
         raise ResourceNotFoundError("Table", table_name)
 
@@ -340,14 +466,14 @@ def execute_duckdb_query(
             raise APIValidationError("SQL query cannot be empty")
 
         with with_duckdb_connection() as con:
-            available_tables_df = con.execute("SHOW TABLES").fetchdf()
-            available_tables = (
-                available_tables_df["name"].tolist() if len(available_tables_df) > 0 else []
-            )
+            available_tables = [
+                row[0] for row in con.execute("SHOW TABLES").fetchall()
+            ]
 
-        # 检查是否是简单的SELECT查询（不需要表）
+        # 检查是否是简单的SELECT查询（不需要表）。sql_upper_clean 同时抹掉注释
+        # 与字面量,供 is_simple_select / 危险关键字 / LIMIT 三处判定共用
         sql_upper = sql_query.upper().strip()
-        sql_upper_clean = re.sub(r"'(?:''|[^'])*'|\"(?:\"\"|[^\"])*\"", " ", sql_upper)
+        sql_upper_clean = _strip_sql_literals_upper(sql_query).strip()
         is_simple_select = (
             sql_upper_clean.startswith("SELECT")
             and "FROM" not in sql_upper_clean
@@ -371,152 +497,60 @@ def execute_duckdb_query(
                 "No tables available in DuckDB. Please upload a file or connect to a database first."
             )
 
-        # 检查SQL中是否包含危险操作（已在上面检查过）
-        dangerous_keywords = [
-            "DROP",
-            "DELETE",
-            "TRUNCATE",
-            "ALTER",
-            "CREATE",
-            "INSERT",
-            "UPDATE",
-        ]
+        # 拒绝写操作(save_as_table 时放行 CREATE);与 federated 端点共用同一 helper
+        assert_no_dangerous_write(sql_upper_clean, request.save_as_table)
 
-        # 如果要保存为表，允许CREATE操作
-        if not request.save_as_table:
-            for keyword in dangerous_keywords:
-                if keyword != "CREATE" and contains_keyword(sql_upper_clean, keyword):
-                    raise APIValidationError(
-                        f"{keyword} operation is not allowed. Only query operations are supported."
-                    )
-
-        # 自动添加LIMIT限制（如果SQL中没有LIMIT且是预览模式；INSTALL/LOAD/ATTACH 等语句不接 LIMIT）
+        # 预览模式:最外层缺用户 LIMIT 时补系统默认(INSTALL/LOAD/ATTACH 等语句不接 LIMIT)。
+        # 判定走 has_top_level_limit(sqlglot AST):仅子查询里的 LIMIT 属于用户业务 SQL,
+        # 不算"最外层已有"——保留它并在最外层补默认;旧的 `"LIMIT" not in sql` 子串判断会
+        # 因子查询 LIMIT 而完全跳过外层默认(复审 P1)。换行追加,行尾注释安全。
         limit = None
-        if request.is_preview and "LIMIT" not in sql_upper_clean and statement_accepts_limit(sql_query):
+        if request.is_preview and statement_accepts_limit(sql_query) and not has_top_level_limit(sql_query):
             from core.common.config_manager import config_manager
 
             limit = config_manager.get_app_config().max_query_rows
-            sql_query = f"{sql_query.rstrip(';')} LIMIT {limit}"
+            sql_query = ensure_query_has_limit(sql_query, limit)
             logger.info(f"Preview mode, applied LIMIT {limit}")
 
         logger.info(f"Executing DuckDB query: {sql_query}")
-        logger.info(f"Available tables: {available_tables}")
+        # 完整表清单每查询约 1KB,DEBUG 级即可(桌面 stderr 日志减负)
+        logger.debug(f"Available tables: {available_tables}")
 
         execution_time = 0.0
         query_column_types = []
         saved_table = None
+        save_error = None
         # 使用可中断连接执行查询（如果有 query_id）
         if query_id:
             with interruptible_connection(query_id, sql_query) as conn:
-                result_df = fetch_query_dataframe(conn, sql_query)
-                query_column_types = describe_query_column_types(
-                    conn, sql_query, result_df
-                )
-
-                # 可选：保存查询结果为新表（在同一连接上下文内）
-                if request.save_as_table:
-                    table_name = request.save_as_table.strip()
-                    if table_name:
-                        try:
-                            save_sql = sql_query.rstrip(";")
-                            if limit:
-                                save_sql = save_sql.replace(f" LIMIT {limit}", "")
-                            create_sql = f'CREATE OR REPLACE TABLE "{table_name}" AS ({save_sql})'
-                            conn.execute(create_sql)
-                            saved_table = table_name
-                            logger.info(f"Query result saved as table: {table_name}")
-
-                            # 保存表元数据（含创建时间）
-                            try:
-                                metadata_snapshot = build_table_metadata_snapshot(
-                                    conn, table_name
-                                )
-                                table_metadata = {
-                                    "source_id": table_name,
-                                    "filename": f"sql_query_result",
-                                    "file_path": f"duckdb://{table_name}",
-                                    "file_type": "duckdb_sql_query",
-                                    "created_at": get_current_time_iso(),
-                                    "source_sql": save_sql,
-                                    "schema_version": 2,
-                                    **metadata_snapshot,
-                                }
-                                file_datasource_manager.save_file_datasource(
-                                    table_metadata
-                                )
-                                logger.info(
-                                    f"SQL save_as_table metadata saved: {table_name}"
-                                )
-                            except Exception as meta_error:
-                                logger.warning(
-                                    f"Failed to save table metadata (non-fatal): {str(meta_error)}"
-                                )
-                        except Exception as save_error:
-                            logger.warning(f"Failed to save query result as table: {str(save_error)}")
+                (result_columns, result_records, _cursor_types, query_column_types,
+                 saved_table, save_error) = _run_query_maybe_save(
+                    conn, sql_query, request.save_as_table, limit, original_sql=request.sql)
                 execution_time = _log_query_metrics_in_conn(
-                    conn, sql_query, start_time, len(result_df)
+                    conn, sql_query, start_time, len(result_records)
                 )
         else:
             with with_duckdb_connection() as con:
-                result_df = fetch_query_dataframe(con, sql_query)
-                query_column_types = describe_query_column_types(
-                    con, sql_query, result_df
-                )
-
-                if request.save_as_table:
-                    table_name = request.save_as_table.strip()
-                    if table_name:
-                        try:
-                            save_sql = sql_query.rstrip(";")
-                            if limit:
-                                save_sql = save_sql.replace(f" LIMIT {limit}", "")
-                            create_sql = (
-                                f'CREATE OR REPLACE TABLE "{table_name}" AS ({save_sql})'
-                            )
-                            con.execute(create_sql)
-                            saved_table = table_name
-                            logger.info(f"Query result saved as table: {table_name}")
-
-                            try:
-                                metadata_snapshot = build_table_metadata_snapshot(
-                                    con, table_name
-                                )
-                                table_metadata = {
-                                    "source_id": table_name,
-                                    "filename": f"sql_query_result",
-                                    "file_path": f"duckdb://{table_name}",
-                                    "file_type": "duckdb_sql_query",
-                                    "created_at": get_current_time_iso(),
-                                    "source_sql": save_sql,
-                                    "schema_version": 2,
-                                    **metadata_snapshot,
-                                }
-                                file_datasource_manager.save_file_datasource(table_metadata)
-                                logger.info(
-                                    f"SQL save_as_table metadata saved: {table_name}"
-                                )
-                            except Exception as meta_error:
-                                logger.warning(
-                                    f"Failed to save table metadata (non-fatal): {str(meta_error)}"
-                                )
-                        except Exception as save_error:
-                            logger.warning(
-                                f"Failed to save query result as table: {str(save_error)}"
-                            )
+                (result_columns, result_records, _cursor_types, query_column_types,
+                 saved_table, save_error) = _run_query_maybe_save(
+                    con, sql_query, request.save_as_table, limit, original_sql=request.sql)
                 execution_time = _log_query_metrics_in_conn(
-                    con, sql_query, start_time, len(result_df)
+                    con, sql_query, start_time, len(result_records)
                 )
 
         # 构建响应
         response_payload = {
-            "columns": result_df.columns.tolist(),
+            "columns": result_columns,
             "column_types": query_column_types,
-            "data": normalize_dataframe_output(result_df),
-            "row_count": len(result_df),
+            "data": result_records,
+            "row_count": len(result_records),
             "execution_time_ms": execution_time,
             "sql_executed": sql_query,
             "available_tables": available_tables,
             "saved_table": saved_table,
+            # 请求了 save_as_table 但落库失败时,saved_table 为 None 且此处带错误原因;
+            # 前端据 saved_table 判断"是否真的建表成功",不再一律提示成功
+            "save_error": save_error,
             # 仅当预览模式且服务端自动追加了 LIMIT 时有值，供前端判断是否可能截断
             "preview_limit_applied": limit,
         }
@@ -524,7 +558,7 @@ def execute_duckdb_query(
         return create_success_response(
             data=response_payload,
             message_code=MessageCode.QUERY_EXECUTED,
-            message=f"Query successful, returned {len(result_df)} rows",
+            message=f"Query successful, returned {len(result_records)} rows",
         )
 
     except duckdb.InterruptException as e:
@@ -566,14 +600,15 @@ def delete_duckdb_table(table_name: str):
     """删除指定的DuckDB表"""
     try:
         with with_duckdb_connection() as con:
-            tables_df = con.execute("SHOW TABLES").fetchdf()
-            available_tables = tables_df["name"].tolist() if not tables_df.empty else []
+            available_tables = [
+                row[0] for row in con.execute("SHOW TABLES").fetchall()
+            ]
 
             if table_name not in available_tables:
                 raise ResourceNotFoundError("Table", table_name)
 
             # 删除表
-            drop_sql = f'DROP TABLE IF EXISTS "{table_name}"'
+            drop_sql = f'DROP TABLE IF EXISTS {quote_identifier(table_name)}'
             con.execute(drop_sql)
 
             logger.info(f"Successfully deleted DuckDB table: {table_name}")
@@ -586,6 +621,9 @@ def delete_duckdb_table(table_name: str):
                 logger.info(f"Deleted file datasource record: {table_name}")
             except Exception as e:
                 logger.warning(f"Failed to delete file datasource record: {str(e)}")
+
+            # 排序登记行同步删除(list 的 sync 也会兜底清理)
+            table_registry.remove(table_name)
 
             return create_success_response(
                 data={"deleted_table": table_name},
@@ -778,6 +816,12 @@ def execute_federated_query(
     warnings = []
     query_id = f"sync:{x_request_id}" if x_request_id else None
 
+    # 写拦截:此端点独立于 /execute,历史上漏了这道门,MCP federated_query
+    # 可借多语句/CTE 绕过只读判定送达写操作(Codex P0-4)。与 /execute 同 helper。
+    assert_no_dangerous_write(
+        _strip_sql_literals_upper(request.sql), request.save_as_table
+    )
+
     # 预先准备 ATTACH 配置（在连接外验证，避免占用连接时间）
     attach_configs = []
     if request.attach_databases:
@@ -806,12 +850,12 @@ def execute_federated_query(
     sql_query = normalize_mysql_double_quoted_strings_for_duckdb(
         request.sql.strip()
     )
-    sql_upper = sql_query.upper()
-
+    # 预览:最外层缺用户 LIMIT 时补默认——判定走 has_top_level_limit(AST,注释/字面量/
+    # 子查询天然正确),与本地 execute 同一口径(复审 P1);换行追加,行尾注释安全
     limit = None
-    if request.is_preview and "LIMIT" not in sql_upper and statement_accepts_limit(sql_query):
+    if request.is_preview and statement_accepts_limit(sql_query) and not has_top_level_limit(sql_query):
         limit = config_manager.get_app_config().max_query_rows
-        sql_query = f"{sql_query.rstrip(';')} LIMIT {limit}"
+        sql_query = ensure_query_has_limit(sql_query, limit)
         logger.info(f"Preview mode, applied LIMIT {limit}")
 
     logger.info(f"Executing federated query: {sql_query}")
@@ -828,39 +872,51 @@ def execute_federated_query(
             attached_aliases = attach_databases_on_connection(conn, attach_configs)
             logger.info(f"Attached databases: {attached_aliases}")
 
-        # 2. 智能下推：半连接键下推(保持结果) + 时间界建议(不改 SQL)
-        attach_aliases = {alias for (alias, _cfg) in attach_configs}
-        opt_sql, suggestions, opt_warnings = optimize_federated_sql(
-            conn, _opt["sql"], attach_aliases, config_manager.get_app_config()
-        )
-        _opt["sql"] = opt_sql
-        _opt["suggestions"] = suggestions or None
-        if opt_warnings:
-            warnings.extend(str(w) for w in opt_warnings)
+        # DETACH 必须放 finally:查询/保存中途抛错时,若不清理,连接会带着
+        # ATTACH 回到池里被后续请求复用(Codex S-13)
+        try:
+            with mysql_remote_cancellation_scope(conn, query_id, attach_configs):
+                # 2. 智能下推：半连接键下推(保持结果) + 时间界建议(不改 SQL)
+                attach_aliases = {alias for (alias, _cfg) in attach_configs}
+                opt_sql, suggestions, opt_warnings = optimize_federated_sql(
+                    conn, _opt["sql"], attach_aliases, config_manager.get_app_config()
+                )
+                _opt["sql"] = opt_sql
+                _opt["suggestions"] = suggestions or None
+                if opt_warnings:
+                    warnings.extend(str(w) for w in opt_warnings)
 
-        # 3. 执行用户 SQL（使用优化后的语句）
-        result_df = fetch_query_dataframe(conn, opt_sql)
+                # 3. 执行用户 SQL（使用优化后的语句）
+                result_triplet = fetch_query_records(
+                    conn,
+                    opt_sql,
+                    # DESCRIBE(mysql_query(...)) 会在 MySQL 上真实执行 SQL，且使用
+                    # 独立于事务扫描的连接；取消器无法精确命中。实际游标 description
+                    # 已提供同样的列类型，因此该表函数直接执行一次即可。
+                    describe_before_execute=not _uses_mysql_query_table_function(opt_sql),
+                )
 
-        # 4. 可选：保存查询结果为新表（使用原始 SQL，确保语义不变）
-        if request.save_as_table:
-            table_name = request.save_as_table.strip()
-            if table_name:
-                try:
-                    save_sql = request.sql.strip().rstrip(";")
-                    create_sql = (
-                        f'CREATE OR REPLACE TABLE "{table_name}" AS ({save_sql})'
-                    )
-                    conn.execute(create_sql)
-                    logger.info(f"Query result saved as table: {table_name}")
-                except Exception as save_error:
-                    logger.warning(f"Failed to save query result as table: {str(save_error)}")
-                    warnings.append(f"Failed to save result as table: {str(save_error)}")
+                # 4. 可选：保存查询结果为新表（使用原始 SQL，确保语义不变）
+                if request.save_as_table:
+                    table_name = request.save_as_table.strip()
+                    if table_name:
+                        try:
+                            save_sql = request.sql.strip().rstrip(";")
+                            create_sql = (
+                                f'CREATE OR REPLACE TABLE {quote_identifier(table_name)} AS ({save_sql})'
+                            )
+                            conn.execute(create_sql)
+                            table_registry.record_creation(table_name)
+                            logger.info(f"Query result saved as table: {table_name}")
+                        except Exception as save_error:
+                            logger.warning(f"Failed to save query result as table: {str(save_error)}")
+                            warnings.append(f"Failed to save result as table: {str(save_error)}")
 
-        # 5. DETACH 清理
-        if attached_aliases:
-            detach_databases_on_connection(conn, attached_aliases)
-
-        return result_df
+                return result_triplet
+        finally:
+            # 5. DETACH 清理(无论成功失败)
+            if attached_aliases:
+                detach_databases_on_connection(conn, attached_aliases)
 
     timeout_s = int(config_manager.get_app_config().federated_query_timeout or 300)
     query_id = query_id or f"fed:{uuid4().hex}"
@@ -868,30 +924,36 @@ def execute_federated_query(
 
     def _on_timeout():
         timed_out["v"] = True
-        connection_registry.interrupt(query_id)
+        connection_registry.interrupt_with_remote(query_id)
 
-    result_df = None
+    result_columns: list = []
+    result_records: list = []
     query_column_types = []
     try:
         with interruptible_connection(query_id, sql_query) as conn:
             timer = threading.Timer(timeout_s, _on_timeout)
             timer.start()
             try:
-                result_df = execute_in_connection(conn)
-                query_column_types = describe_query_column_types(
-                    conn, _opt["sql"], result_df
+                result_columns, result_records, cursor_types = (
+                    execute_in_connection(conn)
                 )
+                query_column_types = describe_query_column_types(
+                    conn, _opt["sql"]
+                ) or [
+                    {"name": name, "duckdb_type": dtype}
+                    for name, dtype in cursor_types
+                ]
             finally:
                 timer.cancel()
             execution_time = _log_query_metrics_in_conn(
-                conn, sql_query, start_time, len(result_df)
+                conn, sql_query, start_time, len(result_records)
             )
 
         response_data = {
-            "columns": result_df.columns.tolist(),
+            "columns": result_columns,
             "column_types": query_column_types,
-            "data": normalize_dataframe_output(result_df),
-            "row_count": len(result_df),
+            "data": result_records,
+            "row_count": len(result_records),
             "execution_time_ms": execution_time,
             "attached_databases": attached_aliases,
             "sql_query": sql_query,
@@ -904,7 +966,7 @@ def execute_federated_query(
         return create_success_response(
             data=response_data,
             message_code=MessageCode.QUERY_EXECUTED,
-            message=f"Federated query successful, returned {len(result_df)} rows",
+            message=f"Federated query successful, returned {len(result_records)} rows",
         )
 
     except duckdb.InterruptException:

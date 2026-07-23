@@ -5,7 +5,7 @@ import { listDatabaseDataSourcesRaw, type RawDatabaseDataSourceItem } from '@/ap
 /**
  * 数据库类型
  */
-export type DatabaseType = 'postgresql' | 'mysql' | 'sqlite' | 'sqlserver' | 'duckdb';
+export type DatabaseType = 'postgresql' | 'mysql' | 'sqlite' | 'duckdb';
 
 /**
  * 数据库连接类型

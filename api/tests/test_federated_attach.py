@@ -1,5 +1,7 @@
 """federated_attach 工具测试"""
 
+import duckdb as duckdb_mod
+import pytest
 from unittest.mock import MagicMock, patch
 
 from core.database.duckdb_engine import with_duckdb_connection
@@ -7,10 +9,50 @@ from core.database.federated_attach import (
     _is_database_already_attached_error,
     _quote_identifier,
     attach_databases_on_connection,
+    detach_databases_on_connection,
     execute_sql_and_persist,
     federated_source_sql_alias,
     format_qualified_table_reference,
 )
+
+
+def _attached_aliases(conn):
+    return sorted(
+        r[0]
+        for r in conn.execute(
+            "SELECT database_name FROM duckdb_databases() "
+            "WHERE database_name NOT IN ('memory', 'system', 'temp')"
+        ).fetchall()
+    )
+
+
+def test_partial_attach_failure_cleaned_by_intended_aliases(tmp_path):
+    """回归(对抗复审 #1):两个 ATTACH,第二个失败时第一个已成功挂上。路由 finally 必须按
+    【意图 attach 的别名】detach——旧写法捕获实际返回的 attached 变量,partial 失败时它仍是
+    初始 [],已挂上的 good_alias 就随连接漏回池。此测试锁死"按意图别名清理"能无残留。"""
+    good = tmp_path / "good.duckdb"
+    c0 = duckdb_mod.connect(str(good))
+    c0.execute("CREATE TABLE t(id INTEGER)")
+    c0.close()
+
+    intended = ["good_alias", "bad_alias"]
+    configs = [
+        ("good_alias", {"type": "duckdb", "path": str(good)}),
+        # 目录不存在 → ATTACH 无法创建文件 → 真实失败(非 "already exists" 复用)
+        ("bad_alias", {"type": "duckdb", "path": str(tmp_path / "nope_dir" / "x.duckdb")}),
+    ]
+
+    with with_duckdb_connection() as con:
+        base = _attached_aliases(con)
+        try:
+            with pytest.raises(Exception):  # pylint: disable=broad-exception-caught
+                attach_databases_on_connection(con, configs)
+            # 此刻 good_alias 已泄漏在连接上(partial attach)
+            assert "good_alias" in _attached_aliases(con)
+        finally:
+            detach_databases_on_connection(con, intended)
+        # 按意图别名清理后无残留,连接可安全放回池
+        assert _attached_aliases(con) == base
 
 
 def test_format_qualified_table_reference_simple():
@@ -129,7 +171,7 @@ class TestExecuteSqlAndPersist:
             )
             assert snapshot["row_count"] == 0
             with with_duckdb_connection() as con:
-                existing = con.execute("SHOW TABLES").fetchdf()["name"].tolist()
+                existing = [r[0] for r in con.execute("SHOW TABLES").fetchall()]
             assert table_name not in existing  # 从未创建过目标表
         finally:
             self._drop(table_name)
@@ -165,7 +207,7 @@ class TestExecuteSqlAndPersist:
             )
             assert snapshot["row_count"] == 0
             with with_duckdb_connection() as con:
-                existing = con.execute("SHOW TABLES").fetchdf()["name"].tolist()
+                existing = [r[0] for r in con.execute("SHOW TABLES").fetchall()]
             assert table_name in existing  # 空表确实被创建了
         finally:
             self._drop(table_name)
@@ -177,7 +219,7 @@ class TestExecuteSqlAndPersist:
                 "SELECT * FROM (VALUES (1, 'a')) AS t(id, name)", table_name
             )
             with with_duckdb_connection() as con:
-                existing = con.execute("SHOW TABLES").fetchdf()["name"].tolist()
+                existing = [r[0] for r in con.execute("SHOW TABLES").fetchall()]
             assert not any(name.startswith("__stage_") for name in existing)
         finally:
             self._drop(table_name)
@@ -195,7 +237,7 @@ class TestExecuteSqlAndPersist:
             )
             assert snapshot["row_count"] == 1
             with with_duckdb_connection() as con:
-                existing = con.execute("SHOW TABLES").fetchdf()["name"].tolist()
+                existing = [r[0] for r in con.execute("SHOW TABLES").fetchall()]
             assert sentinel_table in existing  # 未被注入语句误删
             assert malicious_name in existing  # 表名本身按字面量正确创建
         finally:

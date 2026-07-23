@@ -15,7 +15,6 @@ from datetime import date, datetime
 from decimal import Decimal
 from typing import Any, Dict, List, Optional, Tuple
 
-import pandas as pd
 
 logger = logging.getLogger(__name__)
 
@@ -34,64 +33,8 @@ def is_identifier_column_name(name: str) -> bool:
     return bool(_IDENTIFIER_NAME_RE.search(str(name).strip().lower()))
 
 
-def _quote_identifier(name: str) -> str:
-    return '"' + str(name).replace('"', '""') + '"'
-
-
-def _float_to_plain_decimal_str(value: float) -> str:
-    if not math.isfinite(value):
-        return ""
-    if value == 0.0:
-        return "0"
-    try:
-        text = format(Decimal(str(value)), "f")
-    except Exception:  # pylint: disable=broad-exception-caught
-        text = repr(value)
-    if "." in text:
-        text = text.rstrip("0").rstrip(".")
-    return text
-
-
-def cell_to_literal(value: Any) -> Any:
-    """将单元格转为可无损落库的字面量（日期时间除外）。"""
-    if value is None:
-        return None
-    try:
-        if pd.isna(value):
-            return None
-    except (TypeError, ValueError):
-        pass
-
-    if isinstance(value, (datetime, date)):
-        return value
-    if isinstance(value, bool):
-        return str(value).lower()
-    if isinstance(value, int) and not isinstance(value, bool):
-        return str(value)
-    if isinstance(value, float):
-        if math.isfinite(value) and value == math.floor(value):
-            return str(int(value))
-        return _float_to_plain_decimal_str(value)
-    if isinstance(value, (bytes, bytearray, memoryview)):
-        return bytes(value).decode("utf-8", errors="replace")
-
-    text = str(value).strip()
-    if text.lower() in {"", "nan", "none", "<na>", "nat"}:
-        return None
-    return text
-
-
-def dataframe_to_literal_fidelity(df: pd.DataFrame) -> pd.DataFrame:
-    """多 Sheet Excel 等路径：先统一为字面量，再由 DuckDB 做安全类型提升。"""
-    if df is None or df.empty:
-        return df
-
-    result = df.copy()
-    for col in result.columns:
-        if pd.api.types.is_datetime64_any_dtype(result[col]):
-            continue
-        result[col] = result[col].map(cell_to_literal)
-    return result
+# 标识符转义统一走 core.common.sql_identifiers(消灭历史 8 份副本)
+from core.common.sql_identifiers import quote_identifier as _quote_identifier  # noqa: E402
 
 
 def _parse_sniff_columns(columns_value: Any) -> List[Tuple[str, str]]:
@@ -111,14 +54,13 @@ def _parse_sniff_columns(columns_value: Any) -> List[Tuple[str, str]]:
     return pairs
 
 
-def _column_values_are_long_integer_codes(series: pd.Series) -> bool:
-    non_null = series.dropna()
-    if non_null.empty:
+def _column_values_are_long_integer_codes(values: List[Any]) -> bool:
+    texts = [str(v).strip() for v in values if v is not None]
+    if not texts:
         return False
-    as_str = non_null.astype(str).str.strip()
-    if not as_str.str.match(r"^\d+$").all():
+    if not all(t.isdigit() for t in texts):
         return False
-    return int(as_str.str.len().max()) >= _MAX_INTEGER_STRING_DIGITS
+    return max(len(t) for t in texts) >= _MAX_INTEGER_STRING_DIGITS
 
 
 def build_csv_column_type_overrides(
@@ -143,11 +85,14 @@ def build_csv_column_type_overrides(
             if upper in {"DOUBLE", "FLOAT", "REAL"}:
                 try:
                     quoted = _quote_identifier(name)
-                    sample_df = connection.execute(
-                        f"SELECT {quoted} AS col FROM read_csv(?, all_varchar = true) LIMIT 500",
-                        [file_path],
-                    ).fetchdf()
-                    if _column_values_are_long_integer_codes(sample_df["col"]):
+                    sample_values = [
+                        row[0]
+                        for row in connection.execute(
+                            f"SELECT {quoted} AS col FROM read_csv(?, all_varchar = true) LIMIT 500",
+                            [file_path],
+                        ).fetchall()
+                    ]
+                    if _column_values_are_long_integer_codes(sample_values):
                         overrides[name] = "VARCHAR"
                 except Exception as exc:  # pylint: disable=broad-exception-caught
                     logger.debug(
@@ -158,7 +103,7 @@ def build_csv_column_type_overrides(
     return overrides
 
 
-def _infer_varchar_column_promotion(
+def infer_varchar_column_promotion(
     connection: Any, quoted_table: str, column_name: str
 ) -> Optional[str]:
     """根据列内实际文本推断可无损提升的目标类型；无法保证则返回 None（保持 VARCHAR）。
@@ -212,7 +157,10 @@ def _infer_varchar_column_promotion(
             return "BIGINT"
         return None
 
-    if dec_like == n:
+    # int_like + dec_like == n:整列全是纯整数或纯小数(至少一个带小数点,否则上面
+    # int_like==n 分支已返回)。整数行按 0 位小数并入,与小数行一起提升为 DECIMAL——
+    # ["1","2.50"] 这类"金额列里部分值写成整数"不再因两分支都不满足而退回 VARCHAR。
+    if int_like + dec_like == n:
         digits_row = connection.execute(
             f"""
             WITH src AS (
@@ -262,6 +210,130 @@ def _infer_varchar_column_promotion(
     return None
 
 
+def analyze_numeric_cast(
+    connection: Any, quoted_table: str, column_name: str
+) -> Dict[str, Any]:
+    """在(已筛选的)数据上刻画一列作为数值 cast 目标的安全性,用于透视文本聚合 / JOIN 冲突
+    的数据感知推荐。关键:DECIMAL 标度取自实际最大小数位,而非固定常量——从根上避免
+    "固定 scale < 数据精度" 导致的舍入假匹配。
+
+    quoted_table 可为真实表名(已转义)或子查询 "(SELECT ...)";列名必须在其中可见。
+    返回 {recommended, total, numeric, non_numeric, max_int_digits, max_frac_digits,
+          safe_decimal_cast, reason}:
+    - recommended: 'BIGINT' | 'DECIMAL(38,s)' | None(不安全时为 None,交前端提示,不静默丢数据)。
+    - safe_decimal_cast: 是否可【安全自动推荐】DECIMAL/BIGINT(recommended 非 None 时恒 True)。
+      注意语义是"能否安全自动量化",不是"数学上能否放进 DECIMAL(38)"——4e-07 数学上能进
+      DECIMAL(38,7),但源为二进制浮点故仍 False。
+    - reason: None(安全) | 'empty' | 'non_numeric' | 'binary_float' | 'scientific' | 'overflow',
+      解释为何不安全,供调用方精准提示 / 契约文档对齐。
+    """
+    qcol = _quote_identifier(column_name)
+    # 源列本就是二进制浮点(FLOAT/DOUBLE)时绝不自动量化:CAST(col AS VARCHAR) 是最短往返串,
+    # 某一行的浮点残差(如 0.1+0.2 = 0.30000000000000004,17 位小数)会把整列标度抬高,而
+    # TRY_CAST 实际作用在【裸 DOUBLE 列】上——会让其它"看着干净"的值静默失真
+    # (19.99 → 19.98999999999999744)。二进制浮点→DECIMAL 量化本就有损,交用户显式选
+    # (Codex 对抗复审 medium;用户 P2 亦倾向 JOIN 分侧转换而非把浮点统一量化成 DECIMAL)。
+    try:
+        type_row = connection.execute(
+            f"SELECT typeof({qcol}) FROM {quoted_table} "
+            f"WHERE {qcol} IS NOT NULL LIMIT 1"
+        ).fetchone()
+        src_type = ((type_row[0] if type_row else "") or "").upper()
+    except Exception:  # pylint: disable=broad-exception-caught
+        src_type = ""
+    if src_type in {"FLOAT", "DOUBLE", "REAL"}:
+        # 二进制浮点源恒不量化(见上)——typeof(LIMIT 1 下推,亚毫秒)已足以定论,直接短路 recommendation,
+        # 不跑下面 O(n) 的逐行 trim+regex+TRY_CAST 文本扫描(亿级 DOUBLE 列曾白扫 ~2s)。
+        # 但 total/numeric 仍如实统计:只用 count(*)+isfinite(单遍向量化数值判定,不做任何字符串转换,
+        # 远比正则/CAST-VARCHAR 便宜),避免返回 total=0 与契约里"统计"语义矛盾(复审 P3);
+        # max_int/frac 保持 0(文本标度对不会量化的浮点列无意义,算它反而要 CAST-VARCHAR)。
+        count_row = connection.execute(
+            f"""
+            SELECT count(*) AS total,
+                   count(*) FILTER (WHERE isfinite({qcol})) AS numeric_n
+            FROM {quoted_table}
+            WHERE {qcol} IS NOT NULL
+            """
+        ).fetchone()
+        total = int(count_row[0]) if count_row else 0
+        numeric = int(count_row[1]) if count_row and count_row[1] is not None else 0
+        return {
+            "recommended": None, "total": total, "numeric": numeric,
+            "non_numeric": total - numeric,
+            "max_int_digits": 0, "max_frac_digits": 0,
+            "safe_decimal_cast": False, "reason": "binary_float",
+        }
+
+    # 只对【全部为纯十进制/整数文本】的列给 DECIMAL/BIGINT 推荐,标度按文本有效位精确取值:
+    #  - 数字判定:TRY_CAST(v AS DOUBLE) 非空且 isfinite(排除 inf/nan——DuckDB 会把它们转成 DOUBLE);
+    #  - v_plain:纯十进制/整数文本(无指数)。整数位/小数位按文本长度精确计,24-38 位大整数也不误判;
+    #  - 科学计数法等 non_plain 数值:无法从文本可靠定标度,不自动推荐,交用户显式选。
+    stats = connection.execute(
+        f"""
+        WITH src AS (
+            SELECT trim(CAST({qcol} AS VARCHAR)) AS v
+            FROM {quoted_table}
+            WHERE {qcol} IS NOT NULL AND trim(CAST({qcol} AS VARCHAR)) <> ''
+        ),
+        norm AS (
+            SELECT
+                v,
+                regexp_full_match(v, '^[+-]?([0-9]+(\\.[0-9]*)?|\\.[0-9]+)$') AS v_plain,
+                TRY_CAST(v AS DOUBLE) AS d
+            FROM src
+        )
+        SELECT
+            count(*) AS n,
+            count(*) FILTER (WHERE d IS NOT NULL AND isfinite(d)) AS numeric_n,
+            count(*) FILTER (WHERE d IS NOT NULL AND isfinite(d) AND NOT v_plain) AS non_plain_n,
+            max(CASE WHEN v_plain THEN length(split_part(v, '.', 2)) ELSE 0 END) AS max_frac,
+            max(CASE WHEN v_plain
+                     THEN length(replace(replace(split_part(v, '.', 1), '-', ''), '+', ''))
+                     ELSE 0 END) AS max_int
+        FROM norm
+        """
+    ).fetchone()
+
+    empty = {
+        "recommended": None, "total": 0, "numeric": 0, "non_numeric": 0,
+        "max_int_digits": 0, "max_frac_digits": 0,
+        "safe_decimal_cast": False, "reason": "empty",
+    }
+    if not stats or not stats[0]:
+        return empty
+
+    total, numeric = int(stats[0]), int(stats[1])
+    non_plain = int(stats[2])
+    max_frac, max_int = int(stats[3] or 0), int(stats[4] or 0)
+    non_numeric = total - numeric
+
+    # 不安全的首要原因(优先级:非数字 > 科学计数法 > 超 DECIMAL(38) 容量)。二进制浮点源已在
+    # 上面 typeof 短路,到不了这里。全部为纯十进制文本、整数位+小数位 ≤ 38 → reason=None → 可安全量化。
+    reason: Optional[str] = None
+    if non_numeric > 0:
+        reason = "non_numeric"
+    elif non_plain > 0:
+        reason = "scientific"
+    elif (max_int + max_frac) > 38:
+        reason = "overflow"
+    safe_decimal_cast = reason is None
+
+    recommended: Optional[str] = None
+    if safe_decimal_cast:
+        if max_frac == 0:
+            # 全整数值:≤18 位走 BIGINT(SUM 自动升 HUGEINT),更大走 DECIMAL(38,0)
+            recommended = "BIGINT" if max_int <= 18 else "DECIMAL(38,0)"
+        else:
+            recommended = f"DECIMAL(38,{max_frac})"
+
+    return {
+        "recommended": recommended, "total": total, "numeric": numeric,
+        "non_numeric": non_numeric, "max_int_digits": max_int,
+        "max_frac_digits": max_frac,
+        "safe_decimal_cast": safe_decimal_cast, "reason": reason,
+    }
+
+
 def promote_table_column_types_from_varchar(
     connection: Any, table_name: str
 ) -> List[Tuple[str, str]]:
@@ -285,10 +357,17 @@ def promote_table_column_types_from_varchar(
         col_type = str(col_info[2]).upper()
         if col_type != "VARCHAR":
             continue
+        if "\x00" in str(col_name):
+            # NUL 字节列名连引号包裹都救不了(DuckDB ParserException),
+            # 跳过该列的促升,不让整表促升失败
+            logger.warning(
+                "promote skipped column with NUL byte in name (table %s)", table_name
+            )
+            continue
         if is_identifier_column_name(col_name):
             continue
 
-        target = _infer_varchar_column_promotion(connection, quoted_table, col_name)
+        target = infer_varchar_column_promotion(connection, quoted_table, col_name)
         if not target or target == "VARCHAR":
             continue
 
@@ -313,15 +392,3 @@ def promote_table_column_types_from_varchar(
             )
 
     return promoted
-
-
-def coerce_dataframe_numeric_columns_safe(
-    df: pd.DataFrame, import_mode: Optional[str] = None
-) -> pd.DataFrame:
-    """将 Sheet 数据转为字面量；import_mode 由落库后的 promote 体现（auto）或保持 VARCHAR（literal）。"""
-    from core.data.import_mode import normalize_import_mode
-
-    if df is None or df.empty:
-        return df
-    normalize_import_mode(import_mode)
-    return dataframe_to_literal_fidelity(df)

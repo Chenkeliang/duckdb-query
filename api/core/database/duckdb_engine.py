@@ -1,7 +1,6 @@
 # pylint: disable=duplicate-code
 import duckdb
 import logging
-import pandas as pd
 import threading
 import time
 from typing import List, Dict, Any, Optional, Tuple
@@ -118,10 +117,11 @@ def _resolve_duckdb_extensions(app_config, override_extensions: Optional[List[st
     return resolved
 
 
-def _quote_identifier(identifier: str) -> str:
-    """转义内嵌双引号并加引号包裹单个 SQL 标识符（保留非 ASCII，如中文别名）。"""
-    escaped = str(identifier).replace('"', '""')
-    return f'"{escaped}"'
+# 标识符/字符串转义统一走 core.common.sql_identifiers(消灭历史 8 份副本)
+from core.common.sql_identifiers import (  # noqa: E402
+    escape_string_literal,
+    quote_identifier as _quote_identifier,
+)
 
 
 def build_attach_sql(alias: str, db_config: Dict[str, Any]) -> str:
@@ -160,7 +160,9 @@ def build_attach_sql(alias: str, db_config: Dict[str, Any]) -> str:
         conn_str = f"host={db_config['host']} user={username} password={db_config.get('password', '')} database={db_config['database']}"
         if db_config.get('port'):
             conn_str += f" port={db_config['port']}"
-        return f"ATTACH '{conn_str}' AS {quoted_alias} (TYPE mysql)"
+        # 整个连接串是单引号 SQL 字面量,必须转义单引号——否则含 ' 的密码/主机
+        # 名可突破字面量注入(DuckDB 解析层还原 '' 后驱动仍拿到正确值)
+        return f"ATTACH '{escape_string_literal(conn_str)}' AS {quoted_alias} (TYPE mysql)"
 
     elif db_type in ('postgresql', 'postgres'):
         if not username:
@@ -169,24 +171,62 @@ def build_attach_sql(alias: str, db_config: Dict[str, Any]) -> str:
         conn_str = f"host={db_config['host']} dbname={db_config['database']} user={username} password={db_config.get('password', '')}"
         if db_config.get('port'):
             conn_str += f" port={db_config['port']}"
-        return f"ATTACH '{conn_str}' AS {quoted_alias} (TYPE postgres)"
+        return f"ATTACH '{escape_string_literal(conn_str)}' AS {quoted_alias} (TYPE postgres)"
 
     elif db_type == 'sqlite':
         # SQLite 使用文件路径（兼容 path、database 两种参数键）
         path = db_config.get('path') or db_config.get('database')
         if not path:
             raise ValueError("SQLite connection missing file path (path or database)")
-        return f"ATTACH '{path}' AS {quoted_alias} (TYPE sqlite)"
+        return f"ATTACH '{escape_string_literal(path)}' AS {quoted_alias} (TYPE sqlite)"
 
     elif db_type == 'duckdb':
         # DuckDB 文件：原生只读挂载，零拷贝、与本地表同速（无 scanner 开销）
         path = db_config.get('path') or db_config.get('database')
         if not path:
             raise ValueError("DuckDB connection missing file path (path or database)")
-        return f"ATTACH '{path}' AS {quoted_alias} (READ_ONLY)"
+        return f"ATTACH '{escape_string_literal(path)}' AS {quoted_alias} (READ_ONLY)"
 
     else:
         raise ValueError(f"Unsupported database type: {db_type}")
+
+
+def _apply_perf_and_remote_settings(connection, app_config) -> None:
+    """性能优化 SET + 远程(S3/OSS)SET。主路径与默认后备路径共用同一实现,
+    避免两处漂移——profiling_output / remote_settings 曾只在主路径、后备遗漏,
+    配置加载失败跌入后备时 S3 凭据/诊断输出会静默失效。逐项 try/except,
+    单项失败不拖累其余。"""
+    perf = (
+        ("enable_profiling", str(app_config.duckdb_enable_profiling).lower()),
+        ("prefer_range_joins", str(app_config.duckdb_prefer_range_joins).lower()),
+        ("enable_object_cache", str(app_config.duckdb_enable_object_cache).lower()),
+        ("preserve_insertion_order", str(app_config.duckdb_preserve_insertion_order).lower()),
+        ("enable_progress_bar", str(app_config.duckdb_enable_progress_bar).lower()),
+    )
+    for name, value in perf:
+        try:
+            connection.execute(f"SET {name}={value}")
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("SET %s=%s skipped: %s", name, value, exc)
+    if app_config.duckdb_profiling_output:
+        try:
+            connection.execute(
+                f"SET profiling_output='{app_config.duckdb_profiling_output}'"
+            )
+        except Exception as exc:  # noqa: BLE001
+            logger.debug("SET profiling_output skipped: %s", exc)
+    remote_settings = getattr(app_config, "duckdb_remote_settings", None) or {}
+    if isinstance(remote_settings, dict):
+        for setting_key, setting_value in remote_settings.items():
+            if not setting_key:
+                continue
+            try:
+                connection.execute(f"SET {setting_key}={setting_value}")
+                logger.info("Applied remote configuration: %s=%s", setting_key, setting_value)
+            except Exception as remote_error:  # noqa: BLE001
+                logger.warning(
+                    "Failed to apply remote config %s: %s", setting_key, remote_error
+                )
 
 
 def _apply_duckdb_configuration(connection, temp_dir: str):
@@ -212,10 +252,12 @@ def _apply_duckdb_configuration(connection, temp_dir: str):
 
         logger.info(f"Found {len(config_items)} DuckDB configuration items")
 
-        # 应用基础配置
-        if config_items.get("duckdb_threads"):
-            connection.execute(f"SET threads={config_items['duckdb_threads']}")
-            logger.info(f"DuckDB threads set to: {config_items['duckdb_threads']}")
+        # 应用基础配置（threads:用 is not None 而非真值判断,避免显式 0 被当"未设置";
+        # 并校验 >0，因为 DuckDB 不接受 threads=0）
+        threads = config_items.get("duckdb_threads")
+        if threads is not None and int(threads) > 0:
+            connection.execute(f"SET threads={int(threads)}")
+            logger.info(f"DuckDB threads set to: {threads}")
 
         if config_items.get("duckdb_memory_limit"):
             connection.execute(
@@ -232,63 +274,8 @@ def _apply_duckdb_configuration(connection, temp_dir: str):
         connection.execute(f"SET home_directory='{paths.home_dir}'")
         connection.execute(f"SET extension_directory='{paths.extension_dir}'")
 
-        # 应用性能优化配置
-        if config_items.get("duckdb_enable_profiling") is not None:
-            connection.execute(
-                f"SET enable_profiling={str(config_items['duckdb_enable_profiling']).lower()}"
-            )
-            if config_items.get("duckdb_profiling_output"):
-                connection.execute(
-                    f"SET profiling_output='{config_items['duckdb_profiling_output']}'"
-                )
-            logger.info(
-                f"DuckDB profiling set to: {config_items['duckdb_enable_profiling']}"
-            )
-
-        if config_items.get("duckdb_prefer_range_joins") is not None:
-            connection.execute(
-                f"SET prefer_range_joins={str(config_items['duckdb_prefer_range_joins']).lower()}"
-            )
-            logger.info(
-                f"DuckDB prefer range joins set to: {config_items['duckdb_prefer_range_joins']}"
-            )
-
-        if config_items.get("duckdb_enable_object_cache") is not None:
-            connection.execute(
-                f"SET enable_object_cache={str(config_items['duckdb_enable_object_cache']).lower()}"
-            )
-            logger.info(
-                f"DuckDB object cache set to: {config_items['duckdb_enable_object_cache']}"
-            )
-
-        if config_items.get("duckdb_preserve_insertion_order") is not None:
-            connection.execute(
-                f"SET preserve_insertion_order={str(config_items['duckdb_preserve_insertion_order']).lower()}"
-            )
-            logger.info(
-                f"DuckDB preserve insertion order set to: {config_items['duckdb_preserve_insertion_order']}"
-            )
-
-        if config_items.get("duckdb_enable_progress_bar") is not None:
-            connection.execute(
-                f"SET enable_progress_bar={str(config_items['duckdb_enable_progress_bar']).lower()}"
-            )
-            logger.info(
-                f"DuckDB progress bar set to: {config_items['duckdb_enable_progress_bar']}"
-            )
-
-        remote_settings = config_items.get("duckdb_remote_settings") or {}
-        if isinstance(remote_settings, dict):
-            for setting_key, setting_value in remote_settings.items():
-                if not setting_key:
-                    continue
-                try:
-                    connection.execute(f"SET {setting_key}={setting_value}")
-                    logger.info("Applied remote configuration: %s=%s", setting_key, setting_value)
-                except Exception as remote_error:
-                    logger.warning(
-                        "Failed to apply remote config %s: %s", setting_key, remote_error
-                    )
+        # 性能优化 + 远程(S3/OSS)配置——与默认后备路径共用同一函数,消灭漂移
+        _apply_perf_and_remote_settings(connection, app_config)
 
         # 设置目录配置
         if config_items.get("duckdb_home_directory"):
@@ -381,36 +368,49 @@ ENGINE_COMPAT_OPTIONS = (
     "unsafe_enable_version_guessing",
 )
 
+# MySQL 的 BOOLEAN 是 TINYINT(1) 别名，扫描器默认把 TINYINT(1)/BIT(1) 的
+# 物理 0/1 改成 bool。查询、落表和导出都必须保留源值，因此不开放成兼容开关。
+_MYSQL_SOURCE_VALUE_OPTIONS = (
+    "mysql_tinyint1_as_boolean",
+    "mysql_bit1_as_boolean",
+)
+
 
 def apply_engine_compat_settings(connection, engine_compat: Optional[Dict[str, Any]]) -> None:
     """应用引擎兼容性配置。
 
     SET GLOBAL 是数据库实例级作用域：在池中任意一个连接上执行，所有池化连接立即生效。
-    这四个 option 分别由 sqlite_scanner/mysql/postgres/iceberg 扩展注册。
+    可配置 option 分别由 sqlite_scanner/mysql/postgres/iceberg 扩展注册；MySQL
+    TINYINT(1)/BIT(1) 的布尔转换另行固定关闭，保证查询与导出保留源值 0/1。
 
-    只 SET 值为 True 的开关：False 与 DuckDB 原生默认一致，SET 是纯空转——
-    且对未加载扩展的 option 执行 SET 会触发 DuckDB autoinstall 联网下载
+    对全部可配置开关都显式下发 true/false：SET GLOBAL 是实例级黏性状态，只发 true
+    会导致用户关掉开关保存后运行实例仍停在 true（关不掉，与 UI 显示矛盾）。
+    对未加载扩展的 option 执行 SET 会触发 DuckDB autoinstall 联网下载
     （受限网络单次挂 ~120s，发生在连接池初始化 = "本地引擎启动超时"；
     扩展全量预置时代被掩盖，v1.2.0 按需预置后必须掐掉）。SET 期间临时关闭
     autoinstall：本地已装的扩展 autoload 即时生效；未装的快速失败降级为
     debug 日志（用户装好扩展后新连接自然生效），初始化路径绝不联网。
     """
-    if not engine_compat:
-        return
-    enabled = [opt for opt in ENGINE_COMPAT_OPTIONS if bool(engine_compat.get(opt, False))]
-    if not enabled:
-        return
+    engine_compat = engine_compat or {}
     with _autoinstall_toggle_lock:
         try:
             connection.execute("SET autoinstall_known_extensions=false")
         except Exception as exc:  # noqa: BLE001
             logger.debug("disable autoinstall before engine_compat failed: %s", exc)
         try:
-            for option in enabled:
+            # 全部四个都显式下发 true/false（不再只发已启用项）：SET GLOBAL 黏性，
+            # 关掉的开关若从不发 =false，实例级状态会永远停在 true 直到重启。
+            for option in ENGINE_COMPAT_OPTIONS:
+                value = "true" if bool(engine_compat.get(option, False)) else "false"
                 try:
-                    connection.execute(f"SET GLOBAL {option}=true")
+                    connection.execute(f"SET GLOBAL {option}={value}")
                 except Exception as exc:  # noqa: BLE001  扩展未装时的预期失败，静默降级
-                    logger.debug("engine_compat SET GLOBAL %s=true skipped: %s", option, exc)
+                    logger.debug("engine_compat SET GLOBAL %s=%s skipped: %s", option, value, exc)
+            for option in _MYSQL_SOURCE_VALUE_OPTIONS:
+                try:
+                    connection.execute(f"SET GLOBAL {option}=false")
+                except Exception as exc:  # noqa: BLE001  扩展未装时的预期失败，静默降级
+                    logger.debug("source-preserving SET GLOBAL %s=false skipped: %s", option, exc)
         finally:
             try:
                 connection.execute("SET autoinstall_known_extensions=true")
@@ -443,22 +443,9 @@ def _apply_default_duckdb_config(connection, temp_dir: str):
         connection.execute(f"SET home_directory='{paths.home_dir}'")
         connection.execute(f"SET extension_directory='{paths.extension_dir}'")
 
-        # 性能优化 - 使用配置默认值
-        connection.execute(
-            f"SET enable_profiling={str(app_config.duckdb_enable_profiling).lower()}"
-        )
-        connection.execute(
-            f"SET prefer_range_joins={str(app_config.duckdb_prefer_range_joins).lower()}"
-        )
-        connection.execute(
-            f"SET enable_object_cache={str(app_config.duckdb_enable_object_cache).lower()}"
-        )
-        connection.execute(
-            f"SET preserve_insertion_order={str(app_config.duckdb_preserve_insertion_order).lower()}"
-        )
-        connection.execute(
-            f"SET enable_progress_bar={str(app_config.duckdb_enable_progress_bar).lower()}"
-        )
+        # 性能优化 + 远程配置 - 与主路径共用同一函数(含 profiling_output/remote_settings,
+        # 此前只在主路径、后备遗漏)
+        _apply_perf_and_remote_settings(connection, app_config)
 
         # 安装默认扩展
         extensions_to_load = _resolve_duckdb_extensions(app_config)
@@ -484,198 +471,135 @@ def get_db_connection():
     return PooledConnectionProxy()
 
 
-def _fetchall_dataframe(res, desc):
-    """fetchall 构造 DataFrame，逐值原样承载 DuckDB 原生 Python 对象。
+def fetch_query_records(connection, query, *, describe_before_execute: bool = True):
+    """执行查询 → (columns, records, cursor_types)：JSON 安全，纯 Python。
 
-    dtype=object 阻断构造器类型推断：可空整型列否则被推成 float64
-    （>2^53 的值在构造时即静默失真），timedelta 否则被推成 timedelta64
-    （序列化形态漂移为 pd.Timedelta）。
+    ``describe_before_execute=False`` 仅供 DESCRIBE 会执行远端 SQL 的表函数使用；
+    这时列类型从实际游标 description 获取，不改变查询结果值。
+
+    cursor_types = 游标 description 的 (列名, DuckDB 类型串)——DESCRIBE 对
+    PRAGMA/EXPLAIN/多语句失败时调用方以它兜底 column_types（同一次执行取得，
+    绝不为拿类型重放语句造成副作用）。
+
+    v1.2.1 传输主路径。列类型无关地保真（Decimal/任意精度 int 由 DuckDB
+    原生给出，编码契约见 utils.records_from_cursor），也不再有
+    fetchdf/fetchall 双路径分岔。
+
+    内置联邦连接自愈：mysql 扩展按 DSN 进程级缓存连接，空闲后被中间设备/
+    wait_timeout 静默掐断，复用即「Server has gone away」，DETACH 清不掉。
+    只读查询遇此错误时清空扩展连接缓存并重试一次（原先只有 join 路径的
+    execute_query 有此保护，现在所有取数路径统一受益）。
     """
-    names = [col[0] for col in desc]
-    df = pd.DataFrame(res.fetchall(), columns=names, dtype=object)
-    for name, col in zip(names, desc):
-        type_str = str(col[1]).upper()
-        if type_str == "TIMESTAMP_NS":
-            # fetchall 把 TIMESTAMP_NS 转成 stdlib datetime（微秒上限），
-            # 纳秒分量在取数阶段即截断，后续无法挽救——显式告警而非静默。
-            # 单独查询 TIMESTAMP_NS（不与 DECIMAL/HUGEINT 同帧）走 fetchdf
-            # 保留纳秒。
-            logger.warning(
-                "TIMESTAMP_NS column %s truncated to microseconds on the exact "
-                "fetch path (queried alongside DECIMAL/HUGEINT); query it "
-                "without high-precision numeric columns to keep nanoseconds",
-                name,
-            )
-        if type_str == "DATE" or type_str.startswith("TIMESTAMP"):
-            # 日期/时间戳列转回 datetime64，保持与 fetchdf 路径一致的序列化
-            # 格式（object 列会走 isoformat 带 "T"）。用 astype[us] 而非 to_datetime：
-            # 财务哨兵日期 9999-12-31 超出 ns 上限。转不动时保持对象列（isoformat
-            # 序列化仍无损，只是格式差异），不让整条查询失败。
-            try:
-                if "WITH TIME ZONE" in type_str:
-                    df[name] = pd.to_datetime(df[name])
-                else:
-                    df[name] = df[name].astype("datetime64[us]")
-            except (ValueError, TypeError):
-                pass
-    return df
+    from core.common.utils import records_from_cursor  # pylint: disable=import-outside-toplevel
 
+    # 先用 DESCRIBE 探列类型——DESCRIBE 只做绑定/规划,不执行查询体、无副作用
+    # (实测:DESCRIBE (SELECT nextval('s')) 不推进序列)。据此决定是否需要
+    # TIMESTAMP_NS 文本化改写,从而只执行一次查询体。旧实现先执行拿类型、再
+    # 为纳秒重执行一次(改写失败还第三次),序列/UDF/远程读的副作用会重复(P1-8)。
+    describe_types = None
+    ns_cols = []
+    if describe_before_execute and _is_read_only_query(query):
+        describe_types = _describe_column_types(connection, query)
+        if describe_types:
+            ns_cols = [n for n, t in describe_types if t.upper() == "TIMESTAMP_NS"]
 
-def _needs_exact_fetch(type_str):
-    """该列类型经 fetchdf 会失真，需走 fetchall 保真路径。
+    # TIMESTAMP_NS:duckdb-python 的 fetchall 转成 stdlib datetime(微秒上限),
+    # 纳秒分量在取数层即截断。CAST AS VARCHAR 保留完整纳秒且已是空格分隔契约
+    # 格式,字符串原样直达前端(零损失)。改写后只执行这一条(不双执行)。
+    final_sql = query
+    if ns_cols:
+        # 位置别名重写(唯一路径):把每列重命名为唯一别名 c{i},按位置把 TIMESTAMP_NS 列
+        # CAST 成 VARCHAR 保全纳秒,再以原列名输出。天然覆盖同名、大小写差异(a/A)、带引号、
+        # JOIN 产生的重复列——这些是旧 SELECT * REPLACE 按列名改写会漏改的情形(Codex 复审)。
+        inner = ", ".join(f"c{i}" for i in range(len(describe_types)))
+        outer = ", ".join(
+            (f"CAST(c{i} AS VARCHAR) AS " if t.upper() == "TIMESTAMP_NS" else f"c{i} AS ")
+            + f'"{n.replace(chr(34), chr(34) * 2)}"'
+            for i, (n, t) in enumerate(describe_types)
+        )
+        final_sql = (
+            f"SELECT {outer} FROM ({query.rstrip().rstrip(';')}) AS _nswrap({inner})"
+        )
 
-    DECIMAL：fetchdf 压成 float64（约 15-17 位有效数字）。
-    HUGEINT：fetchdf 压成 float64（实测 1.7e38 直接变浮点）。
-    注意 (U)BIGINT 不在此列：fetchdf 对可空整型返回 pandas Int64/UInt64
-    可空 dtype，>2^53 逐位精确（实测 duckdb 1.5.3）——历史上观测到的
-    "可空 BIGINT 坏值 9007199254740992.0" 发生在 normalize 的整帧
-    convert_dtypes/map 降型（已在 utils 逐列化+去 map 修复），不在 fetch
-    阶段。BIGINT 触发会把 COUNT(*)/主键等几乎所有查询帧推上逐行慢路径
-    （实测 2M 行 ~3 倍耗时），得不偿失。
-    """
-    return "DECIMAL" in type_str or "HUGEINT" in type_str
+    try:
+        res = _execute_with_federated_heal(connection, final_sql, query)
+    except Exception as wrap_err:  # pylint: disable=broad-except
+        if final_sql is query:
+            raise
+        # 位置重写失败:不静默回退微秒(接口承诺纳秒保真,静默截断用户无从知晓)。位置重写
+        # 对任何可 DESCRIBE 的只读查询都应成立,失败即真实 bug——明确报错让用户知晓(Codex 复审)。
+        raise RuntimeError(
+            f"TIMESTAMP_NS nanosecond-fidelity rewrite failed; aborting to avoid silent "
+            f"microsecond truncation: {wrap_err}"
+        ) from wrap_err
 
-
-def fetch_query_dataframe(connection, query):
-    """执行查询并取回 DataFrame；结果含需保真列时走 fetchall。
-
-    fetchall 由 DuckDB 原生返回 decimal.Decimal / 任意精度 int，配合 JSON 层
-    的十进制字符串序列化实现全链路无损。不走 Arrow：pyarrow 被桌面版
-    PyInstaller excludes 排除（约 121MB），且 DuckDB→Arrow 转换本身有缺陷
-    （VARIANT 列抛 NotImplemented、可空整型仍压 float64、STRUCT 整数字段变
-    float、MAP 变键值对数组）。其余结果仍走 fetchdf 原路径。
-    """
-    res = connection.execute(query)
     desc = res.description or []
-    if any(_needs_exact_fetch(str(col[1]).upper()) for col in desc):
-        return _fetchall_dataframe(res, desc)
-    return res.fetchdf()
+    # cursor_types 优先用 DESCRIBE 的原始类型(NS 列仍报 TIMESTAMP_NS,与旧行为一致);
+    # DESCRIBE 失败/写查询时退回实际游标 description
+    raw_types = describe_types if describe_types is not None else [
+        (str(col[0]), str(col[1])) for col in desc
+    ]
+    columns, records = records_from_cursor(res, desc)
+    # 列名去重后 columns 已是 id, id_1…;cursor_types 的名字必须同步(否则前端按名建类型 Map
+    # 键碰撞:id_1 拿不到类型、id 被后者覆盖——复审 P2)。类型按【位置】对齐去重后的 columns。
+    cursor_types = (
+        [(columns[i], t) for i, (_, t) in enumerate(raw_types)]
+        if len(raw_types) == len(columns)
+        else raw_types
+    )
+    return columns, records, cursor_types
 
 
-def execute_query(query, con=None):
-    """
-    在DuckDB中执行查询 - 带性能监控
-    """
-    from core.common.config_manager import config_manager
+def _describe_column_types(connection, query):
+    """用 DESCRIBE 探查询列类型(不执行查询体)。成功返回 [(name, type), ...];
+    失败(PRAGMA/多语句/特殊语句)返回 None——调用方据此退回微秒精度且不双执行。"""
+    cleaned = (query or "").rstrip().rstrip(";")
+    if not cleaned:
+        return None
+    try:
+        rows = connection.execute(f"DESCRIBE ({cleaned})").fetchall()
+    except Exception:  # pylint: disable=broad-except
+        return None
+    return [(str(r[0]), str(r[1])) for r in rows]
 
-    app_config = config_manager.get_app_config()
-    debug_logging = bool(app_config.debug or app_config.duckdb_debug_logging)
-    explain_threshold = max(app_config.duckdb_auto_explain_threshold_ms or 0, 0)
 
-    start_time = time.time()
-    with _use_connection(con) as connection:
-        if debug_logging:
-            try:
-                tables = connection.execute("SHOW TABLES").fetchdf()
-                logger.debug("Current tables in DuckDB:\n%s", tables.to_string())
-            except Exception as debug_error:
-                logger.debug("SHOW TABLES failed in debug mode: %s", debug_error)
-
+def _execute_with_federated_heal(connection, sql, original_query):
+    """执行 sql;遇联邦 MySQL 连接失效(且原查询只读)清扩展连接缓存重试一次。
+    mysql 扩展按 DSN 进程级缓存连接,空闲后被中间设备/wait_timeout 静默掐断,
+    复用即「Server has gone away」,DETACH 清不掉,只有 mysql_clear_cache 能清。"""
+    try:
+        return connection.execute(sql)
+    except Exception as err:
+        if not (_is_federated_connection_lost(err) and _is_read_only_query(original_query)):
+            raise
+        logger.warning(
+            "Federated MySQL connection lost (%s); clearing cache and retrying once", err
+        )
         try:
-            result = fetch_query_dataframe(connection, query)
-        except Exception as err:
-            # 联邦查询连接失效自愈：mysql 扩展按 DSN 进程级缓存连接，空闲后被
-            # 中间设备/wait_timeout 静默掐断，复用即「Server has gone away」，
-            # DETACH 清不掉。清空扩展连接缓存后重试一次（会重建新连接）。
-            if _is_federated_connection_lost(err) and _is_read_only_query(query):
-                logger.warning(
-                    "Federated MySQL connection lost (%s); clearing cache and retrying once",
-                    err,
-                )
-                try:
-                    connection.execute("CALL mysql_clear_cache()")
-                except Exception as clear_err:  # pylint: disable=broad-except
-                    logger.warning("mysql_clear_cache failed: %s", clear_err)
-                try:
-                    result = fetch_query_dataframe(connection, query)
-                except Exception as retry_err:
-                    execution_time = (time.time() - start_time) * 1000
-                    logger.error(
-                        "DuckDB query retry after cache clear failed (elapsed %.2fms): %s",
-                        execution_time, retry_err, exc_info=True,
-                    )
-                    raise
-            else:
-                execution_time = (time.time() - start_time) * 1000
-                logger.error(
-                    "DuckDB query execution failed (elapsed %.2fms): %s", execution_time, err, exc_info=True
-                )
-                raise
-
-        execution_time = (time.time() - start_time) * 1000
-        row_count = len(result)
-
-        from core.database.query_metrics import log_query_duration
-
-        log_query_duration(
-            connection,
-            query,
-            execution_time,
-            row_count,
-            explain_threshold_ms=explain_threshold,
-        )
-
-        return result
+            connection.execute("CALL mysql_clear_cache()")
+        except Exception as clear_err:  # pylint: disable=broad-except
+            logger.warning("mysql_clear_cache failed: %s", clear_err)
+        return connection.execute(sql)
 
 
-def register_dataframe(table_name: str, df: pd.DataFrame, con=None) -> bool:
-    """
-    将DataFrame注册到DuckDB (临时表，重启后会丢失)
-    建议使用 create_persistent_table() 进行持久化
-    """
-    try:
-        # 预处理DataFrame以避免类型转换错误
-        processed_df = prepare_dataframe_for_duckdb(df)
-        with _use_connection(con) as connection:
-            connection.register(table_name, processed_df)
-        logger.info(
-            f"Successfully registered temporary table: {table_name}, rows: {len(processed_df)}, columns: {len(processed_df.columns)}"
-        )
-        return True
-    except Exception as e:
-        logger.error(f"Failed to register table {table_name}: {str(e)}")
-        return False
+def timed_fetch_query_records(connection, query):
+    """fetch_query_records + 慢查询时长/auto-EXPLAIN 记录（join/pivot/集合操作
+    等非 execute 主端点共用；execute 主端点有自己的 _log_query_metrics_in_conn，
+    勿双记）。"""
+    from core.common.config_manager import config_manager
+    from core.database.query_metrics import log_query_duration
 
-
-def create_persistent_table(table_name: str, df: pd.DataFrame, con=None) -> bool:
-    """
-    创建持久化表到DuckDB，数据会写入磁盘文件
-    """
-    try:
-        from core.data.file_datasource_manager import (
-            create_typed_table_from_dataframe,
-            file_datasource_manager,
-        )
-        from core.common.timezone_utils import get_current_time_iso
-
-        with _use_connection(con) as connection:
-            metadata = create_typed_table_from_dataframe(connection, table_name, df)
-
-        table_metadata = {
-            "source_id": table_name,
-            "filename": f"table_{table_name}",
-            "file_path": f"duckdb://{table_name}",
-            "file_type": "duckdb_table",
-            "row_count": metadata.get("row_count", 0),
-            "column_count": metadata.get("column_count", 0),
-            "columns": metadata.get("columns", []),
-            "column_profiles": metadata.get("column_profiles", []),
-            "schema_version": 2,
-            "created_at": get_current_time_iso(),
-        }
-
-        file_datasource_manager.save_file_datasource(table_metadata)
-        logger.info(
-            "Successfully created typed persistent table: %s (rows: %s, columns: %s)",
-            table_name,
-            table_metadata["row_count"],
-            table_metadata["column_count"],
-        )
-        return True
-
-    except Exception as e:
-        logger.error(f"Failed to create persistent table {table_name}: {str(e)}")
-        return False
+    start = time.time()
+    columns, records, cursor_types = fetch_query_records(connection, query)
+    elapsed_ms = (time.time() - start) * 1000
+    explain_threshold = max(
+        config_manager.get_app_config().duckdb_auto_explain_threshold_ms or 0, 0
+    )
+    log_query_duration(
+        connection, query, elapsed_ms, len(records),
+        explain_threshold_ms=explain_threshold,
+    )
+    return columns, records, cursor_types
 
 
 def table_exists(table_name: str, con=None) -> bool:
@@ -684,8 +608,10 @@ def table_exists(table_name: str, con=None) -> bool:
     """
     try:
         with _use_connection(con) as connection:
-            tables_df = connection.execute("SHOW TABLES").fetchdf()
-        return table_name in tables_df["name"].tolist()
+            table_names = [
+                row[0] for row in connection.execute("SHOW TABLES").fetchall()
+            ]
+        return table_name in table_names
     except Exception as e:
         logger.error(f"Failed to check if table exists {table_name}: {str(e)}")
         return False
@@ -720,75 +646,6 @@ def safe_encode_string(value: str) -> str:
             return str(value).encode("ascii", errors="ignore").decode("ascii")
 
 
-def prepare_dataframe_for_duckdb(df: pd.DataFrame) -> pd.DataFrame:
-    """
-    预处理DataFrame以避免DuckDB类型转换错误
-    将所有数据统一转换为字符串类型，确保JOIN操作的兼容性
-    """
-    if df.empty:
-        return df
-
-    # 创建DataFrame的深拷贝
-    processed_df = df.copy()
-
-    logger.info(
-        f"Starting DataFrame preprocessing: {len(processed_df)} rows, {len(processed_df.columns)} columns"
-    )
-
-    # 处理所有列，统一转换为字符串类型
-    for col in processed_df.columns:
-        try:
-            # 处理不同的数据类型
-            if processed_df[col].dtype == "datetime64[ns]":
-                # 日期时间转换为字符串
-                processed_df[col] = processed_df[col].dt.strftime("%Y-%m-%d %H:%M:%S")
-            elif processed_df[col].dtype == "bool":
-                # 布尔值转换为字符串
-                processed_df[col] = processed_df[col].astype(str)
-            elif processed_df[col].dtype in ["float64", "float32"]:
-                # 浮点数转换为字符串，处理NaN
-                processed_df[col] = processed_df[col].fillna("").astype(str)
-            elif processed_df[col].dtype in ["int64", "int32", "int16", "int8"]:
-                # 整数转换为字符串
-                processed_df[col] = processed_df[col].astype(str)
-            else:
-                # 对象类型（包括字符串）
-                processed_df[col] = processed_df[col].fillna("").astype(str)
-
-            # 简化字符串处理，避免性能问题
-            # 直接转换为字符串，处理空值
-            processed_df[col] = processed_df[col].astype(str).replace("nan", "")
-
-        except Exception as e:
-            logger.warning(f"Error processing column {col}: {e}, using default string conversion")
-            # 使用最简单的转换方法
-            try:
-                processed_df[col] = processed_df[col].astype(str).fillna("")
-            except:
-                # 如果还是失败，创建一个空字符串列
-                processed_df[col] = [""] * len(processed_df)
-
-    # 清理列名，确保是有效的SQL标识符
-    clean_columns = []
-    for i, col in enumerate(processed_df.columns):
-        try:
-            clean_col = str(col).encode("utf-8", errors="replace").decode("utf-8")
-            # 移除或替换特殊字符
-            clean_col = "".join(
-                c if c.isalnum() or c in ["_", "-"] else "_" for c in clean_col
-            )
-            if not clean_col or clean_col[0].isdigit():
-                clean_col = f"col_{i}"
-            clean_columns.append(clean_col)
-        except:
-            clean_columns.append(f"col_{i}")
-
-    processed_df.columns = clean_columns
-
-    logger.info(f"DataFrame preprocessing completed: all columns converted to string type")
-    return processed_df
-
-
 def get_table_info(table_name: str, con=None) -> Dict[str, Any]:
     """
     获取表的信息
@@ -797,7 +654,7 @@ def get_table_info(table_name: str, con=None) -> Dict[str, Any]:
         with _use_connection(con) as connection:
             # 获取表结构
             schema_query = f"DESCRIBE {table_name}"
-            schema_df = connection.execute(schema_query).fetchdf()
+            schema_rows = connection.execute(schema_query).fetchall()
 
             # 获取行数
             count_query = f"SELECT COUNT(*) as row_count FROM {table_name}"
@@ -805,9 +662,9 @@ def get_table_info(table_name: str, con=None) -> Dict[str, Any]:
         row_count = count_result[0] if count_result else 0
 
         # 统一列数据格式：转换为前端期望的对象数组格式
-        columns = []
-        for _, row in schema_df.iterrows():
-            columns.append({"name": row["column_name"], "type": row["column_type"]})
+        columns = [
+            {"name": str(row[0]), "type": str(row[1])} for row in schema_rows
+        ]
 
         return {
             "table_name": table_name,
@@ -1017,10 +874,11 @@ def build_single_table_query(query_request: QueryRequest) -> str:
         try:
             # 展开 SELECT *
             with _use_connection() as connection:
-                columns_df = connection.execute(
+                info_rows = connection.execute(
                     f"PRAGMA table_info({table_name_sql})"
-                ).fetchdf()
-            all_columns = columns_df["name"].tolist()
+                ).fetchall()
+            # PRAGMA table_info 第 2 列为列名
+            all_columns = [str(row[1]) for row in info_rows]
             select_clause = ", ".join([f'"{col}"' for col in all_columns])
             if not select_clause:  # 如果表没有列
                 select_clause = "*"
@@ -1095,8 +953,9 @@ def optimize_query_plan(query: str, con=None) -> str:
     try:
         with _use_connection(con) as connection:
             explain_query = f"EXPLAIN {query}"
-            plan = connection.execute(explain_query).fetchdf()
-        logger.info(f"Query plan:\n{plan.to_string()}")
+            plan_rows = connection.execute(explain_query).fetchall()
+        plan_text = "\n".join(str(row[-1]) for row in plan_rows)
+        logger.info(f"Query plan:\n{plan_text}")
 
         # 这里可以添加查询优化逻辑
         # 例如：重新排序JOIN顺序、添加索引提示等

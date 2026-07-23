@@ -63,6 +63,9 @@ class QueryResultExportRequest(BaseModel):
     sql: str = Field(..., min_length=1)
     format: Literal["parquet", "csv"] = "parquet"
     attach_databases: Optional[List[AttachDatabase]] = None
+    # 行数范围【显式选择】:False(默认)=全量导出(逐字执行,尊重用户自己的 LIMIT);
+    # True=限制(最外层缺 LIMIT 时补 max_query_rows)。不从 SQL 文本猜测。
+    apply_row_limit: bool = False
 
 
 @router.post("/api/query-results/export", tags=["Query Export"])
@@ -71,11 +74,19 @@ def export_query_results(
     x_request_id: Optional[str] = Header(None, alias="X-Request-ID"),
 ):
     """将 SQL 查询结果导出为 Parquet 或 CSV 文件（服务端 COPY，避免浏览器内存限制）。"""
-    sql_query = request.sql.strip().rstrip(";")
+    from routers.query_sql_utils import (
+        apply_row_limit_choice,
+        prepare_query_for_embedding,
+    )
+
+    sql_query = apply_row_limit_choice(
+        request.sql.strip().rstrip(";"), request.apply_row_limit
+    )
     if not sql_query:
         raise APIValidationError("SQL cannot be empty")
 
     _ensure_read_only(sql_query)
+    embedded_sql = prepare_query_for_embedding(sql_query)
 
     exports_dir = str(config_manager.get_exports_dir())
     os.makedirs(exports_dir, exist_ok=True)
@@ -91,8 +102,9 @@ def export_query_results(
         else with_duckdb_connection()
     )
 
+    # Newlines keep a terminal ``-- comment`` from swallowing COPY's closing parenthesis.
     copy_sql = (
-        f"COPY ({sql_query}) TO '{file_path}' "
+        f"COPY (\n{embedded_sql}\n) TO '{file_path}' "
         f"(FORMAT {'PARQUET' if request.format == 'parquet' else 'CSV'})"
     )
     attached_aliases: List[str] = []

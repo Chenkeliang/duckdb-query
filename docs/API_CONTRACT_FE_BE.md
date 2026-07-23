@@ -28,7 +28,7 @@
 | `asyncTaskApi.ts` | §6 | 异步任务、连接池状态、错误统计 |
 | `pivotQueryApi.ts` | §7 | 透视 generate/preview、SQL 收藏、应用配置（`POST /api/pivot-query/*`） |
 | `settingsShortcutsApi.ts` | §8 | 快捷键 |
-| `setOperationsApi.ts` | §9 | 集合运算 generate / preview / validate / execute / export 等 |
+| `setOperationsApi.ts` | §9 | 集合运算 generate / preview / validate / execute 等 |
 | `queryExportApi.ts` | §9.1 | 查询结果服务端导出 |
 | `joinQueryApi.ts` | §9.2 | 结构化多表 JOIN：`performJoinQuery` |
 | `aiApi.ts` | §9.3 | AI 设置 / 供应商测试 / 报错医生 / 解释 / 问数 / 对话 / 图表推荐 |
@@ -60,6 +60,7 @@
 | 404 | `RESOURCE_NOT_FOUND` | 数据源 id、分块上传会话、DuckDB 表、联邦 `attach_databases[].connection_id` |
 | 404 | `FAVORITE_NOT_FOUND` | SQL 收藏 id 不存在 |
 | 404 | `QUERY_NOT_FOUND` | 同步查询取消时无对应 `X-Request-ID` 会话 |
+| 409 | `UPLOAD_PROCESSING` | 分块上传已进入合并/导入阶段，不能再取消 |
 | 413 | `FILE_TOO_LARGE` | 分块 `init` 超过 `max_file_size` |
 | 499 | `QUERY_CANCELLED` | 同步 DuckDB / 联邦查询取消（`X-Request-ID`） |
 | 500 | `QUERY_FAILED` | DuckDB `execute` / 联邦 SQL 执行失败 |
@@ -75,11 +76,11 @@
 
 | 方法 | 路径 | 成功体 | `data` 要点 | 前端入口 |
 |------|------|--------|-------------|----------|
-| POST | `/api/duckdb/execute` | 对象 | `executeDuckDBSQL`；`data`: `columns`, `column_types[]`（`{name, duckdb_type}`）, `data`, `row_count`, `preview_limit_applied?`；499 / 500 |
+| POST | `/api/duckdb/execute` | 对象 | `executeDuckDBSQL`；`data`: `columns`, `column_types[]`（`{name, duckdb_type}`；来自 `DESCRIBE (<sql>)`，PRAGMA/EXPLAIN/多语句等不可 DESCRIBE 时由同一次执行的游标 description 类型兜底）, `data`, `row_count`, `preview_limit_applied?`；499 / 500 |
 | POST | `/api/duckdb/federated-query` | 对象 | `executeFederatedQuery`；同上含 `column_types`；额外 `optimized_sql`（半连接下推改写后 SQL）、`suggestions[]`（审计列时间界建议，**不自动改结果**）；404 `connection_id`；503 ATTACH；499 / 500 / **504 超时** |
 | POST | `/api/query/cancel/{request_id}` | 对象 | `cancelSyncQuery`；404 `QUERY_NOT_FOUND`（无活跃同步查询） |
-| POST | `/api/save_query_to_duckdb` | 对象 | 保存结果表元数据（依请求） | `saveQueryToDuckDB` |
-| GET | `/api/duckdb/tables` | **列表** | `items[]`: `table_name`, `row_count`, `column_count`, `created_at` | `getDuckDBTables` |
+| POST | `/api/save_query_to_duckdb` | 对象 | 保存结果表元数据（依请求）；`apply_row_limit`（默认 `false`，兼容 `applyRowLimit`）语义与 `/api/async-tasks` 相同 | `saveQueryToDuckDB` |
+| GET | `/api/duckdb/tables` | **列表** | `items[]`: `table_name`, `row_count`, `column_count`, `created_at`（应用时区 ISO，仅展示，可为 null）。顺序 = `system_table_registry.sort_seq` 倒序（稳定创建序登记表，新建/替换置顶，跨重启稳定；与 AI 目录同口径） | `getDuckDBTables` |
 | GET | `/api/duckdb/tables/{name}` | 对象 | 表详情 / `table` 包装 | `getDuckDBTableDetail` |
 | DELETE | `/api/duckdb/tables/{name}` | 对象 | `deleted_table` | `deleteDuckDBTable` |
 | POST | `/api/duckdb/table/{name}/refresh` | 对象 | `table`, `refreshed` | `refreshDuckDBTableMetadata` |
@@ -128,7 +129,7 @@
 | POST | `/api/server-files/excel/import` | JSON body | `importServerExcelSheets` |
 | POST | `/api/read_from_url` | JSON `import_mode?`, `prefer_native?`（默认 true，false 时对 http(s) 跳过 DuckDB/httpfs 直读） | `readFromUrl`；s3:// 禁止 requests 回退；400 `URL_INVALID`；500 `URL_READ_FAILED`（§1.1） |
 | POST | `/api/upload/chunk` | — | `uploadChunk` |
-| DELETE | `/api/upload/cancel/{upload_id}` | — | `cancelChunkedUpload`；404 会话（§1.1） |
+| DELETE | `/api/upload/cancel/{upload_id}` | — | `cancelChunkedUpload`；404 会话；409 已进入处理阶段（§1.1） |
 | — | `uploadFileAuto` | 同上 | 文件 &gt; 8MB 走分块，否则 `POST /api/upload` |
 | GET | `/api/url_info` | — | `getUrlInfo`；400 `URL_INVALID`（§1.1） |
 | POST | `/api/data-sources/excel/inspect` | — | `inspectExcelSheets`；404 `FILE_NOT_FOUND` |
@@ -143,7 +144,7 @@
 |------|------|--------|----------|
 | GET | `/api/async-tasks` | **列表** | `listAsyncTasks`（`limit`, `offset`, `order_by`） |
 | GET | `/api/async-tasks/{id}` | 对象 | `getAsyncTask`；404 `RESOURCE_NOT_FOUND` |
-| POST | `/api/async-tasks` | 对象 | `submitAsyncQuery`（`task_id`；可 `attach_databases` 或由 `datasource` 推导）；400 空 SQL / attach 校验 |
+| POST | `/api/async-tasks` | 对象 | `submitAsyncQuery`（`task_id`；可 `attach_databases` 或由 `datasource` 推导）；`apply_row_limit`（默认 `false`）＝行数范围显式选择：`false`＝全量（逐字执行提交的 SQL，不加系统 LIMIT、尊重用户自带 LIMIT），`true`＝最外层缺 LIMIT 时补默认 `max_query_rows`（用户已写则用用户值，**默认值不是硬上限**）；判定走 sqlglot AST（`has_top_level_limit`），禁止按 LIMIT 数值猜来源；**前端须提交 base_sql（无系统预览 LIMIT）**；retry 保留原任务选择；400 空 SQL / attach 校验 |
 | POST | `/api/async-tasks/{id}/cancel` | 对象 | `cancelAsyncTask`；404 任务不存在；400 `TASK_CANCEL_NOT_ALLOWED` |
 | POST | `/api/async-tasks/{id}/retry` | 对象 | `retryAsyncTask`；404 / 400 缺 SQL |
 | POST | `/api/async-tasks/{id}/download` | **blob** 或 JSON 错误体 | `downloadAsyncResult`（体：`format`）；400 格式；404 文件 |
@@ -157,7 +158,7 @@
 
 | 方法 | 路径 | 成功体 | 前端入口 |
 |------|------|--------|----------|
-| POST | `/api/pivot-query/generate` | 对象 | `generatePivotQuery`（`pivot_config` 必填）；400 `PIVOT_QUERY_INVALID`；500 `OPERATION_FAILED` |
+| POST | `/api/pivot-query/generate` | 对象 | `generatePivotQuery`（`pivot_config` 必填；可选 `attach_databases`；`pivot_config.values[].typeConversion`=聚合前 TRY_CAST 目标，走白名单校验）；列维度去重值超过 app `pivot_max_columns` 时 **400 `PIVOT_COLUMN_LIMIT_EXCEEDED`**，`error.details={column,cap,observed_at_least}`（前端据结构化字段提示，勿解析消息文本）；配置无效 400 `PIVOT_QUERY_INVALID`。**服务端路径出错时前端不回退本地 PIVOT**（本地 SQL 无列上限保护） |
 | POST | `/api/pivot-query/preview` | 对象 | `previewPivotQuery`（`pivot_config` 必填；可选 `attach_databases`；可选顶层 `limit`=预览行数上限，缺省回退 app `max_query_rows`，响应 `row_count`=透视后总行数、`returned_rows`=实际返回行数；MCP 工具 `pivot` 预览默认传 `limit=100`）；400 `PIVOT_QUERY_INVALID`；499 `QUERY_CANCELLED`；500 `OPERATION_FAILED` |
 | GET | `/api/sql-favorites` | **列表** | `listSqlFavorites` |
 | GET | `/api/sql-favorites/{id}` | 对象 | `getSqlFavorite`（`data.favorite`）；404 `FAVORITE_NOT_FOUND` |
@@ -165,7 +166,8 @@
 | PUT | `/api/sql-favorites/{id}` | 对象 | `updateSqlFavorite`；404 `FAVORITE_NOT_FOUND` |
 | DELETE | `/api/sql-favorites/{id}` | 对象 | `deleteSqlFavorite`；404 `FAVORITE_NOT_FOUND` |
 | POST | `/api/sql-favorites/{id}/use` | 对象 | `incrementFavoriteUsage`；404 `FAVORITE_NOT_FOUND` |
-| GET | `/api/app-config/features` | 对象 | `getAppConfig`；含 `json_import_column_type`, `remote_storage_configured`（是否配置 `duckdb_remote_settings`） |
+| GET | `/api/app-config/features` | 对象 | `getAppConfig`；含 `json_import_column_type`, `remote_storage_configured`（是否配置 `duckdb_remote_settings`）, `pivot_max_columns`（透视结果列数上限，默认 300；前端据此发 `column_value_limit`） |
+| POST | `/api/columns/infer-cast` | 对象 | `inferColumnCast`（`columnAnalysisApi.ts`）；入参 `{table_name, column, filters?, attach_databases?}`；在筛选后真实数据上刻画一列作为数值 cast 目标：`{recommended: 'BIGINT'\|'DECIMAL(38,s)'\|null, total, numeric, non_numeric, max_int_digits, max_frac_digits, safe_decimal_cast, reason}`；DECIMAL scale 取自实际数据。`safe_decimal_cast`=是否可**安全自动量化**（`recommended` 非 null 时恒 true；语义非"数学上能否放进 DECIMAL(38)"——二进制浮点源即便数值能放进也为 false，量化有损）。`reason`∈ `null\|empty\|non_numeric\|binary_float\|scientific\|overflow`（不安全原因）：`binary_float`=源列本就是 FLOAT/DOUBLE（`CAST(AS VARCHAR)` 是最短往返串，量化会让 `19.99→19.98999999999999744` 失真，交 JOIN 分侧转换/用户显式选；此分支跳过 O(n) 文本扫描，但 `total`/`numeric` 仍以轻量 `count(*)`+`isfinite` 如实统计，`max_int_digits`/`max_frac_digits`=0）；`scientific`=含科学计数法文本无法可靠定标度；`overflow`=整数位+小数位超 38。任一不安全 → `recommended=null`，不静默丢数据。供透视文本聚合与 JOIN 类型冲突的数据感知安全推荐 |
 
 ## 8. 设置（`settingsShortcutsApi.ts`）
 
@@ -186,19 +188,18 @@ BY NAME、LIMIT、预览 vs 执行语义见 [QUERY_BEHAVIOR_ZH.md](QUERY_BEHAVIO
 | POST | `/api/set-operations/validate` | 对象 | `validateSetOperation`；500 服务异常 |
 | POST | `/api/set-operations/execute` | 对象 | `executeSetOperation`（`save_as_table` / `preview`）；400 / 500 |
 | POST | `/api/set-operations/simple-union` | 对象 | `simpleUnionSetOperation` |
-| POST | `/api/set-operations/export` | 对象 | `exportSetOperation`；500 `OPERATION_FAILED` |
 
 ## 9.1 查询结果服务端导出（`queryExportApi.ts`）
 
 | 方法 | 路径 | 成功 `data` | 前端 |
 |------|------|-------------|------|
-| POST | `/api/query-results/export` | `file_id`, `download_url`, `format`, `row_count_estimate?` | `exportQueryResults` |
+| POST | `/api/query-results/export` | `file_id`, `download_url`, `format`, `row_count_estimate?` | `exportQueryResults`；`apply_row_limit`（默认 `false`）语义与 `/api/async-tasks` 相同（全量＝不加系统 LIMIT；限制＝缺则补默认，不封顶用户值）；前端提交 base_sql |
 | GET | `/api/query-results/export/{file_id}/download` | 文件流 | `getQueryExportDownloadUrl` + 浏览器下载 |
 | POST | `/api/query-results/export/{file_id}/save-to-path` | `path`, `size_bytes` | `saveQueryExportToPath`（体：`target_path`）；**桌面模式专用**（同 async export-to-path 门控，非桌面 403）；400 路径非法；404 文件不存在 |
 
 请求：`{ sql, format: "parquet"|"csv", attach_databases? }`；支持 `X-Request-ID` 取消（499 `QUERY_CANCELLED`）。
 
-**`setOperationsApi.ts` 已封装**：`generate`、`preview`、`validate`、`execute`、`simple-union`、`export`（上表全部）。
+**`setOperationsApi.ts` 已封装**：`generate`、`preview`、`validate`、`execute`、`simple-union`。
 
 执行时前端在 generate 返回的 SQL 后追加 `LIMIT`（与 `maxQueryRows` 一致）；**preview** 端点 LIMIT 由后端 `max_query_rows` 控制，结果写入结果面板。
 
@@ -211,7 +212,7 @@ BY NAME、LIMIT、预览 vs 执行语义见 [QUERY_BEHAVIOR_ZH.md](QUERY_BEHAVIO
 
 ## 9.3 AI（`aiApi.ts`，后端 `routers/ai.py`，OpenAPI tag `AI`）
 
-> AI **默认关闭**;供应商 `api_key` 服务端 **Fernet 加密**存储,读取接口返回掩码 `****`、从不回传明文。生成的 SQL 永远只填入编辑器、**绝不自动执行**。
+> AI **默认关闭**;供应商 `api_key` 服务端 **Fernet 加密**存储,读取接口返回掩码 `****`、从不回传明文。生成的 SQL 永远只填入编辑器、**绝不自动执行**。AI 上下文除表结构外还带**本地表的有界数据样例**(≤3 行样本 + 低基数文本列取值,随 prompt 发给所配置的 LLM 供应商;联邦表不采样)。
 
 | 方法 | 路径 | 请求 | 成功体 | 前端入口 |
 |------|------|------|--------|----------|
@@ -220,7 +221,7 @@ BY NAME、LIMIT、预览 vs 执行语义见 [QUERY_BEHAVIOR_ZH.md](QUERY_BEHAVIO
 | POST | `/api/ai/providers/{id}/test` | — | `{ ok, sample? }` | `testProvider` |
 | POST | `/api/ai/error-fix` | `{ sql, error, tables[], attach_databases[], locale }` | `{ explanation, fixed_sql, safe }` | `errorFix` |
 | POST | `/api/ai/explain-sql` | `{ sql, locale }` | `{ explanation }` | `explainSql` |
-| POST | `/api/ai/nl-to-sql` | `{ question, tables[], locale }` | `{ sql, used_tables[], safe }`（非只读 SELECT → `safe:false`） | `nlToSql` |
+| POST | `/api/ai/nl-to-sql` | `{ question, tables[], locale }` | `{ sql, used_tables[], safe }`（非只读 SELECT → `safe:false`；后端返回前先 `EXPLAIN` 校验,失败自动经报错医生修复一轮,响应形状不变） | `nlToSql` |
 | POST | `/api/ai/chat` | `{ messages[], tables[], attach_databases[], locale }` | `{ content }` | `chat` |
 | POST | `/api/ai/suggest-chart` | `{ columns[], sample[], locale }` | `ChartSpec{ type, x, y[], agg, xBin?, reason? }` | `suggestChart` |
 
@@ -250,6 +251,12 @@ BY NAME、LIMIT、预览 vs 执行语义见 [QUERY_BEHAVIOR_ZH.md](QUERY_BEHAVIO
 | `row_count`（duckdb execute） | 当前结果集行数（与返回 `data` 长度一致） |
 | `preview_limit_applied` | 预览且服务端自动追加 LIMIT 时为整数，否则 `null` |
 | `header`（URL 导入请求体） | 是否有表头；**不是** `has_header` |
+
+## 11.1 类型与 cast 契约（v1.2.1 起）
+
+- **cast 目标白名单**：`left_cast`/`right_cast`（JOIN 条件）、`typeConversion`（pivot value，`'auto'` 哨兵除外）、`resolved_casts[].cast`（pivot）最终原样拼进 `TRY_CAST(... AS X)`，统一经 `core.common.duckdb_types.validate_cast_type` 校验——只接受 **DuckDB 规范标量类型**（别名如 `text`/`int8` 会归一到 `VARCHAR`/`BIGINT` 规范拼写返回）或完整 `DECIMAL(p,s)`（`p≤38`、`s≤p`）；**裸 `DECIMAL` 拒绝**（隐性 `DECIMAL(18,3)` 有损），非法值 400/422。
+- **粘贴板 `column_types`**：`VARCHAR`/`INTEGER`(实落 BIGINT)/`DECIMAL`(标度按列内数据推断，全整数列落 BIGINT，混杂列保 VARCHAR)/`DOUBLE`/`DATE`(按内容定型：纯日期→DATE、含时间→TIMESTAMP、非日期内容→VARCHAR、全空列→TIMESTAMP+NULL)/`BOOLEAN`。
+- **类型名归一**：前端 `utils/duckdbTypes.ts` 与后端 `core.common.duckdb_types` 为镜像模块，MySQL `datetime`/`bigint unsigned`、PG `timestamp without time zone` 等源库原生名在判定前归一为 DuckDB 规范名；两侧词表改动必须同步。
 
 ## 12. Git / 发布注意
 

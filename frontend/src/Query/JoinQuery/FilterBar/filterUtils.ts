@@ -12,6 +12,12 @@
 
 import { nanoid } from 'nanoid';
 import { sqlStringLiteral } from '@/utils/sqlLiteral';
+import {
+    isDateOrTimestampType,
+    isIntegerType,
+    isNumericType,
+    normalizeTypeName,
+} from '@/utils/duckdbTypes';
 import type {
     FilterNode,
     FilterCondition,
@@ -529,6 +535,23 @@ function parseInValues(valuesStr: string): (string | number)[] {
 }
 
 /**
+ * 把筛选输入解析成数值,但仅当能**精确往返**时才返回 number,否则保留原字符串。
+ *
+ * 背景:直接 `Number('9007199254740993')` 会静默舍入到相邻 float64,BIGINT/ID
+ * 列的大整数筛选就会匹配错行;高精度 DECIMAL 同理被截断。字符串形态在 SQL 里
+ * 被单引号包裹、DuckDB 隐式转换比较,精确无损。
+ * 规则:`String(Number(x)) === x` 才认为可安全用 number(过滤掉大整数、
+ * 高精度小数、前导零、科学计数法等一切会变形的输入)。
+ */
+export function parseNumericPreservingPrecision(input: string): string | number {
+    const n = Number(input);
+    if (!Number.isNaN(n) && String(n) === input) {
+        return n;
+    }
+    return input;
+}
+
+/**
  * 解析单个值
  */
 function parseValue(str: string): FilterValue {
@@ -551,14 +574,8 @@ function parseValue(str: string): FilterValue {
         return inner.replace(/''/g, "'").replace(/""/g, '"');
     }
 
-    // 数字
-    const num = Number(trimmed);
-    if (!isNaN(num)) {
-        return num;
-    }
-
-    // 默认作为字符串
-    return trimmed;
+    // 数字(仅精确往返才转 number,否则保留字符串以免丢大整数/高精度)
+    return parseNumericPreservingPrecision(trimmed);
 }
 
 // ============================================
@@ -576,29 +593,32 @@ export function validateValueType(value: FilterValue, columnType: string): Valid
         return { valid: true };
     }
 
-    const type = columnType.toUpperCase();
+    // 分类判定统一走 utils/duckdbTypes:MySQL datetime/PG timestamp without
+    // time zone 等源库原生名先归一;也修掉了旧 includes('INT') 把 INTERVAL
+    // 误当整数校验的问题。
+    const normalized = normalizeTypeName(columnType);
     const strValue = String(value);
 
     // 整数类型
-    if (type.includes('INT') || type.includes('BIGINT') || type.includes('SMALLINT') || type.includes('TINYINT')) {
+    if (isIntegerType(columnType)) {
         if (!/^-?\d+$/.test(strValue)) {
             return { valid: false, error: 'filter.error.invalidInteger', details: strValue };
         }
     }
-    // 浮点类型
-    else if (type.includes('DOUBLE') || type.includes('DECIMAL') || type.includes('FLOAT') || type.includes('REAL')) {
+    // 小数类型(DECIMAL/DOUBLE/FLOAT)
+    else if (isNumericType(columnType)) {
         if (isNaN(Number(strValue))) {
             return { valid: false, error: 'filter.error.invalidNumber', details: strValue };
         }
     }
-    // 日期时间类型 (DATETIME, TIMESTAMP) - 需要放在 DATE 检查之前
-    else if (type.includes('DATETIME') || type.includes('TIMESTAMP')) {
+    // 时间戳类型(含 MySQL DATETIME 归一后的 TIMESTAMP 族)
+    else if (isDateOrTimestampType(columnType) && normalized !== 'DATE') {
         if (isNaN(Date.parse(strValue))) {
             return { valid: false, error: 'filter.error.invalidTimestamp', details: strValue };
         }
     }
     // 日期类型 (纯 DATE，不包含时间)
-    else if (type.includes('DATE')) {
+    else if (normalized === 'DATE') {
         // 严格要求 ISO 格式：YYYY-MM-DD 或 YYYY-MM-DD HH:MM(:SS)
         // 不使用 Date.parse() 因为它接受太多格式（如 2024/12/23）
         if (!/^\d{4}-\d{2}-\d{2}(\s+\d{2}:\d{2}(:\d{2})?)?$/.test(strValue)) {
@@ -606,7 +626,7 @@ export function validateValueType(value: FilterValue, columnType: string): Valid
         }
     }
     // 布尔类型
-    else if (type.includes('BOOL')) {
+    else if (normalized === 'BOOLEAN') {
         const lower = strValue.toLowerCase();
         if (!['true', 'false', '1', '0'].includes(lower)) {
             return { valid: false, error: 'filter.error.invalidBoolean', details: strValue };

@@ -121,7 +121,9 @@ async def paste_data(
 
     `column_names`: list of column name strings, e.g. ["id", "name"].
     `column_types`: list of type strings matching column_names, e.g. ["INTEGER", "VARCHAR"].
-      Supported types: VARCHAR, INTEGER, DOUBLE, DATE, BOOLEAN.
+      Supported types: VARCHAR, INTEGER, DECIMAL, DOUBLE, DATE, BOOLEAN.
+      DECIMAL is exact: scale is inferred from the data (12.50 stays "12.50");
+      columns that aren't uniformly numeric fall back to VARCHAR unchanged.
     `data_rows`: list of rows, each a list of string cell values,
       e.g. [["1", "Alice"], ["2", "Bob"]].
     `delimiter`: used only for context (data is already parsed into rows).

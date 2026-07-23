@@ -6,17 +6,21 @@ import logging
 import re
 import uuid
 from contextlib import contextmanager
+from functools import partial
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
-import pandas as pd
+import duckdb
+import pymysql
 
+from core.common.sql_identifiers import escape_string_literal
 from core.database.database_manager import db_manager
 from core.database.duckdb_engine import (
     build_attach_sql,
-    fetch_query_dataframe,
+    fetch_query_records,
     with_duckdb_connection,
 )
 from core.database.duckdb_pool import interruptible_connection
+from core.database.connection_registry import connection_registry
 from core.common.exceptions import DatabaseConnectionError, ResourceNotFoundError
 from core.security.encryption import password_encryptor
 
@@ -42,10 +46,8 @@ def _is_database_already_attached_error(error: Exception) -> bool:
     return "already exists" in str(error).lower()
 
 
-def _quote_identifier(identifier: str) -> str:
-    """转义内嵌双引号并加引号包裹单个 SQL 标识符（保留非 ASCII，如中文表名）。"""
-    escaped = str(identifier).replace('"', '""')
-    return f'"{escaped}"'
+# 标识符转义统一走 core.common.sql_identifiers(消灭历史 8 份副本)
+from core.common.sql_identifiers import quote_identifier as _quote_identifier  # noqa: E402
 
 
 def resolve_attach_configs(
@@ -127,12 +129,105 @@ def detach_databases_on_connection(conn: Any, aliases: List[str]) -> None:
             logger.warning("DETACH %s failed: %s", alias, detach_error)
 
 
+def kill_mysql_query(db_config: Dict[str, Any], connection_id: int) -> bool:
+    """使用同账号的独立 MySQL 连接终止指定服务端查询。"""
+    username = db_config.get("user") or db_config.get("username")
+    killer = pymysql.connect(
+        host=db_config["host"],
+        port=int(db_config.get("port") or 3306),
+        user=username,
+        password=db_config.get("password", ""),
+        database=db_config["database"],
+        autocommit=True,
+        connect_timeout=5,
+        read_timeout=5,
+        write_timeout=5,
+    )
+    try:
+        with killer.cursor() as cursor:
+            cursor.execute(f"KILL QUERY {int(connection_id)}")
+        return True
+    finally:
+        killer.close()
+
+
+def _rollback_quietly(conn: Any) -> None:
+    try:
+        conn.execute("ROLLBACK")
+    except Exception as rollback_error:  # pylint: disable=broad-exception-caught
+        logger.debug("Remote cancellation transaction rollback skipped: %s", rollback_error)
+
+
+@contextmanager
+def mysql_remote_cancellation_scope(
+    conn: Any,
+    query_id: Optional[str],
+    attach_configs: List[Tuple[str, Dict[str, Any]]],
+) -> Iterator[None]:
+    """保持 MySQL 会话并登记 ``KILL QUERY``，供联邦查询取消使用。
+
+    mysql_scanner 的普通 ATTACH 扫描可能阻塞在远端结果物化阶段，此时 DuckDB
+    ``interrupt()`` 只能设置本地中断标记。这里用显式 DuckDB 事务固定扩展所用的
+    MySQL 会话，先读取 ``CONNECTION_ID()``，再为同一 query_id 登记第二连接取消器。
+    """
+    mysql_configs = [
+        (alias, config)
+        for alias, config in attach_configs
+        if str(config.get("type", "")).lower() == "mysql"
+    ]
+    if not query_id or not mysql_configs:
+        yield
+        return
+
+    captured_sessions: List[Tuple[Dict[str, Any], int]] = []
+    transaction_started = False
+    try:
+        conn.execute("BEGIN TRANSACTION")
+        transaction_started = True
+        for alias, db_config in mysql_configs:
+            safe_alias = escape_string_literal(alias)
+            row = conn.execute(
+                "SELECT connection_id FROM "
+                f"mysql_query('{safe_alias}', "
+                "'SELECT CONNECTION_ID() AS connection_id', stream_results=false)"
+            ).fetchone()
+            if not row:
+                raise RuntimeError("MySQL connection ID query returned no rows")
+            captured_sessions.append((dict(db_config), int(row[0])))
+    except duckdb.InterruptException:
+        if transaction_started:
+            _rollback_quietly(conn)
+        raise
+    except Exception as capture_error:  # pylint: disable=broad-exception-caught
+        if transaction_started:
+            _rollback_quietly(conn)
+        logger.warning(
+            "Unable to register MySQL remote cancellation; using DuckDB interrupt only: %s",
+            capture_error,
+        )
+        yield
+        return
+
+    for db_config, connection_id in captured_sessions:
+        connection_registry.register_remote_interrupt(
+            query_id,
+            partial(kill_mysql_query, db_config, connection_id),
+        )
+
+    try:
+        yield
+        conn.execute("COMMIT")
+    except Exception:
+        _rollback_quietly(conn)
+        raise
+
+
 def execute_sql_with_attach(
     sql: str,
     attach_databases: Optional[List[Any]] = None,
     query_id: Optional[str] = None,
-) -> pd.DataFrame:
-    """在 DuckDB 连接上 ATTACH → 执行 SQL → DETACH。"""
+) -> tuple:
+    """在 DuckDB 连接上 ATTACH → 执行 SQL → DETACH，返回 (columns, records)。"""
     from core.common.sql_mysql_quotes import (
         normalize_mysql_double_quoted_strings_for_duckdb,
     )
@@ -142,12 +237,12 @@ def execute_sql_with_attach(
         sql.rstrip().rstrip(";")
     )
 
-    def _run(conn: Any) -> pd.DataFrame:
+    def _run(conn: Any) -> tuple:
         attached: List[str] = []
         try:
             if attach_configs:
                 attached = attach_databases_on_connection(conn, attach_configs)
-            return fetch_query_dataframe(conn, cleaned_sql)
+            return fetch_query_records(conn, cleaned_sql)
         finally:
             if attached:
                 detach_databases_on_connection(conn, attached)

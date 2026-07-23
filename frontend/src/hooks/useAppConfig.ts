@@ -19,6 +19,7 @@ export interface AppConfig {
   enablePivotTables: boolean;
   pivotTableExtension: string;
   maxQueryRows: number;
+  pivotMaxColumns: number;
   maxFileSize: number;
   maxFileSizeDisplay: string;
   federatedQueryTimeout: number; // ms
@@ -34,6 +35,7 @@ const DEFAULT_CONFIG: AppConfig = {
   enablePivotTables: true,
   pivotTableExtension: 'pivot_table',
   maxQueryRows: DEFAULT_MAX_QUERY_ROWS,
+  pivotMaxColumns: 300,
   maxFileSize: 500 * 1024 * 1024, // 500MB
   maxFileSizeDisplay: '500MB',
   federatedQueryTimeout: 300000, // 5 minutes
@@ -49,6 +51,7 @@ async function fetchAppConfig(): Promise<AppConfig> {
     enablePivotTables: result.config.enable_pivot_tables,
     pivotTableExtension: result.config.pivot_table_extension,
     maxQueryRows: result.config.max_query_rows,
+    pivotMaxColumns: result.config.pivot_max_columns ?? 300,
     maxFileSize: result.config.max_file_size,
     maxFileSizeDisplay: result.config.max_file_size_display,
     federatedQueryTimeout: (result.config.federated_query_timeout || 300) * 1000,
@@ -84,6 +87,7 @@ export function useAppConfig() {
     enablePivotTables: config.enablePivotTables,
     pivotTableExtension: config.pivotTableExtension,
     maxQueryRows: config.maxQueryRows,
+    pivotMaxColumns: config.pivotMaxColumns,
     maxFileSize: config.maxFileSize,
     maxFileSizeDisplay: config.maxFileSizeDisplay,
     jsonImportColumnType: config.jsonImportColumnType,

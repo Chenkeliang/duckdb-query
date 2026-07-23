@@ -167,9 +167,7 @@ def main() -> None:
     # 强杀后常见)。这些模块本就在 main 的依赖里,提前导入不改变行为。
     stage(f"port {port} printed (socket held); importing duckdb...")
     import duckdb  # pylint: disable=import-error,unused-import
-    stage("duckdb imported; importing pandas...")
-    import pandas  # pylint: disable=import-error,unused-import
-    stage("pandas imported; opening metadata store (system.db, WAL replay if dirty)...")
+    stage("duckdb imported; opening metadata store (system.db, WAL replay if dirty)...")
     import core.database.metadata_manager  # pylint: disable=unused-import  # 模块级单例同步打开 system.db
     stage("metadata store ready; importing app...")
     import uvicorn  # pylint: disable=import-error

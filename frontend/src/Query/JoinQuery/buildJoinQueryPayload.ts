@@ -14,6 +14,7 @@ import { getTableName, isExternalTable } from '@/utils/tableUtils';
 import { generateExternalTableReference } from '@/utils/sqlUtils';
 import { toAttachDatabasesPayload } from '@/api';
 import { generateConflictKey } from '@/utils/duckdbTypes';
+import type { ResolvedCast } from '@/hooks/useTypeConflict';
 import {
     cloneTreeWithoutOnConditions,
     generateFilterSQL,
@@ -159,7 +160,7 @@ export function buildJoinQueryPayload(params: {
     activeTables: SelectedTable[];
     joinConfigs: JoinPanelJoinConfig[];
     filterTree: FilterGroup;
-    resolvedTypes: Record<string, string>;
+    resolvedCasts: Record<string, ResolvedCast>;
     maxQueryRows: number;
     isPreview?: boolean;
     attachDatabases?: AttachDatabase[];
@@ -171,7 +172,7 @@ export function buildJoinQueryPayload(params: {
         activeTables,
         joinConfigs,
         filterTree,
-        resolvedTypes,
+        resolvedCasts,
         maxQueryRows,
         isPreview = true,
         attachDatabases = [],
@@ -242,12 +243,14 @@ export function buildJoinQueryPayload(params: {
                     rightTableName,
                     c.rightColumn
                 );
-                const cast = resolvedTypes[conflictKey];
+                const casts = resolvedCasts[conflictKey];
                 return {
                     left_column: c.leftColumn,
                     right_column: c.rightColumn,
                     operator: c.operator,
-                    ...(cast ? { left_cast: cast, right_cast: cast } : {}),
+                    // 分侧:只转与目标类型不同的一侧(后端 left_cast/right_cast 独立生效)
+                    ...(casts?.leftCast ? { left_cast: casts.leftCast } : {}),
+                    ...(casts?.rightCast ? { right_cast: casts.rightCast } : {}),
                 };
             });
         if (conditions.length === 0) {

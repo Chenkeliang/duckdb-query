@@ -57,7 +57,7 @@
 - **Files and ingestion**: CSV, Excel, Parquet, JSON, and JSONL; paste tabular data, import URLs, browse server-mounted directories, and select multiple Excel sheets.
 - **Databases and federation**: connect MySQL, PostgreSQL, SQLite, and DuckDB files, then query them alongside local tables through DuckDB `ATTACH`.
 - **Complete query workflow**: CodeMirror SQL editor, JOIN workbench, set operations, pivot tables, async tasks, query cancellation, bookmarks, and history.
-- **Optional AI assistance**: data chat, error doctor, SQL explanation, and chart suggestions through the model provider and endpoint you configure. SQL drafted in the Web workbench is never auto-executed.
+- **Optional AI assistance**: data chat, error doctor, SQL explanation, and chart suggestions; the AI sees bounded data samples from local tables (no more guessed WHERE values), and generated SQL is dry-run validated with one automatic repair round. Uses the model provider and endpoint you configure; SQL drafted in the Web workbench is never auto-executed.
 - **Results and export**: virtualized DataGrid; bar, line, area, pie, donut, and KPI charts; click a chart element to generate detail SQL. The grid exports CSV / Excel / JSON, and query results can also be exported as Parquet.
 - **MCP automation**: 24 tools for querying, discovery, ingestion, transforms, AI settings, and export, with `read-only`, `normal`, and `full` modes.
 
@@ -118,7 +118,7 @@ Imported files become DuckDB tables in the current instance. External databases 
 
 - **Local storage**: tables and connection settings for a desktop or self-hosted instance are stored in that instance's data directory.
 - **External access**: federated queries contact configured databases, URL imports contact their target addresses, and desktop update checks contact GitHub Releases.
-- **AI data**: depending on the feature, schema, SQL, error context, or limited result samples may be sent to the model endpoint you configure.
+- **AI data**: AI features send schema, SQL, error context, and bounded data samples from local tables (a few real rows and low-cardinality column values to improve generation quality; attached databases are never sampled) to the model endpoint you configure.
 - **Execution boundary**: SQL generated in the Web UI is inserted as a draft and runs only after you confirm it.
 
 ## MCP Integration

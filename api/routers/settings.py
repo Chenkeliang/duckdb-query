@@ -4,12 +4,12 @@ Settings API - 用户设置管理
 """
 
 import logging
-from datetime import datetime
 from typing import Optional, List
 from fastapi import APIRouter
 from pydantic import BaseModel
 
 from core.common.exceptions import BaseAPIException, ValidationError as APIValidationError
+from core.common.timezone_utils import get_storage_time
 from core.database.duckdb_pool import get_connection_pool
 from utils.response_helpers import (
     create_success_response,
@@ -43,14 +43,19 @@ class ShortcutRecord(BaseModel):
 # 默认快捷键配置
 # ============================================================================
 
+# 必须与前端 frontend/src/Settings/shortcuts/defaultShortcuts.ts 的 DEFAULT_SHORTCUTS
+# 保持一致(action_id 与默认键)。历史上后端缺 rerunQuery/refreshDataSources,且
+# toggleTheme/Language 默认键与前端不符(Codex S-19),已按前端(用户实际所见)对齐。
 DEFAULT_SHORTCUTS = {
     "openCommandPalette": "Cmd+K",
     "navigateDataSource": "Cmd+D",
     "navigateQueryWorkbench": "Cmd+J",
     "refreshData": "Cmd+Shift+F",
+    "rerunQuery": "Cmd+R",
+    "refreshDataSources": "Cmd+I",
     "uploadFile": "Cmd+U",
-    "toggleTheme": "Cmd+Shift+T",
-    "toggleLanguage": "Cmd+Shift+L",
+    "toggleTheme": "Cmd+Shift+X",
+    "toggleLanguage": "Cmd+Shift+Z",
 }
 
 # ============================================================================
@@ -144,7 +149,7 @@ def update_shortcut(action_id: str, data: ShortcutUpdate):
         pool = get_connection_pool()
         with pool.get_connection() as conn:
             # 使用 Python 生成时间戳，避免 DuckDB 的 CURRENT_TIMESTAMP 在 VALUES 中的问题
-            current_time = datetime.utcnow()
+            current_time = get_storage_time()
             
             # 使用 INSERT ... ON CONFLICT 实现 upsert (DuckDB 语法)
             conn.execute("""

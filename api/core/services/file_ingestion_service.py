@@ -15,22 +15,23 @@ from uuid import uuid4
 
 import duckdb
 
+from core.common.sql_identifiers import escape_string_literal
 from core.common.timezone_utils import get_current_time_iso
+from core.data.rows_ingest import load_rows_as_varchar_table
 from core.data.excel_import_manager import (
     PendingExcelFile,
     cleanup_pending_excel,
     derive_default_table_name,
     get_pending_excel,
     inspect_excel_sheets,
-    load_excel_sheet_dataframe,
+    load_excel_sheet_rows,
     register_excel_upload,
     sanitize_identifier,
 )
+from core.common.sql_identifiers import quote_identifier as _quote_identifier
 from core.data.file_datasource_manager import (
-    _quote_identifier,
-    create_table_from_dataframe,
+    create_table_from_file,
     create_table_from_file_path_typed,
-    create_typed_table_from_dataframe,
     file_datasource_manager,
 )
 from core.data.file_utils import detect_file_type
@@ -161,7 +162,7 @@ def ingest_tabular_file(
         con, desired, user_provided=bool(table_alias)
     )
 
-    meta = create_table_from_dataframe(
+    meta = create_table_from_file(
         con,
         table_name,
         file_path,
@@ -302,18 +303,72 @@ class _SheetSkip(Exception):
 def _should_use_duckdb_native(
     file_ext: str, header_row_index: Optional[int], fill_merged: bool
 ) -> bool:
-    """判断某 sheet 是否适合走 DuckDB `read_xlsx` 原生导入（比 pandas 更快）。
+    """判断某 sheet 是否适合走 DuckDB `read_xlsx` 原生导入（比行式引擎更快）。
 
     注意: header_row_index 是 1-based（第一行=1）
     """
-    if file_ext.lower() == "xls":  # .xls 只能用 pandas (xlrd 引擎)
+    if file_ext.lower() == "xls":  # .xls 只能走行式引擎 (calamine)
         return False
     if header_row_index is not None and header_row_index > 1:
-        # 非首行表头只能用 pandas (DuckDB 只支持 header=true/false)
+        # 非首行表头只能走行式引擎 (DuckDB 只支持 header=true/false)
         return False
-    if fill_merged:  # 需要合并单元格填充只能用 pandas
+    if fill_merged:  # 需要合并单元格填充只能走行式引擎
         return False
     return True
+
+
+def _import_sheet_via_rows(
+    con,
+    file_path: str,
+    sheet_config,
+    target_table: str,
+    effective_header_row,
+    *,
+    append_into_existing: bool,
+    import_mode,
+):
+    """行式 sheet 导入：忠实文本入临时表 → 建表促升 / 交集列追加。
+
+    与 CSV 摄取铁律同一路径（all_varchar + 可证无损促升）。返回 (行数, 列名)。
+    """
+    header, data_rows = load_excel_sheet_rows(
+        file_path,
+        sheet_config.name,
+        header_rows=sheet_config.header_rows,
+        header_row_index=effective_header_row,
+        fill_merged=sheet_config.fill_merged,
+    )
+    if not data_rows:
+        raise _SheetSkip(f"Sheet '{sheet_config.name}' contains no data")
+
+    quoted = _quote_identifier(target_table)
+    temp_table, cleanup_rows = load_rows_as_varchar_table(con, header, data_rows)
+    try:
+        quoted_temp = _quote_identifier(temp_table)
+        if append_into_existing:
+            existing_cols = _fetch_existing_columns(con, target_table)
+            insert_cols = [c for c in header if c in existing_cols]
+            if not insert_cols:
+                raise _SheetSkip(
+                    "No overlapping columns between sheet and existing table"
+                )
+            cols_list = ", ".join(_quote_identifier(c) for c in insert_cols)
+            con.execute(
+                f"INSERT INTO {quoted} ({cols_list}) "
+                f"SELECT {cols_list} FROM {quoted_temp}"
+            )
+            return len(data_rows), insert_cols
+
+        con.execute(
+            f"CREATE OR REPLACE TABLE {quoted} AS SELECT * FROM {quoted_temp}"
+        )
+        if should_promote_column_types(import_mode):
+            promote_table_column_types_from_varchar(con, target_table)
+        row_count = con.execute(f"SELECT COUNT(*) FROM {quoted}").fetchone()[0]
+        columns = [row[0] for row in con.execute(f"DESCRIBE {quoted}").fetchall()]
+        return row_count, columns
+    finally:
+        cleanup_rows()
 
 
 def import_excel_sheets(
@@ -322,7 +377,7 @@ def import_excel_sheets(
     sheet_configs: List[Any],
     import_mode: str = "auto",
     *,
-    engine: str = "pandas",
+    engine: str = "rows",
     stop_on_first_error: bool = False,
     on_sheet_imported: Optional[Callable[[Any, Dict[str, Any]], None]] = None,
 ) -> List[Dict[str, Any]]:
@@ -333,9 +388,10 @@ def import_excel_sheets(
     只在这里实现一次。
 
     engine:
-        "pandas"       — 始终用 pandas 读取 sheet（import_pending_excel_sheets 的历史行为）。
+        "rows"         — 始终用原生行式引擎（openpyxl/calamine）读取 sheet
+                          （import_pending_excel_sheets 的历史行为，v1.2.1 前为 pandas）。
         "duckdb_native" — 满足条件（xlsx + 首行表头 + 无合并单元格 + 非 append-into-existing）
-                          时优先尝试 DuckDB `read_xlsx`，失败或不满足条件回退 pandas
+                          时优先尝试 DuckDB `read_xlsx`，失败或不满足条件回退行式引擎
                           （import_server_excel 的历史行为）。
     stop_on_first_error:
         False — 单个 sheet 失败记为 success=False 并继续处理下一个（pending 路径历史行为）。
@@ -377,7 +433,7 @@ def import_excel_sheets(
                 else sheet_config.header_row_index
             )
 
-            import_engine_used = "pandas"
+            import_engine_used = "rows"
             row_count = 0
             columns: List[str] = []
 
@@ -400,10 +456,13 @@ def import_excel_sheets(
                         ", all_varchar = true" if use_all_varchar_on_load(import_mode) else ""
                     )
                     quoted = _quote_identifier(target_table)
+                    # sheet 名/路径拼进单引号字符串,必须转义单引号——
+                    # 别处 read_* 都转了,唯独这里漏过(Q1's Data 就会破坏 SQL)
                     con.execute(
                         f"CREATE OR REPLACE TABLE {quoted} AS "
-                        f"SELECT * FROM read_xlsx('{file_path}', "
-                        f"sheet='{sheet_config.name}', header=true{all_varchar_clause})"
+                        f"SELECT * FROM read_xlsx('{escape_string_literal(file_path)}', "
+                        f"sheet='{escape_string_literal(sheet_config.name)}', "
+                        f"header=true{all_varchar_clause})"
                     )
                     if should_promote_column_types(import_mode):
                         promote_table_column_types_from_varchar(con, target_table)
@@ -415,50 +474,21 @@ def import_excel_sheets(
                     )
                 except Exception as native_exc:  # pylint: disable=broad-exception-caught
                     logger.warning(
-                        "DuckDB import failed, falling back to pandas: %s", native_exc
+                        "DuckDB import failed, falling back to native rows: %s", native_exc
                     )
                     use_native = False
 
             if not use_native:
-                df = load_excel_sheet_dataframe(
+                row_count, columns = _import_sheet_via_rows(
+                    con,
                     file_path,
-                    sheet_config.name,
-                    header_rows=sheet_config.header_rows,
-                    header_row_index=effective_header_row,
-                    fill_merged=sheet_config.fill_merged,
+                    sheet_config,
+                    target_table,
+                    effective_header_row,
+                    append_into_existing=(exists and mode == "append"),
                     import_mode=import_mode,
                 )
-
-                if df is None or df.empty:
-                    raise _SheetSkip(f"Sheet '{sheet_config.name}' contains no data")
-
-                quoted = _quote_identifier(target_table)
-                if exists and mode == "append":
-                    existing_cols = _fetch_existing_columns(con, target_table)
-                    insert_cols = [c for c in df.columns if c in existing_cols]
-                    if not insert_cols:
-                        raise _SheetSkip(
-                            "No overlapping columns between sheet and existing table"
-                        )
-                    df_insert = df[insert_cols]
-                    temp_view = f"__excel_tmp_{uuid4().hex}"
-                    con.register(temp_view, df_insert)
-                    cols_list = ", ".join(_quote_identifier(c) for c in insert_cols)
-                    insert_sql = (
-                        f"INSERT INTO {quoted} ({cols_list}) "
-                        f"SELECT {cols_list} FROM {temp_view}"
-                    )
-                    con.execute(insert_sql)
-                    con.unregister(temp_view)
-                    row_count = len(df_insert)
-                    columns = insert_cols
-                else:
-                    meta = create_typed_table_from_dataframe(
-                        con, target_table, df, import_mode=import_mode
-                    )
-                    row_count = meta.get("row_count", 0)
-                    columns = meta.get("columns", list(df.columns))
-                import_engine_used = "pandas"
+                import_engine_used = "rows"
 
             column_count = len(columns)
             outcome = {
@@ -530,7 +560,7 @@ def import_pending_excel_sheets(
         pending.stored_path,
         sheet_configs,
         import_mode=import_mode,
-        engine="pandas",
+        engine="rows",
         stop_on_first_error=False,
         on_sheet_imported=_save_metadata,
     )

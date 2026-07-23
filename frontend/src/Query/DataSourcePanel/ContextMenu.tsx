@@ -31,9 +31,14 @@ import {
 import { Tabs, TabsContent, TabsList, TabsTrigger } from '@/components/ui/tabs';
 import { Button } from '@/components/ui/button';
 import { toast } from 'sonner';
-import { executeDuckDBSQL, getExternalTableDetail } from '@/api';
+import {
+  deleteDuckDBTable,
+  executeDuckDBSQL,
+  exportQueryResults,
+  getExternalTableDetail,
+  getQueryExportDownloadUrl,
+} from '@/api';
 import { openExternal } from '@/desktop/openExternal';
-import { exportQueryResults, getQueryExportDownloadUrl } from '@/api';
 import type { SelectedTableObject } from '@/types/SelectedTable';
 import { invalidateDuckDBTables } from '@/hooks/useDuckDBTables';
 import { invalidateDataSources } from '@/hooks/useDataSources';
@@ -197,7 +202,6 @@ export const TableContextMenu: React.FC<TableContextMenuProps> = ({
         await onDelete(table.name);
       } else {
         // 默认行为：调用删除 API（使用增强版本）
-        const { deleteDuckDBTable } = await import('@/api');
         await deleteDuckDBTable(table.name);
         showSuccessToast(t, 'TABLE_DELETED', t('dataSource.tableDeleted', { tableName: table.name }));
 
@@ -274,7 +278,7 @@ export const TableContextMenu: React.FC<TableContextMenuProps> = ({
           )}
 
           {/* DuckDB 表特有选项 - 删除 */}
-          {!isExternal && canDelete && onDelete && (
+          {!isExternal && canDelete && (
             <>
               <ContextMenuSeparator />
               <ContextMenuItem

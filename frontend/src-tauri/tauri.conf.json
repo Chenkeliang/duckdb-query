@@ -1,7 +1,7 @@
 {
   "$schema": "../node_modules/@tauri-apps/cli/config.schema.json",
   "productName": "DuckQuery",
-  "version": "1.2.0",
+  "version": "1.2.1",
   "identifier": "com.chenkeliang.duckquery",
   "build": {
     "frontendDist": "../dist",
@@ -53,9 +53,6 @@
     "windows": {
       "nsis": {
         "installMode": "currentUser"
-      },
-      "webviewInstallMode": {
-        "type": "offlineInstaller"
       }
     },
     "android": {

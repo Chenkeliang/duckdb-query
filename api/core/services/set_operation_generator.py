@@ -4,6 +4,7 @@
 import logging
 from typing import List, Optional, Set
 
+from core.common.sql_identifiers import quote_identifier
 from models.set_operation_models import (
     SetOperationConfig,
     SetOperationType,
@@ -45,7 +46,7 @@ class SetOperationQueryGenerator:
 
         Args:
             config: 集合操作配置
-            preview_limit: 预览模式下每个表的行数限制
+            preview_limit: 预览模式下最终结果最外层的行数限制(仅一次,不进分支)
 
         Returns:
             str: 生成的 SQL 查询
@@ -58,11 +59,12 @@ class SetOperationQueryGenerator:
             # 验证配置
             self._validate_config(config)
 
-            # 生成各个子查询
+            # 生成各个子查询——分支【不加】系统 LIMIT:对 EXCEPT/INTERSECT,先截断分支
+            # 会改变集合差/交的结果;UNION 也会变成"各取前 N"而非"整体前 N"(复审验收 #11)
             subqueries = []
             for table in tables:
                 subquery = self._build_table_subquery(
-                    table, use_by_name, preview_limit, attach_aliases
+                    table, use_by_name, attach_aliases=attach_aliases
                 )
                 subqueries.append(f"({subquery})")
 
@@ -77,6 +79,10 @@ class SetOperationQueryGenerator:
 
             set_query = f" {operation} ".join(subqueries)
 
+            # 系统预览 LIMIT 只允许作用于整个集合运算的最终结果最外层,且仅一次
+            if preview_limit is not None and preview_limit > 0:
+                set_query = f"{set_query} LIMIT {preview_limit}"
+
             self.logger.info(
                 f"Generated set operation query: {operation_type}, table count: {len(tables)}"
             )
@@ -90,16 +96,14 @@ class SetOperationQueryGenerator:
         self,
         table: TableConfig,
         use_by_name: bool,
-        limit: int = None,
         attach_aliases: Optional[Set[str]] = None,
     ) -> str:
         """
-        构建单表子查询
+        构建单表子查询(不加系统 LIMIT——行数限制只在最外层,见 build_set_operation_query)
 
         Args:
             table: 表配置
             use_by_name: 是否使用BY NAME模式
-            limit: 可选的行数限制
 
         Returns:
             str: 子查询 SQL
@@ -111,8 +115,7 @@ class SetOperationQueryGenerator:
 
         table_ref = format_set_table_reference(table_name, attach_aliases)
         if alias:
-            safe_alias = alias.replace('"', '""')
-            table_ref += f' AS "{safe_alias}"'
+            table_ref += f' AS {quote_identifier(alias)}'
 
         if use_by_name:
             # BY NAME 模式：DuckDB 会自动按列名匹配，使用 SELECT * 即可
@@ -122,17 +125,12 @@ class SetOperationQueryGenerator:
             if not selected_columns:
                 columns_sql = "*"
             else:
-                # 转义列名
-                escaped_columns = [f'"{col}"' for col in selected_columns]
-                columns_sql = ", ".join(escaped_columns)
+                # 转义列名(旧实现漏了双引号转义,是注入面——统一走共享函数)
+                columns_sql = ", ".join(
+                    quote_identifier(col) for col in selected_columns
+                )
 
-        subquery = f"SELECT {columns_sql} FROM {table_ref}"
-
-        # 如果提供了限制，添加LIMIT子句
-        if limit is not None and limit > 0:
-            subquery += f" LIMIT {limit}"
-
-        return subquery
+        return f"SELECT {columns_sql} FROM {table_ref}"
 
     def _validate_config(self, config: SetOperationConfig):
         """
@@ -314,7 +312,7 @@ def generate_set_operation_sql(
 
     Args:
         config: 集合操作配置
-        preview_limit: 预览模式下每个表的行数限制
+        preview_limit: 预览模式下最终结果最外层的行数限制(仅一次,不进分支)
 
     Returns:
         str: 生成的 SQL 查询

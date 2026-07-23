@@ -5,6 +5,13 @@ import { tokenizeSQL } from "./sqlTokenizer";
 
 export type SqlDialect = DatabaseType | "duckdb";
 
+export function resolveBusinessSql(
+  baseSql: string | null | undefined,
+  previewSql: string | null | undefined
+): string {
+  return baseSql ?? previewSql ?? "";
+}
+
 /** 作为裸标识符不安全、需双引号定界的 SQL 关键字（小写比对） */
 const SQL_RESERVED_IDENTIFIERS = new Set([
   "select", "from", "where", "join", "inner", "left", "right", "full", "outer",

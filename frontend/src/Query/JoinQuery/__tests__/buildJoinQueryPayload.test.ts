@@ -35,7 +35,7 @@ describe('buildJoinQueryPayload', () => {
             activeTables: tables,
             joinConfigs,
             filterTree: createEmptyGroup(),
-            resolvedTypes: {},
+            resolvedCasts: {},
             maxQueryRows: 1000,
         });
         expect(payload).not.toBeNull();
@@ -72,7 +72,7 @@ describe('buildJoinQueryPayload', () => {
             activeTables: externalTables,
             joinConfigs,
             filterTree,
-            resolvedTypes: {},
+            resolvedCasts: {},
             maxQueryRows: 100,
             attachDatabases: [{ alias: 'mysql_prod', connectionId: '1' }],
         });
@@ -86,7 +86,7 @@ describe('buildJoinQueryPayload', () => {
             activeTables: tables,
             joinConfigs,
             filterTree: createEmptyGroup(),
-            resolvedTypes: {},
+            resolvedCasts: {},
             maxQueryRows: 1000,
             selectedColumns: { users: ['id', 'name'], orders: ['user_id'] },
         });
@@ -99,7 +99,7 @@ describe('buildJoinQueryPayload', () => {
             activeTables: tables,
             joinConfigs,
             filterTree: createEmptyGroup(),
-            resolvedTypes: {},
+            resolvedCasts: {},
             maxQueryRows: 1000,
             // users 显式全部取消勾选；orders 仍选中 1 列
             selectedColumns: { users: [], orders: ['user_id'] },
@@ -117,7 +117,7 @@ describe('buildJoinQueryPayload', () => {
             activeTables: tables,
             joinConfigs,
             filterTree: createEmptyGroup(),
-            resolvedTypes: {},
+            resolvedCasts: {},
             maxQueryRows: 1000,
             // users 未出现在 selectedColumns 中(如列信息尚未加载完成)
             selectedColumns: { orders: ['user_id'] },
@@ -155,7 +155,7 @@ describe('buildJoinQueryPayload', () => {
             activeTables: externalTables,
             joinConfigs,
             filterTree: createEmptyGroup(),
-            resolvedTypes: {},
+            resolvedCasts: {},
             maxQueryRows: 100,
             attachDatabases: attach,
         });
@@ -193,7 +193,7 @@ describe('resolvedTypes 键一致性(外部表回归)', () => {
             joinConfigs: configs,
             filterTree: createEmptyGroup(),
             // 检测端(useTypeConflict)保存的键:纯表名,小写
-            resolvedTypes: { 'alerts.record_id::粘贴数据_demo.列1名称': 'VARCHAR' },
+            resolvedCasts: { 'alerts.record_id::粘贴数据_demo.列1名称': { leftCast: 'VARCHAR', rightCast: 'VARCHAR' } },
             maxQueryRows: 1000,
         });
         expect(payload).not.toBeNull();

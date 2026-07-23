@@ -64,6 +64,7 @@ def get_app_features():
                 app_config, "pivot_table_extension", "pivot_table"
             ),
             "max_query_rows": int(getattr(app_config, "max_query_rows", 10000)),
+            "pivot_max_columns": int(getattr(app_config, "pivot_max_columns", 300)),
             "max_file_size": max_file_size,
             "max_file_size_display": format_file_size(max_file_size),
             "federated_query_timeout": int(getattr(app_config, "federated_query_timeout", 300)),

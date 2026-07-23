@@ -29,15 +29,15 @@ a = Analysis(
         *starlette_hidden, *sqlglot_hidden,
         'pydantic.deprecated.class_validators', 'pydantic.deprecated.config', 'pydantic_core',
         'cryptography', 'cryptography.hazmat.primitives.ciphers.algorithms',
-        'psycopg2', 'multipart', 'psutil',
+        'psycopg2', 'multipart', 'psutil', 'python_calamine',
     ],
     hookspath=[], hooksconfig={}, runtime_hooks=[],
-    # 体积优化:pyarrow 只被 pandas 的 parquet 兜底用到(桌面端 parquet 走
-    # DuckDB 原生读),排除省约 121MB —— 但排除意味着运行时 import 必须有
-    # 兜底,fetch 精确路径为此固定走 fetchall(见 duckdb_engine,配套测试
-    # 在屏蔽 pyarrow 环境下全程回归)。hf_xet 仅 HF 下载加速用,可安全排除。
+    # 体积优化排除项(v1.2.1 起 pandas/numpy/pyarrow 已整体退出 requirements,
+    # 此处 excludes 是防回流的保险):numpy 会被 duckdb 的 PyInstaller hook
+    # 无条件拖入(本项目不用 fetchnumpy/df 路径,实测排除后冒烟全绿);
+    # pyarrow/pandas 防未来传递依赖悄悄带回;hf_xet 仅 HF 下载加速用。
     excludes=['magic', 'tkinter', 'matplotlib', 'IPython', 'jupyter', 'notebook', 'PIL',
-              'pyarrow', 'hf_xet'],
+              'pyarrow', 'hf_xet', 'numpy', 'pandas', 'sqlalchemy'],
     noarchive=False,
 )
 pyz = PYZ(a.pure)

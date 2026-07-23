@@ -20,7 +20,7 @@ import { getCacheConfig } from '../utils/cacheConfig';
 /**
  * 数据库类型
  */
-export type DatabaseType = 'mysql' | 'postgresql' | 'sqlite' | 'sqlserver' | 'duckdb';
+export type DatabaseType = 'mysql' | 'postgresql' | 'sqlite' | 'duckdb';
 
 export interface DataSource {
   /** 原始 ID（不带 db_ 前缀） */

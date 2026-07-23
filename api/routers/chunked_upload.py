@@ -4,6 +4,7 @@
 支持大文件上传，带进度显示和断点续传
 """
 
+import asyncio
 import os
 import hashlib
 import logging
@@ -29,7 +30,7 @@ from core.common.paths import get_temp_dir
 from core.database.duckdb_engine import with_duckdb_connection
 from core.data.excel_import_manager import sanitize_identifier
 from core.data.file_datasource_manager import (
-    create_table_from_dataframe,
+    create_table_from_file,
     file_datasource_manager,
 )
 from core.data.import_mode import normalize_import_mode
@@ -51,6 +52,9 @@ router = APIRouter()
 
 STREAMABLE_FILE_TYPES = {"csv", "json", "jsonl"}
 STREAM_CHUNK_SIZE = 1024 * 1024  # 1MB 内部流式写入块
+# 会话空闲超时:超过该时长无任何分块活动即视为废弃(与任务产物 24h 回收口径一致)。
+# 活跃会话每收到一个分块都会刷新 last_activity_ts,慢速上传不受影响。
+UPLOAD_SESSION_TTL_SECONDS = 24 * 3600
 
 
 class ChunkUploadRequest(BaseModel):
@@ -80,6 +84,36 @@ class UploadStatus(BaseModel):
 
 # 全局上传状态存储
 upload_sessions: Dict[str, Dict[str, Any]] = {}
+upload_sessions_lock = threading.RLock()
+
+
+def _acquire_upload_session(upload_id: str) -> Dict[str, Any]:
+    """原子取得会话并登记进行中的请求，防止回收线程并发删除。"""
+    with upload_sessions_lock:
+        session = upload_sessions.get(upload_id)
+        if session is None:
+            raise ResourceNotFoundError("Upload session", upload_id)
+        session["active_operations"] = session.get("active_operations", 0) + 1
+        session["last_activity_ts"] = time.time()
+        return session
+
+
+def _release_upload_session(
+    upload_id: str, session: Dict[str, Any]
+) -> Optional[str]:
+    """释放进行中的请求；取消期间的文件清理延后到最后一个请求退出。"""
+    cleanup_dir = None
+    with upload_sessions_lock:
+        if upload_sessions.get(upload_id) is not session:
+            return None
+        active = max(0, session.get("active_operations", 1) - 1)
+        session["active_operations"] = active
+        session["last_activity_ts"] = time.time()
+        if active == 0 and session.get("cancel_requested"):
+            upload_sessions.pop(upload_id, None)
+            cleanup_dir = session.get("chunks_dir")
+
+    return cleanup_dir
 
 
 def _is_streaming_supported(file_extension: str) -> bool:
@@ -186,10 +220,25 @@ def get_upload_dir() -> str:
     return upload_dir
 
 
+def _is_safe_basename(file_name: str) -> bool:
+    """file_name 是否为安全的纯文件名(无目录分隔 / .. / NUL)。"""
+    if not file_name or file_name in (".", ".."):
+        return False
+    if any(ch in file_name for ch in ("/", "\\", "\x00")):
+        return False
+    return os.path.basename(file_name) == file_name
+
+
 def _get_final_file_path(file_name: str) -> str:
     base_dir = os.path.dirname(get_upload_dir())
     os.makedirs(base_dir, exist_ok=True)
-    return os.path.join(base_dir, file_name)
+    # 纵深防御:只取末段文件名,并断言归一化后仍落在 base_dir 内
+    safe_name = os.path.basename(file_name)
+    final = os.path.join(base_dir, safe_name)
+    base_real = os.path.realpath(base_dir)
+    if os.path.commonpath([os.path.realpath(final), base_real]) != base_real:
+        raise APIValidationError("Resolved upload path escapes the upload directory")
+    return final
 
 
 def get_chunks_dir(upload_id: str) -> str:
@@ -197,6 +246,63 @@ def get_chunks_dir(upload_id: str) -> str:
     chunks_dir = os.path.join(get_upload_dir(), "chunks", upload_id)
     os.makedirs(chunks_dir, exist_ok=True)
     return chunks_dir
+
+
+def reap_stale_upload_sessions(
+    ttl_seconds: int = UPLOAD_SESSION_TTL_SECONDS,
+) -> int:
+    """回收废弃的分块上传:超时无活动的内存会话 + 进程重启后遗留的孤儿分块目录。
+
+    此前中断的上传(关标签页/断网)会把会话条目和 chunk 文件永久留下;
+    进程重启后 upload_sessions 清空,磁盘上的 chunk 目录更是无人认领。
+    由 cleanup_scheduler 周期调用(启动即执行一次,覆盖重启遗留)。
+    返回回收的会话/目录数量。
+    """
+    now = time.time()
+    removed = 0
+
+    stale_sessions = []
+    with upload_sessions_lock:
+        for upload_id, session in list(upload_sessions.items()):
+            last_activity = session.get("last_activity_ts", 0)
+            if (
+                now - last_activity < ttl_seconds
+                or session.get("active_operations", 0) > 0
+            ):
+                continue
+            # 锁内摘除即完成认领：后到请求只能得到 404，不会先成功再被删。
+            if upload_sessions.pop(upload_id, None) is session:
+                stale_sessions.append((upload_id, session))
+
+    for upload_id, session in stale_sessions:
+        chunks_dir = session.get("chunks_dir")
+        if chunks_dir and os.path.isdir(chunks_dir):
+            shutil.rmtree(chunks_dir, ignore_errors=True)
+        removed += 1
+        logger.info(
+            "Reaped stale upload session: %s (file: %s, status: %s)",
+            upload_id, session.get("file_name"), session.get("status"),
+        )
+
+    # 磁盘孤儿:chunks 根目录下不属于任何在册会话的子目录(通常来自进程重启)。
+    # 目录 mtime 随块文件写入更新,足以作为活跃信号。
+    chunks_base = os.path.join(get_upload_dir(), "chunks")
+    if os.path.isdir(chunks_base):
+        for entry in os.scandir(chunks_base):
+            with upload_sessions_lock:
+                session_exists = entry.name in upload_sessions
+            if not entry.is_dir() or session_exists:
+                continue
+            try:
+                stale = now - entry.stat().st_mtime >= ttl_seconds
+            except OSError:
+                continue
+            if stale:
+                shutil.rmtree(entry.path, ignore_errors=True)
+                removed += 1
+                logger.info("Reaped orphan chunks dir: %s", entry.path)
+
+    return removed
 
 
 def calculate_file_hash(file_path: str) -> str:
@@ -269,7 +375,7 @@ def _load_stream_into_duckdb(
             if session.get("csv_encoding") is not None:
                 _stream_csv_opts["encoding"] = session["csv_encoding"]
 
-        metadata = create_table_from_dataframe(
+        metadata = create_table_from_file(
             con,
             source_id,
             fifo_path,
@@ -333,8 +439,15 @@ async def init_upload(
         except ValueError as exc:
             raise APIValidationError(str(exc)) from exc
 
+        # 拒绝路径穿越:file_name 必须是纯文件名——否则最终落盘路径可 ../../
+        # 越出上传目录写任意文件
+        if not _is_safe_basename(file_name):
+            raise APIValidationError("Invalid file name: path components are not allowed")
+
         # 从配置中获取文件大小限制
         app_config = config_manager.get_app_config()
+        if file_size <= 0:
+            raise APIValidationError("Invalid file_size")
         if file_size > app_config.max_file_size:
             max_file_size_mb = app_config.max_file_size / 1024 / 1024
             return error_json_response(
@@ -359,7 +472,7 @@ async def init_upload(
         total_chunks = (file_size + chunk_size - 1) // chunk_size
 
         # 创建上传会话
-        upload_sessions[upload_id] = {
+        session = {
             "upload_id": upload_id,
             "file_name": file_name,
             "file_size": file_size,
@@ -368,7 +481,9 @@ async def init_upload(
             "uploaded_chunks": 0,
             "uploaded_chunk_numbers": set(),
             "status": "uploading",
+            "active_operations": 0,
             "created_at": get_current_time_iso(),
+            "last_activity_ts": time.time(),
             "file_hash": file_hash,
             "table_alias": table_alias,  # 保存表别名
             "import_mode": import_mode,
@@ -378,6 +493,8 @@ async def init_upload(
             "chunks_dir": get_chunks_dir(upload_id),
             "file_extension": file_extension,
         }
+        with upload_sessions_lock:
+            upload_sessions[upload_id] = session
 
         logger.info(
             "Initialized upload session: %s, file: %s, size: %d, chunks: %d",
@@ -419,12 +536,9 @@ async def upload_chunk(
         chunk_number: 分块编号（从0开始）
         chunk: 分块文件数据
     """
+    session = None
     try:
-        # Check upload session
-        if upload_id not in upload_sessions:
-            raise ResourceNotFoundError("Upload session", upload_id)
-
-        session = upload_sessions[upload_id]
+        session = _acquire_upload_session(upload_id)
 
         if session["status"] != "uploading":
             raise APIValidationError(f"Upload session status error: {session['status']}")
@@ -449,7 +563,21 @@ async def upload_chunk(
 
         # 保存分块
         chunk_path = _build_chunk_path(session, chunk_number)
-        chunk_content = await chunk.read()
+        # 有界读:至多读 chunk_size+1 字节,超限块不必先把整块灌进内存才发现
+        # (Starlette 已把 multipart part spool 到临时文件,这里封顶本层的分配)
+        max_chunk = session["chunk_size"]
+        chunk_content = await chunk.read(max_chunk + 1)
+
+        # 单块不得超过声明的 chunk_size(末块可更小);累计不得超过声明的
+        # file_size——否则可声明小文件却分块灌入超大数据,绕过 init 的大小门
+        if len(chunk_content) > max_chunk:
+            raise APIValidationError(
+                f"Chunk {chunk_number} exceeds declared chunk size "
+                f"({len(chunk_content)} > {session['chunk_size']})"
+            )
+        session["received_bytes"] = session.get("received_bytes", 0) + len(chunk_content)
+        if session["received_bytes"] > session["file_size"]:
+            raise APIValidationError("Cumulative upload exceeds declared file size")
 
         with open(chunk_path, "wb") as f:
             f.write(chunk_content)
@@ -485,6 +613,13 @@ async def upload_chunk(
             MessageCode.OPERATION_FAILED,
             f"Failed to upload chunk: {str(e)}",
         )
+    finally:
+        if session is not None:
+            cleanup_dir = _release_upload_session(upload_id, session)
+            if cleanup_dir:
+                await asyncio.to_thread(
+                    shutil.rmtree, cleanup_dir, ignore_errors=True
+                )
 
 
 @router.post("/api/upload/complete", tags=["Chunked Upload"])
@@ -497,12 +632,9 @@ async def complete_upload(
     Args:
         upload_id: 上传会话ID
     """
+    session = None
     try:
-        # Check upload session
-        if upload_id not in upload_sessions:
-            raise ResourceNotFoundError("Upload session", upload_id)
-
-        session = upload_sessions[upload_id]
+        session = _acquire_upload_session(upload_id)
 
         if session["uploaded_chunks"] != session["total_chunks"]:
             raise APIValidationError(
@@ -560,7 +692,9 @@ async def complete_upload(
             )
 
         if os.path.exists(session["chunks_dir"]):
-            shutil.rmtree(session["chunks_dir"])
+            await asyncio.to_thread(
+                shutil.rmtree, session["chunks_dir"], ignore_errors=True
+            )
 
         if background_tasks:
             cleanup_target = file_info.pop("cleanup_path", None)
@@ -573,8 +707,10 @@ async def complete_upload(
             ):
                 schedule_cleanup(final_file_path, background_tasks)
 
-        session["status"] = "completed"
-        session["file_info"] = file_info
+        # 成功后会话已无消费者(无状态查询端点),立即移除,不留终态条目
+        with upload_sessions_lock:
+            if upload_sessions.get(upload_id) is session:
+                upload_sessions.pop(upload_id, None)
 
         logger.info(
             "File upload completed: %s, size: %d",
@@ -596,15 +732,24 @@ async def complete_upload(
         logger.error("Failed to complete upload: %s", e)
         logger.error("Stack trace: %s", traceback.format_exc())
 
-        if upload_id in upload_sessions:
-            upload_sessions[upload_id]["status"] = "failed"
-            upload_sessions[upload_id]["error_message"] = str(e)
+        with upload_sessions_lock:
+            failed_session = upload_sessions.get(upload_id)
+            if failed_session is not None:
+                failed_session["status"] = "failed"
+                failed_session["error_message"] = str(e)
 
         return error_json_response(
             500,
             MessageCode.OPERATION_FAILED,
             f"Failed to complete upload: {str(e)}",
         )
+    finally:
+        if session is not None:
+            cleanup_dir = _release_upload_session(upload_id, session)
+            if cleanup_dir:
+                await asyncio.to_thread(
+                    shutil.rmtree, cleanup_dir, ignore_errors=True
+                )
 
 
 async def process_uploaded_file(
@@ -687,17 +832,33 @@ async def process_uploaded_file(
 async def cancel_upload(upload_id: str):
     """取消上传"""
     try:
-        if upload_id not in upload_sessions:
-            raise ResourceNotFoundError("Upload session", upload_id)
+        cleanup_dir = None
+        processing = False
+        with upload_sessions_lock:
+            session = upload_sessions.get(upload_id)
+            if session is None:
+                raise ResourceNotFoundError("Upload session", upload_id)
+            if session.get("status") == "processing":
+                processing = True
+            elif session.get("active_operations", 0) > 0:
+                session["cancel_requested"] = True
+                session["status"] = "cancelling"
+            else:
+                upload_sessions.pop(upload_id, None)
+                cleanup_dir = session.get("chunks_dir")
 
-        session = upload_sessions[upload_id]
+        if processing:
+            return error_json_response(
+                409,
+                "UPLOAD_PROCESSING",
+                "Upload processing has already started and cannot be cancelled",
+            )
 
-        # 清理分块文件
-        if os.path.exists(session["chunks_dir"]):
-            shutil.rmtree(session["chunks_dir"])
-
-        # 删除会话
-        del upload_sessions[upload_id]
+        # 进行中的请求由 release 路径清理，避免写文件时并发 rmtree。
+        if cleanup_dir:
+            await asyncio.to_thread(
+                shutil.rmtree, cleanup_dir, ignore_errors=True
+            )
 
         logger.info("Upload cancelled: %s", upload_id)
 

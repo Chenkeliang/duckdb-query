@@ -20,3 +20,10 @@ def test_context_includes_schema_dialect_examples_and_caps_few_shot():
 def test_context_survives_when_schema_empty():
     ctx = llm_context.build_nl2sql_context(schema_text="", history=None, locale="en")
     assert isinstance(ctx, str)
+
+
+def test_context_steers_pivot_to_conditional_aggregation():
+    """透视引导必须常驻方言备忘:裸 PIVOT 会被 SELECT-only 闸拦下(见
+    test_ai_error_doctor 的已知限制用例),模型需生成条件聚合。"""
+    ctx = llm_context.build_nl2sql_context(schema_text="t(a INT)", locale="zh")
+    assert "PIVOT" in ctx and "conditional aggregation" in ctx

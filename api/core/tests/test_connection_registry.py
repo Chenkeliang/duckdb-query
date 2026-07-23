@@ -76,6 +76,40 @@ class TestConnectionRegistry(unittest.TestCase):
 
         conn.close()
 
+    def test_interrupt_with_remote_runs_local_and_remote_interrupts(self):
+        """组合取消必须同时中断 DuckDB，并调用已登记的远端取消器。"""
+        conn = MagicMock()
+        remote_interrupt = Mock(return_value=True)
+        task_id = "test-remote-cancel"
+
+        self.registry.register(task_id, conn, "SELECT * FROM mysql_db.orders")
+        self.assertTrue(
+            self.registry.register_remote_interrupt(task_id, remote_interrupt)
+        )
+
+        self.assertTrue(self.registry.interrupt_with_remote(task_id))
+        conn.interrupt.assert_called_once_with()
+        remote_interrupt.assert_called_once_with()
+
+    def test_register_remote_interrupt_rejects_unknown_task(self):
+        """查询已结束时不得留下失去所有者的远端取消器。"""
+        self.assertFalse(
+            self.registry.register_remote_interrupt("missing", Mock())
+        )
+
+    def test_interrupt_with_remote_accepts_successful_remote_fallback(self):
+        """本地 interrupt 失败时，远端已成功终止查询仍应报告取消已提交。"""
+        conn = MagicMock()
+        conn.interrupt.side_effect = RuntimeError("local interrupt failed")
+        remote_interrupt = Mock(return_value=True)
+        task_id = "test-remote-only-cancel"
+
+        self.registry.register(task_id, conn, "SELECT * FROM mysql_db.orders")
+        self.registry.register_remote_interrupt(task_id, remote_interrupt)
+
+        self.assertTrue(self.registry.interrupt_with_remote(task_id))
+        remote_interrupt.assert_called_once_with()
+
     def test_get_active_count(self):
         """测试获取活跃连接数"""
         self.assertEqual(self.registry.get_active_count(), 0)

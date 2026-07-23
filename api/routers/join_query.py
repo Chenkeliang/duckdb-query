@@ -14,10 +14,9 @@ from datetime import datetime, time
 from typing import Any, Dict, List, Optional, Tuple
 
 import duckdb
-import pandas as pd
 from core.common.timezone_utils import get_current_time
 from core.common.exceptions import ValidationError as APIValidationError
-from core.common.utils import describe_query_column_types, normalize_dataframe_output
+from core.common.utils import describe_query_column_types
 from core.common.validators import validate_table_name
 from core.data.file_datasource_manager import (
     build_table_metadata_snapshot,
@@ -27,7 +26,7 @@ from core.data.file_utils import load_file_to_duckdb
 from core.database.database_manager import db_manager
 from core.database.duckdb_engine import (
     build_single_table_query,
-    execute_query,
+    timed_fetch_query_records,
     generate_improved_column_aliases,
     with_duckdb_connection,
 )
@@ -43,7 +42,6 @@ from core.database.duckdb_pool import interruptible_connection
 from fastapi import APIRouter, Body, Header
 from models.query_models import QueryRequest
 from pydantic import BaseModel, Field, ValidationError
-from sqlalchemy import create_engine
 from core.common.exceptions import (
     BaseAPIException,
     DatabaseConnectionError,
@@ -61,7 +59,7 @@ from utils.response_helpers import (
 from routers.query_sql_utils import (
     ensure_query_has_limit,
     get_join_type_sql,
-    remove_auto_added_limit,
+    apply_row_limit_choice,
 )
 
 # Setup logging
@@ -101,15 +99,9 @@ def load_federated_table_columns(
     """ATTACH 后通过 DESCRIBE 拉取列名，供未传 columns 的联邦 JOIN 构建 SELECT。"""
     qualified = format_qualified_table_reference(source_id.strip('"'))
     try:
-        cols_df = con.execute(f"DESCRIBE {qualified}").fetchdf()
-        if cols_df is None or cols_df.empty:
-            return []
-        name_col = (
-            "column_name"
-            if "column_name" in cols_df.columns
-            else cols_df.columns[0]
-        )
-        return [{"name": str(name)} for name in cols_df[name_col].tolist()]
+        rows = con.execute(f"DESCRIBE {qualified}").fetchall()
+        # DESCRIBE 首列即 column_name
+        return [{"name": str(row[0])} for row in rows]
     except Exception as exc:
         logger.warning("DESCRIBE %s failed: %s", qualified, exc)
         return []
@@ -155,8 +147,9 @@ def build_multi_table_join_query(
     )
 
     if not federated_attach:
-        available_tables = con.execute("SHOW TABLES").fetchdf()
-        available_table_names = available_tables["name"].tolist()
+        available_table_names = [
+            row[0] for row in con.execute("SHOW TABLES").fetchall()
+        ]
 
         for source in sources:
             table_id = source.id.strip('"')
@@ -168,8 +161,11 @@ def build_multi_table_join_query(
         for source in sources:
             if not hasattr(source, "columns") or source.columns is None or all_explicit_empty:
                 try:
-                    cols_df = con.execute(f"PRAGMA table_info('{source.id}')").fetchdf()
-                    source.columns = cols_df["name"].tolist()
+                    info_rows = con.execute(
+                        f"PRAGMA table_info('{source.id}')"
+                    ).fetchall()
+                    # PRAGMA table_info 第 2 列为列名
+                    source.columns = [str(row[1]) for row in info_rows]
                 except Exception as e:
                     logger.error(f"Failed to get column information for table {source.id}: {e}")
                     source.columns = []
@@ -607,22 +603,6 @@ def build_join_chain(sources, joins, table_columns, attach_aliases=None):
                 left_col = base_left_col
                 right_col = base_right_col
 
-                # Check if data cleaning is needed (for JSON or complex strings)
-                # If left column contains complex data, try to extract numeric part
-                if condition.left_column == "uid" and left_table_id in ["0711", "0702"]:
-                    # Use regex to extract numeric part
-                    left_col = (
-                        f"CAST(REGEXP_EXTRACT({left_col}, '^([0-9]+)', 1) AS VARCHAR)"
-                    )
-
-                # If right column is numeric type, ensure type matching
-                if condition.right_column in [
-                    "iget_uid",
-                    "buyer_id",
-                ] and right_table_id.startswith("query_result"):
-                    # Ensure right column is also string type for comparison
-                    right_col = f"CAST({right_col} AS VARCHAR)"
-
                 if condition.left_cast:
                     left_col = f"TRY_CAST({left_col} AS {condition.left_cast})"
                 if condition.right_cast:
@@ -668,15 +648,11 @@ def perform_query(
 
             available_table_names: List[str] = []
             if not federated_attach:
-                available_tables = con.execute("SHOW TABLES").fetchdf()
-                available_table_names = (
-                    available_tables["name"].tolist()
-                    if not available_tables.empty
-                    else []
-                )
+                available_table_names = [
+                    row[0] for row in con.execute("SHOW TABLES").fetchall()
+                ]
                 logger.info(
-                    "Current tables in DuckDB: %s",
-                    available_tables.to_string(),
+                    "Current tables in DuckDB: %s", available_table_names
                 )
             else:
                 for source in query_request.sources:
@@ -752,19 +728,22 @@ def perform_query(
             logger.info(f"Executing query: {query}")
 
             # 执行查询
-            result_df = execute_query(query, con)
-            logger.info(f"Query completed, result shape: {result_df.shape}")
-
-            data_records = normalize_dataframe_output(result_df)
-            columns_list = [str(col) for col in result_df.columns.tolist()]
-            column_types = describe_query_column_types(con, query, result_df)
+            columns_list, data_records, cursor_types = timed_fetch_query_records(
+                con, query
+            )
+            logger.info(
+                f"Query completed, {len(data_records)} rows x {len(columns_list)} cols"
+            )
+            column_types = describe_query_column_types(con, query) or [
+                {"name": name, "duckdb_type": dtype} for name, dtype in cursor_types
+            ]
 
             return create_success_response(
                 data={
                     "data": data_records,
                     "columns": columns_list,
                     "column_types": column_types,
-                    "index": result_df.index.tolist(),
+                    "index": list(range(len(data_records))),
                     "sql": query,
                     "row_count": len(data_records),
                 },
@@ -813,6 +792,10 @@ def save_query_to_duckdb(request: dict = Body(...)):
         sql_query = request.get("sql") or request.get("sqlQuery", "")
         table_alias = request.get("table_alias") or request.get("tableAlias", "")
         query_data = request.get("query_data")  # 直接传递的查询结果数据
+        # 行数范围显式选择(默认全量落表);False=逐字执行尊重用户 LIMIT,True=缺则补 max_query_rows
+        apply_row_limit = bool(
+            request.get("apply_row_limit", request.get("applyRowLimit", False))
+        )
 
         # 确保datasource是字典类型
         if not isinstance(datasource, dict):
@@ -870,16 +853,16 @@ def save_query_to_duckdb(request: dict = Body(...)):
                 ]
             )
 
-        # 对于保存功能，始终重新执行SQL以确保数据完整性
-        # 智能移除系统自动添加的LIMIT，保留用户原始的所有SQL逻辑
-        logger.info("Re-executing SQL to get complete data, intelligently handling LIMIT")
+        # 对于保存功能，重新执行 SQL 以确保数据完整性;行数范围按【显式选择】(默认全量),
+        # 不再按 "LIMIT==上限" 猜测删除(会误删用户手写等值 LIMIT,复审 P1)。
+        logger.info("Re-executing SQL to persist (apply_row_limit=%s)", apply_row_limit)
 
         try:
             # reject_empty=True: 空结果只清理内部临时表、绝不触碰 table_alias 下
             # 已有的数据——同名重存(overwrite)时新查询意外返回 0 行,不能把旧的
             # 有效数据换成空表再删掉,必须让旧数据原封不动地留在原地。
             metadata_snapshot = execute_sql_and_persist(
-                remove_auto_added_limit(sql_query), table_alias, attach_list,
+                apply_row_limit_choice(sql_query, apply_row_limit), table_alias, attach_list,
                 reject_empty=True,
             )
         except Exception as exec_error:

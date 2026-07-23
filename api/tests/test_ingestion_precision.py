@@ -2,23 +2,14 @@ from pathlib import Path
 from uuid import uuid4
 
 import duckdb
-import pandas as pd
 import pytest
-from core.data.ingestion_precision import (
-    coerce_dataframe_numeric_columns_safe,
-    is_identifier_column_name,
-)
+from core.data.ingestion_precision import is_identifier_column_name
 from core.data.file_datasource_manager import create_table_from_file_path_typed
-from core.data.excel_import_manager import load_excel_sheet_dataframe
+from core.data.excel_import_manager import load_excel_sheet_rows
 
 
 def _make_table_name(prefix: str) -> str:
     return f"test_{prefix}_{uuid4().hex[:8]}"
-
-
-def _assert_preserved_text_dtype(series: pd.Series) -> None:
-    """Pandas 2 常用 object；Pandas 3 可能为 StringDtype，语义均为文本列。"""
-    assert pd.api.types.is_string_dtype(series) or series.dtype == object
 
 
 def test_is_identifier_column_name():
@@ -27,19 +18,35 @@ def test_is_identifier_column_name():
     assert not is_identifier_column_name("amount")
 
 
-def test_coerce_preserves_long_integer_codes():
-    df = pd.DataFrame(
-        {
-            "order_id": ["1234567890123456789", "9876543210987654321"],
-            "qty": ["1", "2"],
-            "price": ["12.50", "3.00"],
-        }
-    )
-    out = coerce_dataframe_numeric_columns_safe(df)
-    _assert_preserved_text_dtype(out["order_id"])
-    assert out["order_id"].iloc[0] == "1234567890123456789"
-    assert out["qty"].iloc[0] in ("1", 1)
-    assert str(out["price"].iloc[0]) in ("12.50", "12.5")
+def test_rows_ingest_preserves_long_integer_codes():
+    """行式入库 + 促升：长整型编码列保持 VARCHAR 文本，值逐位保留。"""
+    from core.data.ingestion_precision import promote_table_column_types_from_varchar
+    from core.data.rows_ingest import load_rows_as_varchar_table
+
+    con = duckdb.connect()
+    try:
+        temp, cleanup = load_rows_as_varchar_table(
+            con,
+            ["order_id", "qty", "price"],
+            [
+                ["1234567890123456789", "1", "12.50"],
+                ["9876543210987654321", "2", "3.00"],
+            ],
+        )
+        try:
+            con.execute(f'CREATE TABLE t_rows AS SELECT * FROM "{temp}"')
+        finally:
+            cleanup()
+        promote_table_column_types_from_varchar(con, "t_rows")
+        types = {r[0]: r[1] for r in con.execute("DESCRIBE t_rows").fetchall()}
+        assert types["order_id"] == "VARCHAR"  # 标识符名 + 长整型编码
+        row = con.execute(
+            "SELECT order_id, price FROM t_rows ORDER BY qty"
+        ).fetchone()
+        assert row[0] == "1234567890123456789"
+        assert str(row[1]) == "12.50"
+    finally:
+        con.close()
 
 
 @pytest.fixture
@@ -98,9 +105,9 @@ def test_excel_load_preserves_long_id_in_object_column(tmp_path):
     ws.append(["2", 2])
     wb.save(xlsx_path)
 
-    df = load_excel_sheet_dataframe(str(xlsx_path), ws.title, header_rows=1)
-    _assert_preserved_text_dtype(df["order_id"])
-    assert str(df["order_id"].iloc[0]) == "1234567890123456789"
+    header, rows = load_excel_sheet_rows(str(xlsx_path), ws.title, header_rows=1)
+    assert header[0] == "order_id"
+    assert str(rows[0][0]) == "1234567890123456789"
 
 
 # ---------- 值无损提升守卫（财务准则：任何存疑保持 VARCHAR） ----------
@@ -156,6 +163,20 @@ def test_promote_clean_integers_to_bigint(ingestion_con):
     _create_varchar_table(ingestion_con, t, "val", ["42", "-17", "0"])
     promote_table_column_types_from_varchar(ingestion_con, t)
     assert _column_type(ingestion_con, t, "val") == "BIGINT"
+
+
+def test_promote_mixed_integer_and_decimal_to_decimal(ingestion_con):
+    """混合整数/小数列(金额列里部分值写成整数)应提升为 DECIMAL,整数行按 0 位小数
+    并入;此前 int_like==n / dec_like==n 两分支都不满足,静默退回 VARCHAR。"""
+    from decimal import Decimal
+    from core.data.ingestion_precision import promote_table_column_types_from_varchar
+
+    t = _make_table_name("mixed_int_dec")
+    _create_varchar_table(ingestion_con, t, "val", ["1", "2.50", "3"])
+    promote_table_column_types_from_varchar(ingestion_con, t)
+    assert _column_type(ingestion_con, t, "val") == "DECIMAL(38,2)"
+    rows = [r[0] for r in ingestion_con.execute(f'SELECT val FROM "{t}" ORDER BY val').fetchall()]
+    assert rows == [Decimal("1.00"), Decimal("2.50"), Decimal("3.00")]
 
 
 def test_promote_decimal_uses_column_max_scale(ingestion_con):
@@ -234,3 +255,67 @@ def test_promote_mixed_date_formats_stay_varchar(ingestion_con):
     _create_varchar_table(ingestion_con, t, "val", ["2024-07-15", "2024-07-15 10:30:00"])
     promote_table_column_types_from_varchar(ingestion_con, t)
     assert _column_type(ingestion_con, t, "val") == "VARCHAR"
+
+
+def test_rows_ingest_tab_in_cell_does_not_nuke_table():
+    """复审实锤回归：未 pin delim 时，单元格里的 tab/| 会让 CSV 嗅探器错判
+    分隔符，整表静默清空。"""
+    from core.data.rows_ingest import load_rows_as_varchar_table
+
+    con = duckdb.connect()
+    try:
+        temp, cleanup = load_rows_as_varchar_table(
+            con,
+            ["customer_name"],
+            [["Alice Green"], ["Bob Smith"], ["Carol\tWhite"]],
+        )
+        try:
+            rows = con.execute(f'SELECT * FROM "{temp}" ORDER BY 1').fetchall()
+        finally:
+            cleanup()
+        assert [r[0] for r in rows] == ["Alice Green", "Bob Smith", "Carol\tWhite"]
+    finally:
+        con.close()
+
+
+def test_rows_ingest_scientific_notation_float_promotes():
+    """复审实锤回归：str(0.000023)='2.3e-05' 令促升引擎失效整列滞留 VARCHAR；
+    浮点须展开为纯十进制文本。"""
+    from core.data.ingestion_precision import promote_table_column_types_from_varchar
+    from core.data.rows_ingest import load_rows_as_varchar_table
+
+    con = duckdb.connect()
+    try:
+        temp, cleanup = load_rows_as_varchar_table(
+            con, ["rate"], [[0.000023], [0.5], [1.25]]
+        )
+        try:
+            con.execute(f'CREATE TABLE t_sci AS SELECT * FROM "{temp}"')
+        finally:
+            cleanup()
+        promote_table_column_types_from_varchar(con, "t_sci")
+        dtype = con.execute("DESCRIBE t_sci").fetchall()[0][1]
+        assert str(dtype).upper().startswith("DECIMAL"), dtype
+        values = [str(r[0]) for r in con.execute("SELECT rate FROM t_sci ORDER BY rate").fetchall()]
+        assert values[0] == "0.000023"
+    finally:
+        con.close()
+
+
+def test_rows_ingest_whitespace_cell_becomes_null():
+    """复审实锤回归：'   ' 空白单元格在 append 裸 INSERT 下会让整批失败；
+    对齐旧 cell_to_literal 语义清成 NULL。"""
+    from core.data.rows_ingest import load_rows_as_varchar_table
+
+    con = duckdb.connect()
+    try:
+        con.execute("CREATE TABLE tgt (qty INTEGER)")
+        temp, cleanup = load_rows_as_varchar_table(con, ["qty"], [["1"], ["   "], ["3"]])
+        try:
+            con.execute(f'INSERT INTO tgt SELECT * FROM "{temp}"')
+        finally:
+            cleanup()
+        rows = con.execute("SELECT qty FROM tgt ORDER BY qty NULLS LAST").fetchall()
+        assert [r[0] for r in rows] == [1, 3, None]
+    finally:
+        con.close()

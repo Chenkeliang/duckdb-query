@@ -1,19 +1,22 @@
 import logging
-from datetime import datetime
 from typing import Any, Dict, List, Optional, Tuple
 from uuid import uuid4
 
-import pandas as pd
 from fastapi import APIRouter
 from pydantic import BaseModel
 
 from core.common.exceptions import BaseAPIException, ValidationError as APIValidationError
+# 复用 CSV 促升的无损推断(最大小数位定标度、零前导/超容量不促升),
+# 让粘贴的 DECIMAL 列与文件导入走同一套财务准则,而非另造一份。
+from core.data.ingestion_precision import infer_varchar_column_promotion
+from core.data.rows_ingest import load_rows_as_varchar_table
 from core.database.duckdb_engine import with_duckdb_connection
 from core.data.file_datasource_manager import (
     build_table_metadata_snapshot,
     file_datasource_manager,
 )
-from core.common.timezone_utils import get_current_time_iso  # 导入时区工具
+from core.common.timezone_utils import get_current_time_iso, get_storage_time
+from core.common.utils import dedupe_column_names
 from utils.response_helpers import (
     create_success_response,
     MessageCode,
@@ -58,12 +61,11 @@ def _sanitize_table_name(table_name: str) -> str:
     filtered = "".join(c for c in table_name if c.isalnum() or c in ("_", "-")).strip()
     if filtered:
         return filtered
-    return f"pasted_table_{datetime.utcnow().strftime('%Y%m%d_%H%M%S')}"
+    return f"pasted_table_{get_storage_time().strftime('%Y%m%d_%H%M%S')}"
 
 
-def _quote_identifier(identifier: str) -> str:
-    escaped = identifier.replace('"', '""')
-    return f'"{escaped}"'
+# 标识符转义统一走 core.common.sql_identifiers(消灭历史 8 份副本)
+from core.common.sql_identifiers import quote_identifier as _quote_identifier  # noqa: E402
 
 
 def _build_column_expression(source_alias: str, column_name: str, column_type: str) -> str:
@@ -73,12 +75,20 @@ def _build_column_expression(source_alias: str, column_name: str, column_type: s
     trimmed = f"NULLIF(TRIM({source_text}), '')"
     normalized_type = (column_type or "VARCHAR").upper()
 
+    if normalized_type.startswith("DECIMAL(") or normalized_type == "BIGINT":
+        # DECIMAL 由 _resolve_decimal_columns 按列内数据推断而来,推断已保证
+        # 每个非空值可无损转换;空值→NULL(不造 0),文本原样保真。
+        return f"TRY_CAST({trimmed} AS {normalized_type}) AS {safe_alias}"
+
     if normalized_type == "INTEGER":
-        return f"COALESCE(TRY_CAST({trimmed} AS BIGINT), 0) AS {safe_alias}"
+        # 转换失败/空值→NULL,与 DECIMAL/BIGINT/DATE 分支一致(旧行为造 0,
+        # 会把"非数字/缺失"伪装成真实值 0,两种语义不可区分)
+        return f"TRY_CAST({trimmed} AS BIGINT) AS {safe_alias}"
     if normalized_type == "DOUBLE":
-        return f"COALESCE(TRY_CAST({trimmed} AS DOUBLE), 0.0) AS {safe_alias}"
-    if normalized_type == "DATE":
-        return f"TRY_CAST({trimmed} AS TIMESTAMP) AS {safe_alias}"
+        return f"TRY_CAST({trimmed} AS DOUBLE) AS {safe_alias}"
+    if normalized_type in ("DATE", "TIMESTAMP"):
+        # 由 _resolve_inferred_columns 按列内容定型:纯日期→DATE,含时间→TIMESTAMP
+        return f"TRY_CAST({trimmed} AS {normalized_type}) AS {safe_alias}"
     if normalized_type == "BOOLEAN":
         normalized = f"LOWER({trimmed})"
         true_values = ", ".join(f"'{value}'" for value in sorted(BOOL_TRUE_VALUES))
@@ -96,17 +106,65 @@ def _build_column_expression(source_alias: str, column_name: str, column_type: s
     return f"COALESCE(TRIM({source_text}), '') AS {safe_alias}"
 
 
-def _persist_pasted_dataframe(
+def _column_has_content(connection, quoted_temp: str, column_name: str) -> bool:
+    quoted_col = _quote_identifier(column_name)
+    row = connection.execute(
+        f"SELECT count(*) FROM {quoted_temp} "
+        f"WHERE {quoted_col} IS NOT NULL AND trim(CAST({quoted_col} AS VARCHAR)) <> ''"
+    ).fetchone()
+    return bool(row and row[0])
+
+
+def _resolve_inferred_columns(
+    connection, quoted_temp: str, column_definitions: List[Tuple[str, str]]
+) -> List[Tuple[str, str]]:
+    """把用户选的泛型 DECIMAL / DATE 解析成按列内数据推断的精确类型。
+
+    与 CSV 导入促升同一套推断,共同铁律:宁可不转,绝不静默变值。
+    - DECIMAL:标度取列内最大小数位(数学上不可能舍入);全整数列推断为
+      BIGINT(同样无损)。混杂文本/零前导/超出 DECIMAL(38) 容量 → VARCHAR。
+    - DATE:纯日期列 → DATE,含时间 → TIMESTAMP(与文件导入一致;UI 标签
+      为"日期/时间(自动)")。有内容但非日期 → VARCHAR 忠实文本;全空列
+    保持历史契约(TIMESTAMP 列 + NULL 值)。
+    """
+    resolved: List[Tuple[str, str]] = []
+    for name, col_type in column_definitions:
+        requested = (col_type or "").strip().upper()
+        if requested == "DECIMAL":
+            promoted = infer_varchar_column_promotion(connection, quoted_temp, name)
+            # 推断器还会认日期/时间戳——但用户点的是"小数",只接受数值类结果
+            if promoted and (promoted.startswith("DECIMAL(") or promoted == "BIGINT"):
+                resolved.append((name, promoted))
+            else:
+                resolved.append((name, "VARCHAR"))
+        elif requested == "DATE":
+            promoted = infer_varchar_column_promotion(connection, quoted_temp, name)
+            if promoted in ("DATE", "TIMESTAMP"):
+                resolved.append((name, promoted))
+            elif _column_has_content(connection, quoted_temp, name):
+                resolved.append((name, "VARCHAR"))
+            else:
+                # 全空列:沿用历史契约(TIMESTAMP 列 + NULL 值)
+                resolved.append((name, "TIMESTAMP"))
+        else:
+            resolved.append((name, col_type))
+    return resolved
+
+
+def _persist_pasted_rows(
     connection,
     table_name: str,
-    dataframe: pd.DataFrame,
+    header: List[str],
+    rows: List[List[Any]],
     column_definitions: List[Tuple[str, str]],
 ) -> Dict[str, Any]:
-    temp_view = f"paste_input_{uuid4().hex[:8]}"
     source_alias = "src"
-    connection.register(temp_view, dataframe)
+    temp_table, cleanup = load_rows_as_varchar_table(connection, header, rows)
 
-    quoted_temp_view = _quote_identifier(temp_view)
+    quoted_temp = _quote_identifier(temp_table)
+    column_definitions = _resolve_inferred_columns(
+        connection, quoted_temp, column_definitions
+    )
     select_list = [
         _build_column_expression(source_alias, name, col_type)
         for name, col_type in column_definitions
@@ -115,7 +173,7 @@ def _persist_pasted_dataframe(
     quoted_table = _quote_identifier(table_name)
     create_sql = (
         f"CREATE TABLE {quoted_table} AS "
-        f"SELECT {select_sql} FROM {quoted_temp_view} AS {source_alias}"
+        f"SELECT {select_sql} FROM {quoted_temp} AS {source_alias}"
     )
 
     connection.execute("BEGIN TRANSACTION")
@@ -127,10 +185,7 @@ def _persist_pasted_dataframe(
         connection.execute("ROLLBACK")
         raise
     finally:
-        try:
-            connection.unregister(temp_view)
-        except Exception as exc:
-            logger.debug("Failed to release paste data temporary view: %s (%s)", temp_view, exc)
+        cleanup()
 
     return build_table_metadata_snapshot(connection, table_name)
 
@@ -167,22 +222,29 @@ def save_paste_data(request: PasteDataRequest):
             [_clean_cell_value(value) for value in row]
             for row in request.data_rows
         ]
-        df = pd.DataFrame(cleaned_rows, columns=request.column_names)
 
         clean_table_name = _sanitize_table_name(request.table_name)
+        # 按位置去重列名(id,id → id,id_1),再与 column_types 按【索引】重新配对。重复列名会让底层
+        # read_csv 静默把第二列重命名,而 Python 侧仍按原名引用 → 两列都取到第一列值、第二列数据丢失
+        # (复审 P1)。types 是位置对齐的数组,只去重名字、按索引重配,绝不按(可能被改的)名字回查类型。
+        deduped_names = dedupe_column_names(list(request.column_names))
         column_definitions: List[Tuple[str, str]] = list(
-            zip(request.column_names, request.column_types)
+            zip(deduped_names, request.column_types)
         )
 
         if not column_definitions:
             raise APIValidationError("Column definitions cannot be empty")
 
         with with_duckdb_connection() as connection:
-            metadata = _persist_pasted_dataframe(
-                connection, clean_table_name, df, column_definitions
+            metadata = _persist_pasted_rows(
+                connection,
+                clean_table_name,
+                deduped_names,
+                cleaned_rows,
+                column_definitions,
             )
 
-        saved_rows = metadata.get("row_count", len(df))
+        saved_rows = metadata.get("row_count", len(cleaned_rows))
         logger.info(
             "Successfully saved pasted data to table: %s, rows: %s, columns: %s",
             clean_table_name,
@@ -199,7 +261,7 @@ def save_paste_data(request: PasteDataRequest):
             "file_type": "pasted",
             "row_count": saved_rows,
             "column_count": metadata.get("column_count", len(request.column_names)),
-            "columns": metadata.get("columns", request.column_names),
+            "columns": metadata.get("columns", deduped_names),
             "column_profiles": metadata.get("column_profiles"),
             "schema_version": metadata.get("schema_version", 2),
             "created_at": created_at_value,

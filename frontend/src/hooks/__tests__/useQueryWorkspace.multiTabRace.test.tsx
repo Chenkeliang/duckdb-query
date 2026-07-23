@@ -55,6 +55,26 @@ describe('useQueryWorkspace multi-tab refresh race (#10)', () => {
     vi.clearAllMocks();
   });
 
+  it('federated page queries explicitly request preview row-limit semantics', async () => {
+    const exec = vi.mocked(api.executeFederatedQuery);
+    exec.mockResolvedValueOnce(okResult('federated') as never);
+    const { result } = renderHook(() => useQueryWorkspace());
+
+    await act(async () => {
+      await result.current.handleQueryExecute('SELECT * FROM remote_table', {
+        type: 'federated',
+        attachDatabases: [{ alias: 'remote', connectionId: 'conn-1' }],
+      });
+    });
+
+    expect(exec).toHaveBeenCalledWith(
+      expect.objectContaining({
+        sql: 'SELECT * FROM remote_table',
+        isPreview: true,
+      })
+    );
+  });
+
   it('Tab A response is applied (not dropped) even if Tab B refresh started after', async () => {
     const exec = vi.mocked(api.executeDuckDBSQL);
     // 两次种子查询立即成功，各建一个结果 Tab

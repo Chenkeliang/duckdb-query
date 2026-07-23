@@ -45,7 +45,8 @@ export interface ResultToolbarProps {
   onExportCsv?: () => void;
   onExportExcel?: () => void;
   onExportJson?: () => void;
-  onExportParquet?: () => void;
+  /** 服务端导出:applyRowLimit=false 全量(默认语义),true=用户未写 LIMIT 时按系统默认限制 */
+  onExportParquet?: (applyRowLimit: boolean) => void;
   onToggleFullscreen?: () => void;
   isFullscreen?: boolean;
   disabled?: boolean;
@@ -270,9 +271,15 @@ export const ResultToolbar: React.FC<ResultToolbarProps> = ({
                 </DropdownMenuItem>
               )}
               {onExportParquet && (
-                <DropdownMenuItem onClick={onExportParquet}>
-                  {t('query.result.exportParquetServer', '导出 Parquet（服务端）')}
-                </DropdownMenuItem>
+                <>
+                  {/* 全量 = 不加系统 LIMIT(用户 SQL 自带的 LIMIT 仍生效);限制 = 未写 LIMIT 时按系统默认 */}
+                  <DropdownMenuItem onClick={() => onExportParquet(false)}>
+                    {t('query.result.exportParquetServerFull', '导出 Parquet（服务端·全量）')}
+                  </DropdownMenuItem>
+                  <DropdownMenuItem onClick={() => onExportParquet(true)}>
+                    {t('query.result.exportParquetServerLimited', '导出 Parquet（服务端·限制行数）')}
+                  </DropdownMenuItem>
+                </>
               )}
             </DropdownMenuContent>
           </DropdownMenu>

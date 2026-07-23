@@ -8,6 +8,7 @@ import { createCondition } from './FilterBar';
 import type { FilterCondition, FilterGroup, FilterNode } from './FilterBar';
 import type { SelectedTable } from '@/types/SelectedTable';
 import { getTableName, isExternalTable } from '@/utils/tableUtils';
+import { isDateOrTimestampType } from '@/utils/duckdbTypes';
 
 /** create 系词干（小写子串匹配）。'creat' 覆盖 create/created/gmt_create。 */
 const CREATE_STEMS = ['creat', 'ctime', 'add_time', 'insert_time'];
@@ -16,14 +17,11 @@ const UPDATE_STEMS = ['updat', 'modif', 'mtime'];
 
 /**
  * 是否为可做时间边界的列类型（排除 TIME）。
- * 注意：联邦表详情接口返回**源库原生类型**（MySQL `datetime`/`timestamp`/`date`、
- * PG `timestamp without time zone` 等），不是 DuckDB 归一化类型，要一并覆盖。
+ * 联邦表详情接口返回**源库原生类型**（MySQL `datetime`/PG `timestamp without
+ * time zone` 等）——归一与判定统一走 utils/duckdbTypes,本处仅保留导出名。
  */
 export function isTimeType(type: string): boolean {
-  const t = (type || '').toUpperCase().replace(/\(.*\)/g, '').trim();
-  if (t === 'DATE' || t === 'DATETIME') return true; // DATETIME = MySQL
-  if (t.startsWith('TIMESTAMP')) return true; // DuckDB TIMESTAMP* / MySQL timestamp / PG timestamp [without|with] time zone
-  return false; // TIME / TIME WITH TIME ZONE / YEAR 排除
+  return isDateOrTimestampType(type);
 }
 
 export type AuditClass = 'create' | 'update' | null;

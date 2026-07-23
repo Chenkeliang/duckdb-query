@@ -18,7 +18,7 @@ import {
 import { testDatabaseConnection, createDatabaseConnection, type ApiError } from "@/api";
 
 export interface DatabaseConnectParams {
-  type: "mysql" | "postgresql" | "sqlite" | "sqlserver" | "duckdb";
+  type: "mysql" | "postgresql" | "sqlite" | "duckdb";
   id?: string;
   name?: string;
   params: {

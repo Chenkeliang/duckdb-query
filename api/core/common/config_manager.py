@@ -8,7 +8,7 @@ import json
 import logging
 from typing import Dict, Any, Optional, List
 from pathlib import Path
-from dataclasses import dataclass, asdict
+from dataclasses import dataclass, asdict, field
 from threading import Lock
 
 from core.common.paths import get_config_dir, get_user_data_dir
@@ -25,8 +25,6 @@ class DuckDBPaths:
     extension_dir: Path
     home_dir: Path
 
-# 避免循环导入，在需要时动态导入
-# from core.security.security import mask_sensitive_config
 from core.foundation.crypto_utils import decrypt_config_passwords
 
 @dataclass
@@ -51,6 +49,11 @@ class AppConfig:
     """
 
     # ==================== 基础应用配置 ====================
+    config_schema_version: int = 2
+    """配置架构版本。用于版本化迁移(而非按值猜测)：加载时 version < 当前版本的旧配置
+    才跑迁移(如 v1 的 query_tree profiling 默认→no_output);version 达标的配置里
+    query_tree 视为用户主动选择,予以尊重。默认配置/保存后的配置都带当前版本。"""
+
     debug: bool = False
     """调试模式开关，启用后会输出详细的调试信息"""
 
@@ -66,6 +69,10 @@ class AppConfig:
     max_tables: int = 200
     """数据库表预览最大数量限制"""
 
+    pivot_max_columns: int = 300
+    """透视表结果列数上限(与行数上限 max_query_rows 语义不同)。列维度去重值超过此数时
+    透视查询报 PIVOT_COLUMN_LIMIT_EXCEEDED,而非静默采样出少算的结果;需用户加筛选或手动选列。"""
+
     timezone: str = "Asia/Shanghai"
     """应用时区设置，影响时间相关的数据处理。默认使用中国时区"""
 
@@ -78,8 +85,9 @@ class AppConfig:
     duckdb_memory_limit: str = "8GB"
     """DuckDB内存使用限制，支持KB/MB/GB单位"""
 
-    duckdb_threads: int = 8
-    """DuckDB 并行查询线程数，建议设置为 CPU 核心数"""
+    duckdb_threads: int = field(default_factory=lambda: os.cpu_count() or 8)
+    """DuckDB 并行查询线程数。默认跟随 CPU 核心数（与 DuckDB 原生默认一致，
+    避免硬编码 8 在 <8 核机上过度订阅、>8 核机上跑不满）；可在配置中显式覆盖。"""
 
     duckdb_temp_directory: str = None
     """DuckDB 临时文件目录，None 时使用系统默认"""
@@ -96,8 +104,12 @@ class AppConfig:
     duckdb_database_path: str = None
     """DuckDB 数据库文件路径，为空时在数据目录下创建 main.db"""
 
-    duckdb_enable_profiling: str = "query_tree"
-    """DuckDB 查询性能分析格式：json, query_tree, query_tree_optimizer, no_output"""
+    duckdb_enable_profiling: str = "no_output"
+    """DuckDB 查询性能分析格式：json, query_tree, query_tree_optimizer, no_output。
+    默认 no_output:不向 stderr 吐执行树(否则连 SELECT 42 都刷满桌面 4MB 日志)。
+    版本化迁移:仅 v1 旧配置(无 config_schema_version)里遗留的 query_tree 会被一次性
+    迁移为 no_output(它曾是刷屏的旧出厂默认);当前版本配置里主动设的 query_tree 予以尊重。
+    非法值一律回退 no_output 并告警。慢查询另有 auto-EXPLAIN 兜底。"""
 
     duckdb_profiling_output: str = None
     """性能分析输出文件路径，None 时使用系统默认"""
@@ -106,7 +118,8 @@ class AppConfig:
     """是否优先使用范围JOIN，可能影响JOIN性能"""
 
     duckdb_enable_object_cache: bool = True
-    """是否启用对象缓存，提升重复查询性能"""
+    """[DuckDB 1.5.3 起为 legacy no-op] 历史"对象缓存"开关；当前锁定版本执行
+    SET 不报错但无实际效果，仅为兼容旧配置文件保留（勿依赖它提升性能）。"""
 
     duckdb_preserve_insertion_order: bool = False
     """是否保持数据插入顺序，False 可提升查询性能"""
@@ -128,9 +141,6 @@ class AppConfig:
     sqlite_all_varchar / mysql_incomplete_dates_as_nulls / pg_array_as_varchar /
     unsafe_enable_version_guessing。字段名与 DuckDB SET GLOBAL 的 option 名完全一致，
     实际生效逻辑见 core/database/duckdb_engine.py:apply_engine_compat_settings"""
-
-    duckdb_debug_logging: bool = False
-    """是否启用 DuckDB 调试日志（SHOW TABLES / EXPLAIN 等）"""
 
     duckdb_auto_explain_threshold_ms: int = 0
     """慢查询阈值，超过后自动记录 EXPLAIN，0 表示关闭"""
@@ -284,7 +294,17 @@ class ConfigManager:
         """更新现有应用配置文件，确保包含所有新字段"""
         try:
             # 读取现有配置
-            existing_config = self._load_json(self.app_config_file)
+            existing_config = self._load_json(
+                self.app_config_file, raise_on_error=True
+            )
+
+            # 版本化迁移(在合并默认值之前,用原始文件判版本——合并会补上 config_schema_version
+            # 默认值,之后就分不清"遗留"与"主动选择"了)。v1(无该字段)的 query_tree profiling
+            # 默认→no_output;迁移随下面的合并一并持久化(补成当前版本),故只发生一次,之后
+            # query_tree 视为用户主动选择不再迁移(Codex #5)。
+            if int(existing_config.get("config_schema_version", 1) or 1) < 2:
+                if existing_config.get("duckdb_enable_profiling") == "query_tree":
+                    existing_config["duckdb_enable_profiling"] = "no_output"
 
             # 创建默认配置
             default_config = asdict(AppConfig())
@@ -305,49 +325,72 @@ class ConfigManager:
         except Exception as e:
             logger.warning(f"Failed to update application configuration file: {str(e)}")
 
-    def _load_json(self, file_path: Path) -> Dict[str, Any]:
+    @staticmethod
+    def _strip_jsonc(content: str) -> str:
+        """字符串感知的 JSONC 注释剥离:只在字符串字面量之外剥 // 与 /* */。
+
+        旧实现按行 find('//') 且用「前一字符是否为 :」猜 URL:字符串值里含
+        裸 // 会被截断,含 /*..*/ 形状会被静默删掉——经 _update_existing_app_config
+        的无条件回存,损坏结果会持久化(整份配置重置/字段内容丢失)。
+        不做尾逗号容忍,与旧行为一致。
+        """
+        out = []
+        i, n = 0, len(content)
+        in_string = False
+        escaped = False
+        while i < n:
+            ch = content[i]
+            if in_string:
+                out.append(ch)
+                if escaped:
+                    escaped = False
+                elif ch == "\\":
+                    escaped = True
+                elif ch == '"':
+                    in_string = False
+                i += 1
+                continue
+            if ch == '"':
+                in_string = True
+                out.append(ch)
+                i += 1
+                continue
+            if ch == "/" and i + 1 < n:
+                nxt = content[i + 1]
+                if nxt == "/":
+                    # 行注释:吃到行尾,保留换行符(维持行号)
+                    while i < n and content[i] != "\n":
+                        i += 1
+                    continue
+                if nxt == "*":
+                    # 块注释:只接受成对的 /* */，避免把损坏文件尾部静默吞掉
+                    i += 2
+                    while i + 1 < n and not (
+                        content[i] == "*" and content[i + 1] == "/"
+                    ):
+                        i += 1
+                    if i + 1 >= n:
+                        raise ValueError("Unterminated JSONC block comment")
+                    i += 2
+                    continue
+            out.append(ch)
+            i += 1
+        return "".join(out)
+
+    def _load_json(
+        self, file_path: Path, *, raise_on_error: bool = False
+    ) -> Dict[str, Any]:
         """加载 JSON 配置文件（支持注释）"""
         try:
-            if file_path.exists():
-                with open(file_path, "r", encoding="utf-8") as f:
-                    content = f.read()
-                    
-                # 移除注释 (支持 // 和 /* */)
-                import re
-                
-                # 移除块注释 /* ... */
-                content = re.sub(r'/\*.*?\*/', '', content, flags=re.DOTALL)
-                
-                # 移除行注释 // ... (注意处理URL中的//，这里简单处理：//前必须有空白或行首，且不是URL的一部分)
-                # 更稳健的方式是忽略字符串内容的解析，但作为简单的配置加载器，
-                # 我们假设注释出现在行尾或独立行，并且URL不会与注释混淆（URL的//前是:）
-                # 这里使用简单的行处理：如果行中存在 // 且不紧跟在 : 之后（为了兼容URL），则截断
-                # 或者更简单：只支持独立行的注释和行尾且前面有空格的注释
-                
-                lines = content.split('\n')
-                cleaned_lines = []
-                for line in lines:
-                    # 查找注释标记 //
-                    comment_idx = line.find('//')
-                    if comment_idx != -1:
-                        # 检查是否看起来像URL (https://)
-                        # 如果 // 前面试 :，则认为是URL的一部分，不处理（简易逻辑）
-                        if comment_idx > 0 and line[comment_idx-1] == ':':
-                            pass
-                        else:
-                            line = line[:comment_idx]
-                    cleaned_lines.append(line)
-                
-                content = '\n'.join(cleaned_lines)
-                
-                # 处理可能产生的尾部逗号问题（JSON 不支持，但配置变更是常事）
-                # 为了保持简单，暂不处理尾部逗号，依赖标准json解析
-                # 大多数情况下用户只需小心
-                
-                return json.loads(content)
-            return {}
-        except Exception as e:
-            logger.error(f"Loading configuration filefailed {file_path}: {str(e)}")
+            if not file_path.exists():
+                return {}
+            with open(file_path, "r", encoding="utf-8") as file_obj:
+                content = file_obj.read()
+            return json.loads(self._strip_jsonc(content))
+        except Exception as exc:
+            logger.error("Failed to load configuration file %s: %s", file_path, exc)
+            if raise_on_error:
+                raise
             return {}
 
     def _save_json(self, file_path: Path, data: Any):
@@ -508,11 +551,6 @@ class ConfigManager:
                         config_data.get("duckdb_extension_directory"),
                     )
                     or None,
-                    "duckdb_debug_logging": os.getenv(
-                        "DUCKDB_DEBUG_LOGGING",
-                        str(config_data.get("duckdb_debug_logging", False)),
-                    ).lower()
-                    == "true",
                     "duckdb_auto_explain_threshold_ms": int(
                         os.getenv(
                             "DUCKDB_AUTO_EXPLAIN_THRESHOLD_MS",
@@ -634,6 +672,29 @@ class ConfigManager:
                         "Invalid DUCKDB_REMOTE_SETTINGS JSON: %s", parse_err
                     )
 
+            # 版本化迁移(替代按值猜测):只有 version < 当前版本的旧配置才迁移。
+            # v1(无 version 字段)曾把 query_tree 当出厂默认→刷爆 stderr,迁移为 no_output;
+            # version 达标的配置里 query_tree 视为用户主动选择,予以尊重(仅校验合法性)。
+            schema_version = int(config_data.get("config_schema_version", 1) or 1)
+            if schema_version < 2:
+                if config_data.get("duckdb_enable_profiling") == "query_tree":
+                    config_data["duckdb_enable_profiling"] = "no_output"
+
+            # profiling 值合法性校验:非法值(无论版本)→ no_output + 告警,避免 SET 静默失败
+            _valid_profiling = {"no_output", "json", "query_tree", "query_tree_optimizer"}
+            if config_data.get("duckdb_enable_profiling") not in _valid_profiling:
+                if "duckdb_enable_profiling" in config_data:
+                    logger.warning(
+                        "Invalid duckdb_enable_profiling %r; falling back to no_output",
+                        config_data.get("duckdb_enable_profiling"),
+                    )
+                    config_data["duckdb_enable_profiling"] = "no_output"
+
+            # duckdb_debug_logging 曾是死开关(无人消费),已移除字段;剥离旧
+            # app-config.json 里的遗留键,否则 AppConfig(**config_data) 会因未知
+            # 关键字参数报错(加载不过滤未知键)。
+            config_data.pop("duckdb_debug_logging", None)
+
             self._app_config = AppConfig(**config_data)
             logger.info("Application configuration loaded successfully")
             return self._app_config
@@ -658,6 +719,11 @@ class ConfigManager:
         try:
             if self._app_config is None:
                 self.load_app_config()
+
+            # Never overwrite a malformed file with in-memory defaults loaded after
+            # a parse failure. The existing file must remain available for repair.
+            if self.app_config_file.exists():
+                self._load_json(self.app_config_file, raise_on_error=True)
 
             # 更新配置
             for key, value in kwargs.items():

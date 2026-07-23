@@ -85,6 +85,48 @@ class TestPivotQueryGeneration:
             assert inner["sql"] == 'SELECT "col1", "col2" FROM "test_table"'
             assert "complexity_score" not in (inner.get("metadata") or {})
 
+    def test_generate_column_limit_exceeded_returns_400_with_details(self):
+        """复审 P1:列维度去重值超上限 → 400 + 专用码 PIVOT_COLUMN_LIMIT_EXCEEDED +
+        结构化 details{column,cap,observed_at_least},不再被通用 classify_exception 包成
+        UNKNOWN_ERROR/500。前端据 details 提示,不解析中文消息。"""
+        from core.services.pivot_query_generator import PivotColumnLimitError
+
+        config_data = _with_pivot_request({
+            "config": {"table_name": "test_table", "filters": []},
+            "preview": False,
+        })
+        with patch('routers.pivot_query.validate_query_config') as mock_validate, \
+             patch('routers.pivot_query.generate_pivot_query_sql') as mock_generate:
+            mock_validate.return_value = Mock(is_valid=True, errors=[], warnings=[])
+            mock_generate.side_effect = PivotColumnLimitError("cat", 300, observed_at_least=301)
+            response = client.post("/api/pivot-query/generate", json=config_data)
+
+        assert response.status_code == 400, response.text
+        body = response.json()
+        assert body["success"] is False
+        assert body["messageCode"] == "PIVOT_COLUMN_LIMIT_EXCEEDED"
+        err = body["error"]
+        assert err["code"] == "PIVOT_COLUMN_LIMIT_EXCEEDED"
+        assert err["details"] == {"column": "cat", "cap": 300, "observed_at_least": 301}
+
+    def test_preview_column_limit_exceeded_returns_400_with_details(self):
+        """预览路由同样把列超限映射为 400 + 专用码 + 结构化 details。"""
+        from core.services.pivot_query_generator import PivotColumnLimitError
+
+        config_data = _with_pivot_request({
+            "config": {"table_name": "test_table", "filters": []},
+        })
+        with patch('routers.pivot_query.validate_query_config') as mock_validate, \
+             patch('routers.pivot_query.generate_pivot_query_sql') as mock_generate:
+            mock_validate.return_value = Mock(is_valid=True, errors=[], warnings=[])
+            mock_generate.side_effect = PivotColumnLimitError("cat", 300, observed_at_least=301)
+            response = client.post("/api/pivot-query/preview", json=config_data)
+
+        assert response.status_code == 400, response.text
+        body = response.json()
+        assert body["messageCode"] == "PIVOT_COLUMN_LIMIT_EXCEEDED"
+        assert body["error"]["details"]["observed_at_least"] == 301
+
     def test_missing_pivot_config_rejected(self):
         """缺少 pivot_config 时由 Pydantic 返回 422。"""
         response = client.post(
@@ -203,20 +245,16 @@ class TestPivotQueryPreview:
 
             mock_generate.return_value = generation_result
 
-            import pandas as pd
-
-            preview_data = pd.DataFrame({
-                'name': ['Alice', 'Bob', 'Charlie'],
-                'age': [25, 30, 35],
-            })
-
             mock_con = Mock()
             bind_mock_duckdb_pool(mock_pool, mock_con)
-            mock_con.execute.return_value.description = []
-            mock_con.execute.return_value.fetchdf.side_effect = [
-                preview_data,
-                pd.DataFrame({'total_rows': [1000]}),
+            # 新传输路径:预览走 description+fetchall,计数走 fetchone
+            mock_con.execute.return_value.description = [
+                ("name", "VARCHAR"), ("age", "INTEGER"),
             ]
+            mock_con.execute.return_value.fetchall.return_value = [
+                ("Alice", 25), ("Bob", 30), ("Charlie", 35),
+            ]
+            mock_con.execute.return_value.fetchone.return_value = (1000,)
 
             response = client.post("/api/pivot-query/preview", json=config_data)
 
@@ -256,10 +294,7 @@ class TestTableMetadata:
             mock_con.execute.return_value.description = []
             
             # Mock available tables
-            import pandas as pd
-            mock_con.execute.return_value.fetchdf.return_value = pd.DataFrame({
-                'name': ['test_table']
-            })
+            mock_con.execute.return_value.fetchall.return_value = [('test_table',)]
             
             # Mock table metadata
             from models.pivot_query_models import TableMetadata, ColumnStatistics
@@ -312,10 +347,7 @@ class TestTableMetadata:
             mock_con.execute.return_value.description = []
             
             # Mock empty tables list
-            import pandas as pd
-            mock_con.execute.return_value.fetchdf.return_value = pd.DataFrame({
-                'name': []
-            })
+            mock_con.execute.return_value.fetchall.return_value = []
             
             response = client.get("/api/duckdb/tables/detail/nonexistent_table")
             
@@ -334,10 +366,7 @@ class TestTableMetadata:
             bind_mock_duckdb_pool(mock_db, mock_con)
             mock_con.execute.return_value.description = []
 
-            import pandas as pd
-            mock_con.execute.return_value.fetchdf.return_value = pd.DataFrame({
-                'name': ['test_table']
-            })
+            mock_con.execute.return_value.fetchall.return_value = [('test_table',)]
 
             from models.pivot_query_models import TableMetadata, ColumnStatistics
             mock_metadata.return_value = TableMetadata(
@@ -367,10 +396,7 @@ class TestTableMetadata:
             bind_mock_duckdb_pool(mock_db, mock_con)
             mock_con.execute.return_value.description = []
 
-            import pandas as pd
-            mock_con.execute.return_value.fetchdf.return_value = pd.DataFrame({
-                'name': []
-            })
+            mock_con.execute.return_value.fetchall.return_value = []
 
             response = client.post("/api/duckdb/table/missing_table/refresh")
             assert response.status_code == 404

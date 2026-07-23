@@ -24,9 +24,39 @@ logger = logging.getLogger(__name__)
 router = APIRouter(tags=["System"])
 
 
+def _hard_exit_fallback(deadline_seconds: float) -> None:
+    """优雅停机的有界兜底：drain 卡住时抢在外部 SIGKILL 前自行收尾退出。
+
+    正常路径下进程在 ~1s 内退出，本 daemon 线程随之消亡，走不到超时。
+    走到超时 = uvicorn drain 被挂起（keep-alive 连接/卡住的工作线程），进程
+    成为"端口已关但不退出"的僵尸：桌面壳 quit 后约 5s 会 SIGKILL，部署脚本
+    也会补刀。若强杀落在 WAL checkpoint 中途，WAL 与 db 文件的 checkpoint
+    iteration 脱节，DuckDB 下次启动会把整个 WAL 弃为 main.db.wal.broken.*，
+    其中已提交数据全部丢失（本机数据目录中已有多份实证）。因此超时后先关
+    连接池（触发 checkpoint，与 lifespan shutdown 同一收尾、幂等），再硬退。
+    """
+    time.sleep(deadline_seconds)
+    logger.warning(
+        "Graceful drain still running after %.1fs; closing pools and hard-exiting",
+        deadline_seconds,
+    )
+    try:
+        from core.database.duckdb_pool import shutdown_all_duckdb_connections
+
+        shutdown_all_duckdb_connections()
+    except Exception as exc:  # pylint: disable=broad-exception-caught
+        logger.warning("pool close in hard-exit fallback failed: %s", exc)
+    logging.shutdown()
+    os._exit(0)
+
+
 def _stop_server() -> None:
     """在后台线程里执行，留出时间让 /api/system/shutdown 的 200 响应先写完。"""
     time.sleep(0.05)
+    # 兜底先武装：即便下面的优雅路径整体卡死，进程也会在期限内干净退出。
+    threading.Thread(
+        target=_hard_exit_fallback, args=(3.0,), daemon=True
+    ).start()
     # 先中断所有在飞查询：重查询若还占着工作线程，uvicorn 优雅停机会一直等它，
     # 可能超过桌面壳的 5s 窗口而被 SIGKILL（脏 WAL → 重启降级）。中断后它们迅速
     # 抛错退出，uvicorn 得以 drain → 跑 lifespan shutdown(连接池 checkpoint)干净退出。

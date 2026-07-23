@@ -74,13 +74,13 @@ class MessageCode(str, Enum):
     PIVOT_QUERY_GENERATED = "PIVOT_QUERY_GENERATED"
     PIVOT_QUERY_PREVIEWED = "PIVOT_QUERY_PREVIEWED"
     PIVOT_QUERY_INVALID = "PIVOT_QUERY_INVALID"
+    PIVOT_COLUMN_LIMIT_EXCEEDED = "PIVOT_COLUMN_LIMIT_EXCEEDED"
 
     # ==================== 集合操作相关 ====================
     SET_OPERATION_GENERATED = "SET_OPERATION_GENERATED"
     SET_OPERATION_PREVIEWED = "SET_OPERATION_PREVIEWED"
     SET_OPERATION_VALIDATED = "SET_OPERATION_VALIDATED"
     SET_OPERATION_EXECUTED = "SET_OPERATION_EXECUTED"
-    SET_OPERATION_EXPORTED = "SET_OPERATION_EXPORTED"
 
     # ==================== 异步任务相关 ====================
     TASK_SUBMITTED = "TASK_SUBMITTED"
@@ -234,13 +234,13 @@ DEFAULT_MESSAGES = {
     MessageCode.PIVOT_QUERY_GENERATED: "透视查询生成成功",
     MessageCode.PIVOT_QUERY_PREVIEWED: "透视查询预览成功",
     MessageCode.PIVOT_QUERY_INVALID: "透视查询配置无效",
+    MessageCode.PIVOT_COLUMN_LIMIT_EXCEEDED: "透视列去重值超过上限,请增加筛选或减少分类",
 
     # ==================== 集合操作相关 ====================
     MessageCode.SET_OPERATION_GENERATED: "集合操作生成成功",
     MessageCode.SET_OPERATION_PREVIEWED: "集合操作预览成功",
     MessageCode.SET_OPERATION_VALIDATED: "集合操作验证通过",
     MessageCode.SET_OPERATION_EXECUTED: "集合操作执行成功",
-    MessageCode.SET_OPERATION_EXPORTED: "集合操作导出成功",
 
     # ==================== 异步任务相关 ====================
     MessageCode.TASK_SUBMITTED: "任务已提交",

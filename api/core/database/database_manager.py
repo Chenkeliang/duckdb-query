@@ -10,10 +10,8 @@ import os
 import sqlite3
 import threading
 import time
-from contextlib import contextmanager
 from typing import Any, Dict, List, Optional
 
-import pandas as pd
 import psycopg2
 import pymysql
 from models.query_models import (
@@ -23,10 +21,6 @@ from models.query_models import (
     DatabaseConnection,
     DataSourceType,
 )
-from sqlalchemy import create_engine, text
-from sqlalchemy.exc import SQLAlchemyError
-from sqlalchemy.pool import QueuePool
-
 from core.security.encryption import password_encryptor
 from core.database.metadata_manager import metadata_manager
 
@@ -38,14 +32,12 @@ class DatabaseManager:
 
     def __init__(self):
         self.connections: Dict[str, DatabaseConnection] = {}
-        self.engines: Dict[str, Any] = {}
-        self.connection_pools: Dict[str, Any] = {}
         self._config_loaded = False
         # 延迟加载配置，避免初始化顺序问题
         # RLock（可重入）：add_connection 会在持锁期间被 _load_connections_from_config
         # 循环调用，list_connections 也会在持锁期间触发同一个加载路径——同一线程需要
-        # 能重复拿到这把锁而不死锁。只保护 connections/engines/connection_pools 这几个
-        # 字典本身的读写/遍历，不覆盖 test_connection 这类慢速网络 I/O。
+        # 能重复拿到这把锁而不死锁。只保护 connections 字典本身的读写/遍历，
+        # 不覆盖 test_connection 这类慢速网络 I/O。
         self._lock = threading.RLock()
 
     def _load_connections_from_config(self):
@@ -119,14 +111,6 @@ class DatabaseManager:
                     old_conn = self.connections[connection.id]
                     logger.info(f"updatingdatabase connection: {connection.id}")
 
-                    # 清理旧引擎
-                    if connection.id in self.engines:
-                        try:
-                            self.engines[connection.id].dispose()
-                            del self.engines[connection.id]
-                        except Exception as e:
-                            logger.warning(f"Failed to clean up old connection engine {connection.id}: {e}")
-
                     # 假如新 params 缺少密码，且旧 params 有密码，则继承
                     # 注意：前端如果没改密码，params 里可能没 password 字段
                     if "password" not in connection.params and "password" in old_conn.params:
@@ -142,19 +126,9 @@ class DatabaseManager:
                 )
 
                 if test_result.success:
-                    # 创建连接引擎
-                    try:
-                        engine = self._create_engine(connection.type, connection.params)
-                        with self._lock:
-                            if engine is not None:
-                                self.engines[connection.id] = engine
-                        connection.status = ConnectionStatus.ACTIVE
-                        logger.info(f"Successfully added database connection: {connection.id}")
-                    except Exception as e:
-                        connection.status = ConnectionStatus.ERROR
-                        logger.error(f"Failed to create engine: {e}")
-                        # 如果引擎创建都失败了，那整体应该算失败
-                        return False, test_result
+                    # 查询一律走 DuckDB ATTACH(见 federated_attach),无引擎可建
+                    connection.status = ConnectionStatus.ACTIVE
+                    logger.info(f"Successfully added database connection: {connection.id}")
                 else:
                     connection.status = ConnectionStatus.ERROR
                     logger.warning(
@@ -199,15 +173,8 @@ class DatabaseManager:
         """移除数据库连接"""
         try:
             with self._lock:
-                if connection_id in self.engines:
-                    self.engines[connection_id].dispose()
-                    del self.engines[connection_id]
-
                 if connection_id in self.connections:
                     del self.connections[connection_id]
-
-                if connection_id in self.connection_pools:
-                    del self.connection_pools[connection_id]
 
             # 从 DuckDB 元数据表删除
             success = metadata_manager.delete_database_connection(connection_id)
@@ -445,104 +412,6 @@ class DatabaseManager:
                 latency_ms=latency,
                 error_details=str(e),
             )
-
-    def _create_engine(self, db_type: DataSourceType, params: Dict[str, Any]):
-        """创建 SQLAlchemy 引擎"""
-        connect_args: Dict[str, Any] = {}
-        if db_type == DataSourceType.MYSQL:
-            # 支持 user 和 username 两种参数名称
-            username = params.get("user") or params.get("username")
-            if not username:
-                raise ValueError("Missing username parameter (user or username)")
-
-            # 解密密码
-            password = params.get("password", "")
-            if password_encryptor.is_encrypted(password):
-                password = password_encryptor.decrypt_password(password)
-
-            connection_string = (
-                f"mysql+pymysql://{username}:{password}"
-                f"@{params['host']}:{params.get('port', 3306)}/{params['database']}"
-            )
-        elif db_type == DataSourceType.POSTGRESQL:
-            # 支持 user 和 username 两种参数名称
-            username = params.get("user") or params.get("username")
-            if not username:
-                raise ValueError("Missing username parameter (user or username)")
-
-            # 解密密码
-            password = params.get("password", "")
-            if password_encryptor.is_encrypted(password):
-                password = password_encryptor.decrypt_password(password)
-
-            connection_string = (
-                f"postgresql+psycopg2://{username}:{password}"
-                f"@{params['host']}:{params.get('port', 5432)}/{params['database']}"
-            )
-        elif db_type == DataSourceType.SQLITE:
-            # 连接保存的参数键是 path(见 datasources 创建流程),database 为兼容旧数据
-            db_path = params.get("path") or params.get("database", ":memory:")
-            connection_string = f"sqlite:///{db_path}"
-            # sqlite3 连接默认绑定创建线程;QueuePool 会把池化连接交给任意工作线程
-            # (FastAPI 同步端点与 BackgroundTasks 各在不同线程),不关掉
-            # check_same_thread 就会随机抛 "SQLite objects created in a thread can
-            # only be used in that same thread"——CI 并发回归测试间歇复现的正是它。
-            # QueuePool 保证单个连接同一时刻只被一个线程检出,配合 CPython sqlite3
-            # 默认 SERIALIZED 线程模式,跨线程移交是 SQLAlchemy 文档认可的安全用法。
-            connect_args = {"check_same_thread": False}
-        elif db_type == DataSourceType.DUCKDB:
-            # DuckDB 文件型连接不经 SQLAlchemy：查询走 ATTACH（见 duckdb_engine.build_attach_sql），
-            # 无需引擎，调用方应将 None 视为「无需注册引擎」而非失败
-            return None
-        else:
-            raise ValueError(f"Unsupported database type: {db_type}")
-
-        return create_engine(
-            connection_string,
-            poolclass=QueuePool,
-            pool_size=5,
-            max_overflow=10,
-            pool_pre_ping=True,
-            pool_recycle=3600,
-            connect_args=connect_args,
-        )
-
-    def execute_query(self, connection_id: str, query: str) -> pd.DataFrame:
-        """执行数据库查询"""
-        # 如果连接配置存在但尚未创建引擎（例如仅从配置加载、未进行过测试/刷新），
-        # 这里按需创建引擎，避免外部查询/导入直接失败。check-then-create-then-assign
-        # 整体加锁：两个线程并发首次查询同一个 connection_id 时，不能都判断"没有
-        # 引擎"、各自建一个、后赋值的把先创建的那个覆盖掉导致泄漏（与 duckdb_pool.py
-        # get_connection_pool 曾经的懒加载单例竞态同一类问题）。真正执行查询的
-        # pd.read_sql 是慢速网络 I/O，不放在锁里。
-        with self._lock:
-            if connection_id not in self.engines:
-                connection = self.connections.get(connection_id)
-                if not connection:
-                    raise ValueError(f"connectiondoes not exist: {connection_id}")
-                engine = self._create_engine(connection.type, connection.params)
-                self.engines[connection_id] = engine
-            engine = self.engines[connection_id]
-
-        try:
-            return pd.read_sql(query, engine)
-        except Exception as e:
-            logger.error(f"queryexecutingfailed: {str(e)}")
-            raise
-
-    @contextmanager
-    def get_engine(self, connection_id: str):
-        """获取数据库引擎的上下文管理器"""
-        with self._lock:
-            if connection_id not in self.engines:
-                raise ValueError(f"connectiondoes not exist: {connection_id}")
-            engine = self.engines[connection_id]
-        try:
-            yield engine
-        finally:
-            # 这里可以添加清理逻辑
-            pass
-
 
 # 全局数据库管理器实例
 db_manager = DatabaseManager()

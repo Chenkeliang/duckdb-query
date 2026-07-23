@@ -6,7 +6,6 @@ from unittest.mock import MagicMock, Mock, patch
 
 from tests.pool_mock import bind_mock_duckdb_pool
 
-import pandas as pd
 from fastapi.testclient import TestClient
 
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
@@ -18,9 +17,7 @@ client = TestClient(app, raise_server_exceptions=False)
 
 def test_duckdb_table_detail_not_found_envelope():
     mock_con = Mock()
-    mock_con.execute.return_value.fetchdf.return_value = pd.DataFrame(
-        {"name": ["other_table"]}
-    )
+    mock_con.execute.return_value.fetchall.return_value = [("other_table",)]
     with patch("routers.duckdb_query.with_duckdb_connection") as mock_pool:
         bind_mock_duckdb_pool(mock_pool, mock_con)
         response = client.get("/api/duckdb/tables/detail/__missing_table__")

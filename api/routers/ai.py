@@ -3,10 +3,13 @@
 from __future__ import annotations
 
 import logging
+from datetime import datetime
 from typing import Any, Dict
 
 from core.common.exceptions import ResourceNotFoundError
-from core.database.duckdb_engine import with_duckdb_connection
+from core.common.timezone_utils import format_storage_time_for_response
+from core.data.file_datasource_manager import file_datasource_manager
+from core.database.duckdb_engine import validate_query_syntax, with_duckdb_connection
 from core.database.federated_attach import (
     attach_databases_on_connection,
     detach_databases_on_connection,
@@ -22,6 +25,8 @@ from core.services import (
     ai_nl_to_sql,
     ai_suggest_chart,
     llm_context,
+    schema_sampler,
+    table_registry,
 )
 from core.services.llm_service import AIConfigError, AIDisabledError, LLMService
 from core.services.retriever import KeywordRetriever
@@ -105,6 +110,18 @@ def _ai_error_response(exc: Exception):
     return error_json_response(400, code, str(exc))
 
 
+def _sampled_block(con: Any, cand: str, ref: str, rows: list, budget: int) -> str:
+    """本地未限定表才采样(联邦/限定名带 ".")；返回样例块或空串。"""
+    if "." in cand or budget <= 0:
+        return ""
+    return schema_sampler.sample_table_block(
+        con,
+        ref,
+        [(r[0], r[1]) for r in rows],
+        max_chars=min(schema_sampler.PER_TABLE_CHAR_BUDGET, budget),
+    )
+
+
 def _build_schema_text(
     tables: list[str], attach_databases: list[Any] | None = None
 ) -> str:
@@ -117,6 +134,8 @@ def _build_schema_text(
     # 联邦表(如 mysql_sorder.iget_order)需要先 ATTACH 远端库，否则 DESCRIBE 取不到结构
     attach_configs = resolve_attach_configs(attach_databases)
     lines: list[str] = []
+    sample_budget = schema_sampler.OVERALL_CHAR_BUDGET
+    sampled_any = False
     with with_duckdb_connection() as con:
         attached: list[str] = []
         try:
@@ -134,13 +153,22 @@ def _build_schema_text(
                         rows = con.execute(f"DESCRIBE {ref}").fetchall()
                         cols = ", ".join(f"{r[0]} {r[1]}" for r in rows)
                         lines.append(f"{name}({cols})")
+                        # 带真实取值样例,解决 WHERE 条件值靠猜的问题
+                        block = _sampled_block(con, cand, ref, rows, sample_budget)
+                        if block:
+                            lines.append(block)
+                            sample_budget -= len(block)
+                            sampled_any = True
                         break
                     except Exception:  # noqa: BLE001
                         continue
         finally:
             if attached:
                 detach_databases_on_connection(con, attached)
-    return "\n".join(lines)
+    text = "\n".join(lines)
+    if sampled_any:
+        text = schema_sampler.SAMPLE_DISCLAIMER + "\n" + text
+    return text
 
 
 # [完整目录] 预算与展开上限：见 _build_catalog_text 说明
@@ -160,6 +188,15 @@ def _format_catalog_table(name: str, columns: list[tuple]) -> str:
     return f"{name}({col_str})"
 
 
+def _display_time(ts: str) -> str:
+    """存储 UTC 时间串 → 应用时区的 'YYYY-MM-DD HH:MM'(给模型/用户看)。"""
+    try:
+        local = format_storage_time_for_response(datetime.fromisoformat(ts))
+    except ValueError:
+        local = None
+    return (local or ts)[:16].replace("T", " ")
+
+
 def _catalog_lines_for_tables(
     con: Any,
     database_name: str,
@@ -167,28 +204,35 @@ def _catalog_lines_for_tables(
     selected: set,
     detail_limit: int,
     name_prefix: str = "",
+    created_map: dict[str, str] | None = None,
+    schema_name: str | None = None,
 ) -> list[str]:
     """给一批表名生成目录行：前 detail_limit 张带列，其余仅列名。
 
     已出现在 selected（详细段）里的表，这里跳过列只列名，避免重复。
+    created_map 提供时在行尾标注创建时间,让模型能回答"最新/今天建的表"。
     """
     lines: list[str] = []
     detailed, rest = table_names[:detail_limit], table_names[detail_limit:]
     for name in detailed:
         qualified = f"{name_prefix}{name}" if name_prefix else name
+        ts = (created_map or {}).get(name, "")
+        suffix = f" [created {_display_time(ts)}]" if ts else ""
         if name in selected or qualified in selected:
-            lines.append(f"  {name}")
+            lines.append(f"  {name}{suffix}")
             continue
         try:
-            cols = con.execute(
-                """
+            column_sql = """
                 SELECT column_name, data_type FROM duckdb_columns()
                 WHERE database_name = ? AND table_name = ?
-                ORDER BY column_index
-                """,
-                [database_name, name],
-            ).fetchall()
-            lines.append(f"  {_format_catalog_table(name, cols)}")
+            """
+            params = [database_name, name]
+            if schema_name:
+                column_sql += " AND schema_name = ?"
+                params.append(schema_name)
+            column_sql += " ORDER BY column_index"
+            cols = con.execute(column_sql, params).fetchall()
+            lines.append(f"  {_format_catalog_table(name, cols)}{suffix}")
         except Exception as exc:  # noqa: BLE001  单表枚举失败不影响其它表
             logger.warning("catalog: describe %s.%s failed: %s", database_name, name, exc)
             lines.append(f"  {name}")
@@ -228,7 +272,9 @@ def _build_catalog_text(selected: set, attach_databases: list[Any] | None = None
     with with_duckdb_connection() as con:
         attached: list[str] = []
         try:
-            # 本地 DuckDB 表：目录名用 current_database()，不假设固定叫 main
+            # 本地 DuckDB 表：目录名用 current_database()，不假设固定叫 main。
+            # 顺序与侧边栏同口径:登记表 sort_seq 倒序(单调持久,免疫 oid 漂移/
+            # 时区/同秒;2026-07-23 设计),created_at 仅逐行标注供模型理解"最新"
             try:
                 local_db = con.execute("SELECT current_database()").fetchone()[0]
                 local_names = [
@@ -237,16 +283,37 @@ def _build_catalog_text(selected: set, attach_databases: list[Any] | None = None
                         """
                         SELECT table_name FROM duckdb_tables()
                         WHERE NOT internal AND database_name = ?
-                        ORDER BY table_name
+                          AND schema_name = 'main'
+                          AND lower(table_name) NOT LIKE 'system_%'
+                        ORDER BY table_oid DESC
                         """,
                         [local_db],
                     ).fetchall()
                 ]
                 if local_names:
-                    lines = ["Local DuckDB tables:"]
+                    registry = table_registry.sync(
+                        local_names,
+                        created_lookup=file_datasource_manager.get_file_datasource,
+                    )
+                    created_map = {
+                        name: entry["created_at"].isoformat()
+                        for name, entry in registry.items()
+                        if isinstance(entry.get("created_at"), datetime)
+                    }
+                    local_names.sort(
+                        key=lambda n: (registry.get(n) or {}).get("sort_seq") or 0,
+                        reverse=True,
+                    )
+                    lines = ["Local DuckDB tables (newest created first):"]
                     lines.extend(
                         _catalog_lines_for_tables(
-                            con, local_db, local_names, selected, _CATALOG_LOCAL_TABLE_LIMIT
+                            con,
+                            local_db,
+                            local_names,
+                            selected,
+                            _CATALOG_LOCAL_TABLE_LIMIT,
+                            created_map=created_map,
+                            schema_name="main",
                         )
                     )
                     sections.append("\n".join(lines))
@@ -352,6 +419,12 @@ class NlToSqlPayload(BaseModel):
     locale: str = "zh"
 
 
+def _explain_validator(sql: str) -> tuple[bool, str]:
+    """EXPLAIN 干跑校验(只做规划不执行,亿级大表也便宜)。"""
+    with with_duckdb_connection() as con:
+        return validate_query_syntax(sql, con=con)
+
+
 @router.post("/api/ai/nl-to-sql", tags=["AI"])
 def nl_to_sql_route(payload: NlToSqlPayload):
     cfg = ai_config.load_ai_settings()
@@ -361,7 +434,12 @@ def nl_to_sql_route(payload: NlToSqlPayload):
     context = llm_context.build_nl2sql_context(schema_text, locale=payload.locale)
     try:
         result = ai_nl_to_sql.nl_to_sql(
-            LLMService(cfg), payload.question, context, payload.locale
+            LLMService(cfg),
+            payload.question,
+            context,
+            payload.locale,
+            validator=_explain_validator,
+            schema_text=schema_text,
         )
     except (AIDisabledError, AIConfigError) as exc:
         return _ai_error_response(exc)

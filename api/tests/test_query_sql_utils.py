@@ -9,9 +9,15 @@ VACUUM 等 DuckDB 专有语句均如此)一律判定为"不接受"——未识�
 LIMIT,而不是默认接受再冒语法错误的风险。
 """
 
+from unittest.mock import Mock, patch
+
 import pytest
 
-from routers.query_sql_utils import ensure_query_has_limit, statement_accepts_limit
+from routers.query_sql_utils import (
+    apply_row_limit_choice,
+    ensure_query_has_limit,
+    statement_accepts_limit,
+)
 
 
 @pytest.mark.parametrize(
@@ -92,9 +98,113 @@ def test_statement_accepts_limit(sql):
 
 
 def test_ensure_query_has_limit_appends_for_select():
-    assert ensure_query_has_limit("SELECT * FROM t", 100) == "SELECT * FROM t LIMIT 100"
-    # 已有 LIMIT 不重复补
+    # 换行追加(行尾注释安全);已有最外层 LIMIT 不重复补
+    assert ensure_query_has_limit("SELECT * FROM t", 100) == "SELECT * FROM t\nLIMIT 100"
     assert ensure_query_has_limit("SELECT * FROM t LIMIT 5", 100) == "SELECT * FROM t LIMIT 5"
+
+
+def test_ensure_query_has_limit_sql_boundaries():
+    """验收 #18/#20/#21:行尾注释、子查询用户 LIMIT、分号/CTE/UNION/ORDER BY——
+    最外层判定走 sqlglot AST,不用末尾数字正则。全部真实执行验证。"""
+    import duckdb
+
+    con = duckdb.connect(":memory:")
+
+    # 18: 已有最外层 LIMIT + 行尾注释 → 原样(旧正则会追加出双 LIMIT 语法错误)
+    sql = "SELECT * FROM range(20000) LIMIT 5 -- comment"
+    assert ensure_query_has_limit(sql, 100) == sql
+    assert len(con.execute(sql).fetchall()) == 5
+
+    # 无 LIMIT 但以注释结尾 → 换行追加,可执行
+    out = ensure_query_has_limit("SELECT * FROM range(20000) -- note", 100)
+    assert len(con.execute(out).fetchall()) == 100
+
+    # 20: 用户写在子查询里的 LIMIT 原样保留;外层默认仍应用
+    out = ensure_query_has_limit(
+        "SELECT * FROM (SELECT * FROM range(20000) LIMIT 7) s", 100
+    )
+    assert "LIMIT 7" in out
+    assert len(con.execute(out).fetchall()) == 7  # 内层 7 < 外层 100
+
+    # 21: 结尾分号 / CTE / UNION / ORDER BY 均正确生成最外层 LIMIT
+    out = ensure_query_has_limit("SELECT * FROM range(20000);", 100)
+    assert out.endswith("LIMIT 100;")
+    assert len(con.execute(out.rstrip(";")).fetchall()) == 100
+
+    out = ensure_query_has_limit("WITH c AS (SELECT * FROM range(20000)) SELECT * FROM c", 100)
+    assert len(con.execute(out).fetchall()) == 100
+    # CTE 内用户 LIMIT 不算最外层
+    out = ensure_query_has_limit("WITH c AS (SELECT * FROM range(20000) LIMIT 7) SELECT * FROM c", 100)
+    assert len(con.execute(out).fetchall()) == 7
+
+    out = ensure_query_has_limit(
+        "SELECT * FROM range(200) UNION ALL SELECT * FROM range(200)", 100
+    )
+    assert len(con.execute(out).fetchall()) == 100  # LIMIT 作用于整个集合最外层
+
+    out = ensure_query_has_limit("SELECT * FROM range(20000) ORDER BY 1 DESC", 100)
+    rows = con.execute(out).fetchall()
+    assert len(rows) == 100 and rows[0][0] == 19999
+
+    # 分号后跟行注释(复审:分号+注释):endswith(';')/rstrip(';') 都处理不了——
+    # tokenizer 定位分号,LIMIT 插到分号前、注释原样保留
+    out = ensure_query_has_limit("SELECT * FROM range(20000); -- note", 100)
+    assert len(con.execute(out).fetchall()) == 100
+    # 已有最外层 LIMIT + 分号 + 注释 → 原样不动
+    sql = "SELECT * FROM range(20000) LIMIT 7; -- note"
+    assert ensure_query_has_limit(sql, 100) == sql
+    # 字面量里的分号/注释符不被误认(STRING token)
+    out = ensure_query_has_limit("SELECT '; -- x' AS a", 100)
+    assert con.execute(out).fetchall() == [("; -- x",)]
+    # 连续分号(;;)按多语句拒绝,保持原样(旧行为)
+    sql = "SELECT * FROM range(20000);;"
+    assert ensure_query_has_limit(sql, 100) == sql
+
+
+def test_apply_row_limit_choice_full_is_verbatim():
+    """复审 P1:全量(apply_limit=False)逐字执行,尊重用户自己写的 LIMIT——绝不再按
+    'LIMIT 值==上限' 猜测删除(旧 remove_auto_added_limit 会把 LIMIT 10000 静默删成全表)。"""
+    # 无 LIMIT → 保持无 LIMIT(全量)
+    assert apply_row_limit_choice("SELECT * FROM range(20000)", False) == "SELECT * FROM range(20000)"
+    # 用户手写的 LIMIT(即便等于常见上限)→ 原样保留
+    assert (
+        apply_row_limit_choice("SELECT * FROM range(20000) LIMIT 10000", False)
+        == "SELECT * FROM range(20000) LIMIT 10000"
+    )
+
+
+def test_apply_row_limit_choice_limited_default_not_cap():
+    """验收 #5/#6/#7:勾选"限制"= 用户未写最外层 LIMIT 时补默认 max_query_rows;
+    用户写了(更小或更大)都用用户值——默认值是兜底,不是硬上限,绝不把 12000 压成 10000。
+    真实 DuckDB 执行验证。"""
+    import duckdb
+
+    con = duckdb.connect(":memory:")
+    with patch("core.common.config_manager.config_manager") as mgr:
+        mgr.get_app_config.return_value = Mock(max_query_rows=500)
+
+        # 无 LIMIT → 最外层补默认 500
+        sql1 = apply_row_limit_choice("SELECT * FROM range(20000)", True)
+        assert len(con.execute(sql1).fetchall()) == 500
+
+        # 用户 LIMIT 更小(5)→ 用 5
+        sql2 = apply_row_limit_choice("SELECT * FROM range(20000) LIMIT 5", True)
+        assert sql2 == "SELECT * FROM range(20000) LIMIT 5"
+        assert len(con.execute(sql2).fetchall()) == 5
+
+        # 行尾注释 + 已有 LIMIT → 原样(旧正则会拼出双 LIMIT 语法错误)
+        sql3 = apply_row_limit_choice(
+            "SELECT * FROM range(20000) LIMIT 5 -- user limit", True
+        )
+        assert len(con.execute(sql3).fetchall()) == 5
+
+        # 用户 LIMIT 更大(1200 > 默认 500)→ 用用户的 1200,不封顶
+        sql4 = apply_row_limit_choice("SELECT * FROM range(20000) LIMIT 1200", True)
+        assert sql4 == "SELECT * FROM range(20000) LIMIT 1200"
+        assert len(con.execute(sql4).fetchall()) == 1200
+
+        # 非查询语句(不接受 LIMIT)原样返回
+        assert apply_row_limit_choice("INSTALL httpfs", True) == "INSTALL httpfs"
 
 
 def test_double_semicolon_left_untouched():

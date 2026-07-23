@@ -54,3 +54,55 @@ jobs:
 
       - name: Run Vitest
         run: cd frontend && npm test
+
+  mcp-test:
+    name: MCP Pytest
+    runs-on: ubuntu-latest
+    timeout-minutes: 20
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install MCP (editable) + dev deps
+        run: cd mcp && pip install -e ".[dev]"
+
+      - name: Run MCP pytest
+        run: cd mcp && python -m pytest tests -q --tb=short
+
+  rust-test:
+    name: Tauri Rust Cargo Test
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: dtolnay/rust-toolchain@stable
+
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "./frontend/src-tauri -> target"
+
+      - name: Install Tauri system deps
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y libwebkit2gtk-4.1-dev libgtk-3-dev \
+            libayatana-appindicator3-dev librsvg2-dev libsoup-3.0-dev
+
+      - name: Provide frontend dist and sidecar placeholders
+        # tauri::generate_context! 编译期要求 frontendDist 与 resources
+        # (binaries/duckquery-api) 目录都存在;单测无需真实产物。本地能过是
+        # 因为开发机有真实 sidecar,干净 CI 必须占位(2026-07-23 发布检查发现)
+        run: |
+          mkdir -p frontend/dist
+          echo "<!doctype html><title>test</title>" > frontend/dist/index.html
+          mkdir -p frontend/src-tauri/binaries/duckquery-api
+          touch frontend/src-tauri/binaries/duckquery-api/.placeholder
+
+      - name: Cargo test
+        run: cd frontend/src-tauri && cargo test

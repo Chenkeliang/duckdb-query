@@ -25,7 +25,7 @@ import {
   TooltipProvider,
   TooltipTrigger,
 } from '@/components/ui/tooltip';
-import { cancelSyncQuery, parseFederatedQueryError, performJoinQuery } from '@/api';
+import { cancelSyncQuery, parseFederatedQueryError, performJoinQuery, inferColumnCast, toAttachDatabasesPayload } from '@/api';
 import type { TableSource, UseQueryWorkspaceReturn } from '@/hooks/useQueryWorkspace';
 import {
   buildJoinQueryPayload,
@@ -47,9 +47,11 @@ import {
 import type { JoinRestoreRequest } from '@/hooks/useQueryWorkspace';
 import { useMultipleTableColumns } from '@/hooks/useTableColumns';
 import { useAppConfig } from '@/hooks/useAppConfig';
-import { useTypeConflict, type ColumnPair } from '@/hooks/useTypeConflict';
+import { useTypeConflict, type ColumnPair, type TypeConflict, type ResolvedCast } from '@/hooks/useTypeConflict';
 import { TypeConflictDialog } from '@/Query/components/TypeConflictDialog';
 import { SQLHighlight } from '@/components/SQLHighlight';
+import { showErrorToast } from '@/utils/toastHelpers';
+import { decideConflictCast } from '@/Query/JoinQuery/conflictCast';
 import { generateConflictKey } from '@/utils/duckdbTypes';
 import type { SelectedTable } from '@/types/SelectedTable';
 import {
@@ -66,6 +68,7 @@ import {
   formatTableReference,
   createTableReference,
   getSourceFromSelectedTable,
+  resolveBusinessSql,
 } from '@/utils/sqlUtils';
 import {
   FilterBar,
@@ -219,11 +222,14 @@ export interface JoinPreviewSqlParams {
   selectedColumns: Record<string, string[]>;
   joinConfigs: JoinConfig[];
   tableColumnsMap: Record<string, TableColumn[]>;
-  resolvedTypes: Record<string, string>;
+  /** 分侧转换:{ key: { leftCast?, rightCast? } }(只转与目标不同的一侧) */
+  resolvedCasts: Record<string, ResolvedCast>;
   filterTree: FilterGroup;
   maxQueryRows: number;
   /** 已翻译的“请选择关联条件”注释文案 */
   selectConditionComment: string;
+  /** false = 生成无系统 LIMIT 的基础 SQL(异步/导出用,复审 P1);默认 true(预览) */
+  includeLimit?: boolean;
 }
 
 /**
@@ -238,10 +244,11 @@ export function buildJoinPreviewSql(params: JoinPreviewSqlParams): string | null
     selectedColumns,
     joinConfigs,
     tableColumnsMap,
-    resolvedTypes,
+    resolvedCasts,
     filterTree,
     maxQueryRows,
     selectConditionComment,
+    includeLimit = true,
   } = params;
 
   if (activeTables.length === 0) return null;
@@ -454,9 +461,12 @@ export function buildJoinPreviewSql(params: JoinPreviewSqlParams): string | null
               rightTableName,
               c.rightColumn
             );
-            const castType = resolvedTypes[conflictKey];
-            if (castType) {
-              return `TRY_CAST(${leftRef} AS ${castType}) ${c.operator} TRY_CAST(${rightRef} AS ${castType})`;
+            const casts = resolvedCasts[conflictKey];
+            if (casts && (casts.leftCast || casts.rightCast)) {
+              // 分侧:只转与目标不同的一侧,已是目标类型的一侧不动
+              const l = casts.leftCast ? `TRY_CAST(${leftRef} AS ${casts.leftCast})` : leftRef;
+              const r = casts.rightCast ? `TRY_CAST(${rightRef} AS ${casts.rightCast})` : rightRef;
+              return `${l} ${c.operator} ${r}`;
             }
           }
 
@@ -530,8 +540,10 @@ export function buildJoinPreviewSql(params: JoinPreviewSqlParams): string | null
     parts.push(`WHERE ${whereClause}`);
   }
 
-  // 使用配置的 max_query_rows 而不是硬编码的 1000
-  parts.push(`LIMIT ${maxQueryRows}`);
+  // 使用配置的 max_query_rows 而不是硬编码的 1000;基础 SQL(异步/导出)不加
+  if (includeLimit) {
+    parts.push(`LIMIT ${maxQueryRows}`);
+  }
   return parts.join('\n');
 }
 
@@ -539,7 +551,7 @@ export type { TableSource };
 
 interface JoinQueryPanelProps {
   selectedTables?: SelectedTable[];
-  onExecute?: (sql: string, source?: TableSource) => Promise<void>;
+  onExecute?: (sql: string, source?: TableSource, options?: { baseSql?: string }) => Promise<void>;
   onDisplayPreview?: UseQueryWorkspaceReturn['displayQueryPreview'];
   /**
    * 记录到全局查询历史（仅记录，不重跑）。
@@ -1390,7 +1402,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
     unresolvedCount,
     resolveConflict,
     resolveAllWithRecommendations,
-    resolvedTypes,
+    resolvedCasts,
     getConflict: _getConflict,
   } = useTypeConflict(columnPairs);
 
@@ -1581,6 +1593,62 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
     return extractAttachDatabases(activeTables);
   }, [activeTables]);
 
+  // JOIN 冲突的数据感知 cast 推断:采样【两侧】列,求两者都能无损转换的公共类型 T。
+  // scale 取两侧实际数据的最大值(不会舍掉更高精度那侧);任一侧有非数字行 / 超容量 →
+  // 返回 null(无安全推荐,交用户显式选,如 VARCHAR 文本匹配)。之后 useTypeConflict.resolvedCasts
+  // 会把 T 只套到与 T 不同的那一侧(后端 left_cast/right_cast)。
+  const inferConflictCast = React.useCallback(
+    async (conflict: TypeConflict): Promise<string | null> => {
+      // 无安全公共类型时按后端 reason 给出可操作提示——与透视页一致,避免"点了推断却无任何反馈"。
+      const reasonKey: Record<string, string> = {
+        non_numeric: "query.join.inferCastUnsafeNonNumeric",
+        binary_float: "query.join.inferCastUnsafeBinaryFloat",
+        scientific: "query.join.inferCastUnsafeScientific",
+        overflow: "query.join.inferCastUnsafeOverflow",
+      };
+      const warnUnsafe = (label: string, column: string, reason: string | null | undefined) => {
+        const key = (reason && reasonKey[reason]) || "query.join.inferCastUnsafe";
+        showErrorToast(t, undefined, t(key, { label, column }));
+      };
+      const payloadFor = (label: string, column: string) => {
+        const table = activeTables.find((tb) => getTableName(tb) === label);
+        if (!table) return null;
+        const ref = createTableReference(table, attachDatabases);
+        const qualified = ref.isExternal && ref.alias ? `${ref.alias}.${ref.name}` : ref.name;
+        return {
+          table_name: qualified,
+          column,
+          attach_databases: toAttachDatabasesPayload(attachDatabases),
+        };
+      };
+      const lp = payloadFor(conflict.leftLabel, conflict.leftColumn);
+      const rp = payloadFor(conflict.rightLabel, conflict.rightColumn);
+      if (!lp || !rp) return null;
+      try {
+        const [lr, rr] = await Promise.all([inferColumnCast(lp), inferColumnCast(rp)]);
+        const decision = decideConflictCast(lr, rr);
+        if (decision.unsafe) {
+          const side = decision.unsafe.side === 'left'
+            ? { label: conflict.leftLabel, column: conflict.leftColumn }
+            : { label: conflict.rightLabel, column: conflict.rightColumn };
+          warnUnsafe(side.label, side.column, decision.unsafe.reason);
+          return null;
+        }
+        if (decision.overflow) {
+          // 合并溢出:两侧各自安全、合并后超容量——用不点单列名的文案(单列超 38 位走上面
+          // reason='overflow' 分支,那里才点具体列名)
+          showErrorToast(t, undefined, t("query.join.inferCastOverflowCombined"));
+          return null;
+        }
+        return decision.cast;
+      } catch {
+        showErrorToast(t, undefined, t("query.join.inferCastFailed"));
+        return null;
+      }
+    },
+    [activeTables, attachDatabases, t]
+  );
+
   // 检查是否所有 JOIN 配置都有有效的关联列
   const hasValidJoinConditions = React.useMemo(() => {
     if (activeTables.length < 2) return false;
@@ -1639,7 +1707,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
         activeTables,
         joinConfigs: normalizedJoinConfigs,
         filterTree,
-        resolvedTypes,
+        resolvedCasts,
         maxQueryRows,
         isPreview,
         attachDatabases,
@@ -1651,7 +1719,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
       activeTables,
       normalizedJoinConfigs,
       filterTree,
-      resolvedTypes,
+      resolvedCasts,
       maxQueryRows,
       attachDatabases,
       tableAliasOverrides,
@@ -1662,7 +1730,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
 
   // 生成 SQL（委托给纯函数 buildJoinPreviewSql，依赖与入参一一对应）
   const generateSQL = React.useCallback(
-    (): string | null =>
+    (includeLimit: boolean = true): string | null =>
       buildJoinPreviewSql({
         activeTables,
         attachDatabases,
@@ -1670,10 +1738,11 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
         selectedColumns,
         joinConfigs,
         tableColumnsMap,
-        resolvedTypes,
+        resolvedCasts,
         filterTree,
         maxQueryRows,
         selectConditionComment: t('query.join.selectConditionComment', '请选择关联条件'),
+        includeLimit,
       }),
     [
       activeTables,
@@ -1682,7 +1751,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
       selectedColumns,
       joinConfigs,
       tableColumnsMap,
-      resolvedTypes,
+      resolvedCasts,
       filterTree,
       maxQueryRows,
       t,
@@ -1751,7 +1820,8 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
           preview_limit_applied: isPreview ? maxQueryRows : null,
         },
         result.sql,
-        source
+        source,
+        { baseSql: generateSQL(false) ?? undefined }
       );
       // 执行（非预览）成功后补记历史：该分支绕过了 onExecute 的历史包装器
       if (!isPreview && result.sql) {
@@ -1760,7 +1830,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
       return true;
     }
     if (onExecute && result.sql) {
-      await onExecute(result.sql, source);
+      await onExecute(result.sql, source, { baseSql: generateSQL(false) ?? undefined });
       return true;
     }
     return false;
@@ -1792,7 +1862,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
           ? { type: 'federated', attachDatabases }
           : tableSource || { type: 'duckdb' };
 
-      await onExecute(sql, source);
+      await onExecute(sql, source, { baseSql: generateSQL(false) ?? undefined });
     } catch (error) {
       const parsedError = parseFederatedQueryError(error as Error);
       setFederatedError({
@@ -1834,6 +1904,8 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
   }, [onCancel]);
 
   const sql = React.useMemo(() => generateSQL(), [generateSQL]);
+  // 无系统 LIMIT 的基础 SQL:异步/导出必须用它才是真全量(复审 P1)
+  const baseSql = React.useMemo(() => generateSQL(false), [generateSQL]);
 
   const getJoinSnapshot = React.useCallback(
     () =>
@@ -1876,9 +1948,10 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
   }, [joinRestoreRequest?.token, onClearJoinRestoreRequest]);
 
   const saveFavoriteSql = React.useMemo(() => {
-    if (!sql) return '';
-    return appendJoinWorkspaceToSql(sql, getJoinSnapshot());
-  }, [sql, getJoinSnapshot]);
+    const businessSql = resolveBusinessSql(baseSql, sql);
+    if (!businessSql) return '';
+    return appendJoinWorkspaceToSql(businessSql, getJoinSnapshot());
+  }, [baseSql, sql, getJoinSnapshot]);
 
   return (
     <div className="flex flex-col h-full overflow-hidden bg-surface">
@@ -2155,6 +2228,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
         conflicts={conflicts}
         onResolve={resolveConflict}
         onResolveAll={resolveAllWithRecommendations}
+        onInferCast={inferConflictCast}
         onClose={() => setShowTypeConflictDialog(false)}
         onConfirm={() => {
           setShowTypeConflictDialog(false);
@@ -2173,10 +2247,11 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
       />
 
       {/* 异步任务对话框 */}
+      {/* 异步任务提交无系统 LIMIT 的基础 SQL(复审 P1) */}
       <AsyncTaskDialog
         open={asyncDialogOpen}
         onOpenChange={setAsyncDialogOpen}
-        sql={sql?.trim() ?? ''}
+        sql={baseSql?.trim() ?? ''}
         datasource={
           sourceAnalysis.hasExternal && sourceAnalysis.currentSource
             ? {

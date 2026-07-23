@@ -76,7 +76,7 @@ class TestLoadFileToDuckdbAtomicity:
             with pytest.raises(Exception):
                 load_file_to_duckdb(con, "never_created", garbage_path, "parquet")
 
-            tables = con.execute("SHOW TABLES").fetchdf()["name"].tolist()
+            tables = [r[0] for r in con.execute("SHOW TABLES").fetchall()]
             assert not any(name.startswith("__stage_") for name in tables)
             assert "never_created" not in tables
         finally:
@@ -88,7 +88,7 @@ class TestLoadFileToDuckdbAtomicity:
         try:
             with pytest.raises(Exception):
                 load_file_to_duckdb(con, "brand_new_table", garbage_path, "parquet")
-            tables = con.execute("SHOW TABLES").fetchdf()["name"].tolist()
+            tables = [r[0] for r in con.execute("SHOW TABLES").fetchall()]
             assert "brand_new_table" not in tables
         finally:
             os.unlink(garbage_path)
@@ -132,7 +132,7 @@ class TestLoadJsonVariantAtomicity:
         try:
             with pytest.raises(Exception):
                 _load_json_file_as_variant(con, "never_created_variant", malformed_path, "json")
-            tables = con.execute("SHOW TABLES").fetchdf()["name"].tolist()
+            tables = [r[0] for r in con.execute("SHOW TABLES").fetchall()]
             assert not any(
                 name.startswith("__json_variant_raw_") or name.startswith("__json_variant_stage_")
                 for name in tables

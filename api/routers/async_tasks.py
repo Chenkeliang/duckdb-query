@@ -19,7 +19,7 @@ from core.common.config_manager import config_manager
 from core.common.timezone_utils import get_current_time, get_current_time_iso
 from core.data.file_datasource_manager import (
     build_table_metadata_snapshot,
-    create_table_from_dataframe,
+    create_table_from_file,
     file_datasource_manager,
 )
 from core.services.task_manager import TaskStatus, task_manager
@@ -57,6 +57,10 @@ EXPORTS_DIR = str(config_manager.get_exports_dir())
 task_utils = TaskUtils(EXPORTS_DIR)
 
 SUPPORTED_EXTERNAL_TYPES = {"mysql", "postgresql", "sqlite", "duckdb"}
+
+# 本地导出仅支持 DuckDB COPY 的这两种格式(excel 需转换、不走此路径)。
+# 单一来源,避免同文件两处各写一份字面量。
+LOCAL_EXPORT_FORMATS = ("csv", "parquet")
 
 
 def validate_attach_databases(attach_databases: Optional[List[AttachDatabase]]) -> None:
@@ -249,6 +253,9 @@ class AsyncQueryRequest(BaseModel):
     attach_databases: Optional[List[AttachDatabase]] = None
     # 自定义表名撞已有表时是否允许覆盖；默认 False，避免静默 CREATE OR REPLACE 毁数据
     overwrite: bool = False
+    # 行数范围【显式选择】：False=全量(逐字执行,尊重用户自己的 LIMIT);True=限制(缺 LIMIT 时补
+    # max_query_rows)。异步/导出默认全量。绝不再按 "LIMIT==上限" 猜测系统是否追加过(复审 P1)。
+    apply_row_limit: bool = False
 
 
 class AsyncQueryResponse(BaseModel):
@@ -329,6 +336,7 @@ def submit_async_query(
             "attach_databases": attach_list if attach_list else None,
             "is_federated": is_federated,
             "overwrite": request.overwrite,
+            "apply_row_limit": request.apply_row_limit,
         }
 
         # 创建任务并保存元数据
@@ -351,6 +359,7 @@ def submit_async_query(
                 request.datasource,
                 attach_list,
                 request.overwrite,
+                request.apply_row_limit,
             )
         else:
             # 普通查询：使用原有执行函数
@@ -362,6 +371,7 @@ def submit_async_query(
                 request.task_type,
                 request.datasource,
                 request.overwrite,
+                request.apply_row_limit,
             )
 
         return create_success_response(
@@ -580,6 +590,8 @@ def retry_async_task(
         custom_table_name = request.custom_table_name or payload.get(
             "custom_table_name"
         )
+        # 保留原任务的行数范围选择(全量/限制),重试不应把用户选的"限制"悄悄变回全量
+        apply_row_limit = bool(payload.get("apply_row_limit", False))
 
         attach_list, is_federated = resolve_attach_databases_for_async(
             payload.get("attach_databases"), datasource
@@ -601,6 +613,7 @@ def retry_async_task(
                 "datasource": datasource,
                 "attach_databases": attach_list if attach_list else None,
                 "is_federated": is_federated,
+                "apply_row_limit": apply_row_limit,
                 "retry_of": task_id,
             }
         )
@@ -624,6 +637,7 @@ def retry_async_task(
                 datasource,
                 attach_list,
                 overwrite=True,
+                apply_row_limit=apply_row_limit,
             )
         else:
             background_tasks.add_task(
@@ -634,6 +648,7 @@ def retry_async_task(
                 task_type,
                 datasource,
                 overwrite=True,
+                apply_row_limit=apply_row_limit,
             )
 
         # 注意：移除了 update_task 调用，避免写写冲突
@@ -686,10 +701,10 @@ def _serve_task_download(task_id: str, fmt: str):
     axios responseType:'blob' 把整个文件读进 webview 内存——那会把界面卡死。
     """
     try:
-        if fmt not in ["csv", "parquet"]:
+        if fmt not in LOCAL_EXPORT_FORMATS:
             raise APIValidationError(
                 "Unsupported format, only csv and parquet are allowed",
-                details={"field": "format", "allowed": ["csv", "parquet"]},
+                details={"field": "format", "allowed": list(LOCAL_EXPORT_FORMATS)},
             )
 
         file_path = generate_download_file(task_id, fmt)
@@ -759,7 +774,7 @@ def _export_result_file_to_local_path(task_id: str, fmt: str, target_path: str) 
     对带 query 的 URL 静默失败)、数据不再过一遍 HTTP。覆盖语义:原生存盘对话框
     已向用户确认过覆盖,此处直接覆盖。
     """
-    if fmt not in ("csv", "parquet"):
+    if fmt not in LOCAL_EXPORT_FORMATS:
         raise ValueError("Unsupported format, only csv and parquet are allowed")
     target = validate_local_target_path(target_path)
 
@@ -882,6 +897,7 @@ def execute_async_query(
     task_type: str = "query",
     datasource: Optional[Dict[str, Any]] = None,
     overwrite: bool = False,
+    apply_row_limit: bool = False,
 ):
     """
     执行异步查询（后台任务）- 内存优化版本
@@ -922,14 +938,12 @@ def execute_async_query(
 
         logger.info(f"Starting async query task: {task_id}")
 
-        # 智能移除系统自动添加的LIMIT
-        from routers.query_sql_utils import remove_auto_added_limit
+        # 行数范围按【显式选择】:全量=逐字执行(尊重用户 LIMIT),限制=缺 LIMIT 时补 max_query_rows。
+        # 不再按 "LIMIT==上限" 猜测删除(会误删用户手写等值 LIMIT,复审 P1)。
+        from routers.query_sql_utils import apply_row_limit_choice
 
-        clean_sql = remove_auto_added_limit(sql)
-        if clean_sql != sql.strip():
-            logger.info(f"Async task removed auto-added LIMIT: {sql} -> {clean_sql}")
-        else:
-            logger.info(f"Async task using original SQL: {clean_sql}")
+        clean_sql = apply_row_limit_choice(sql, apply_row_limit)
+        logger.info(f"Async task ({'limited' if apply_row_limit else 'full'}): {clean_sql}")
 
         datasource_info = datasource if isinstance(datasource, dict) else None
         datasource_type = (
@@ -1146,6 +1160,7 @@ def execute_async_federated_query(
     datasource: Optional[Dict[str, Any]] = None,
     attach_databases: Optional[List[Dict[str, str]]] = None,
     overwrite: bool = False,
+    apply_row_limit: bool = False,
 ):
     """
     执行异步联邦查询（后台任务）
@@ -1193,20 +1208,17 @@ def execute_async_federated_query(
         logger.info(f"Starting async federated query task: {task_id}")
         logger.info(f"Databases to ATTACH: {attach_databases}")
 
-        # 智能移除系统自动添加的LIMIT
-        from routers.query_sql_utils import remove_auto_added_limit
+        # 行数范围按【显式选择】(见 execute_async_query);不再按 "LIMIT==上限" 猜测删除(复审 P1)。
+        from routers.query_sql_utils import apply_row_limit_choice
 
         from core.common.sql_mysql_quotes import (
             normalize_mysql_double_quoted_strings_for_duckdb,
         )
 
         clean_sql = normalize_mysql_double_quoted_strings_for_duckdb(
-            remove_auto_added_limit(sql)
+            apply_row_limit_choice(sql, apply_row_limit)
         )
-        if clean_sql != sql.strip():
-            logger.info(f"Federated query removed auto-added LIMIT: {sql} -> {clean_sql}")
-        else:
-            logger.info(f"Federated query using original SQL: {clean_sql}")
+        logger.info(f"Federated query ({'limited' if apply_row_limit else 'full'}): {clean_sql}")
 
         # 确定表名（洗空则回退 task_id 名，不建空名表）
         table_name, is_custom = _resolve_result_table_name(custom_table_name, task_id)

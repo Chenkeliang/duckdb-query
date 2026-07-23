@@ -37,10 +37,10 @@ cp config/app-config.example.jsonc config/app-config.jsonc
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `duckdb_memory_limit` | string | `"8GB"` | Maximum memory DuckDB can use |
-| `duckdb_threads` | integer | `8` | Number of parallel query threads (set to CPU cores) |
+| `duckdb_threads` | integer | CPU cores | Number of parallel query threads (follows `os.cpu_count()` when omitted) |
 | `duckdb_temp_directory` | string | `null` | Custom temp directory for DuckDB |
 | `duckdb_extensions` | string[] | `["excel", "json", "parquet", "httpfs", "mysql", "postgres"]` | Extensions to auto-load |
-| `duckdb_enable_object_cache` | boolean | `true` | Enable object cache for better performance |
+| `duckdb_enable_object_cache` | boolean | `true` | Object cache (legacy no-op since DuckDB 1.5.3; kept for compatibility) |
 
 ---
 
@@ -179,7 +179,7 @@ See [QUERY_BEHAVIOR_ZH.md](QUERY_BEHAVIOR_ZH.md) (Chinese only) for JOIN / set-o
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `duckdb_enable_profiling` | string | `"query_tree"` | Per-connection `SET enable_profiling` |
+| `duckdb_enable_profiling` | string | `"no_output"` | Per-connection `SET enable_profiling` (legacy `query_tree` in v1 configs is migrated once to `no_output` to prevent log flooding; a deliberately-set `query_tree` in current configs is honored) |
 | `duckdb_profiling_output` | string \| null | `null` | Profiling output file (on Docker this must be on a mounted volume, e.g. `/app/data/duckdb/profiling.json`) |
 | `duckdb_auto_explain_threshold_ms` | integer | `0` | Log `EXPLAIN` output for queries slower than this many ms; `0` disables it; `5000` is a reasonable production value |
 

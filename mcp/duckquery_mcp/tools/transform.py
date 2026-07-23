@@ -35,7 +35,7 @@ async def pivot(client, cfg, *, config: dict, pivot_config: dict, execute: bool 
     Notes: value entries use "column" (not "field"); "aggregation" is an UPPERCASE
     enum string: SUM | AVG | COUNT | MIN | MAX | COUNT_DISTINCT. Optional keys:
     manual_column_values (explicit column headers; required for subtotals/grand
-    totals), include_subtotals, include_grand_totals, strategy ("auto" default).
+    totals), include_subtotals, include_grand_totals.
     Preview rows are capped by `limit` (default 100; raise explicitly for more) —
     `row_count` in the response is still the full pivoted total.
     execute=True writes a table, so it needs confirm=true (preview does not).

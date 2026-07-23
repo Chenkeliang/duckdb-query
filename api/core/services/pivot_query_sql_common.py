@@ -12,7 +12,11 @@ def _apply_column_cast_sql(
         return column_sql
     cast_target = _resolve_cast_expression(raw_column, casts_map)
     if cast_target:
-        return f"TRY_CAST({column_sql} AS {cast_target})"
+        # casts_map 值原样拼进 SQL——渲染前统一过规范类型白名单
+        # (纵深防御:无论上游模型层是否已校验)
+        from core.common.duckdb_types import validate_cast_type
+
+        return f"TRY_CAST({column_sql} AS {validate_cast_type(cast_target)})"
     return column_sql
 
 
@@ -20,9 +24,8 @@ def _strip_trailing_semicolon(sql: str) -> str:
     return sql.rstrip().rstrip(";")
 
 
-def _quote_identifier(identifier: str) -> str:
-    safe = identifier.replace('"', '""')
-    return f'"{safe}"'
+# 标识符转义统一走 core.common.sql_identifiers(消灭历史 8 份副本)
+from core.common.sql_identifiers import quote_identifier as _quote_identifier  # noqa: E402
 
 
 def _build_from_clause(config: PivotQueryConfig) -> str:
@@ -100,30 +103,15 @@ def _build_where_clause(
     return f"WHERE {' '.join(filter_conditions)}"
 
 
-def _format_identifier(identifier: str) -> str:
-    """Format column/alias/expression for SQL."""
-    if not identifier:
-        return ""
-
-    identifier = identifier.strip()
-    if any(
-        token in identifier
-        for token in ("(", ")", " ", "+", "-", "*", "/", "%")
-    ):
-        return identifier
-
-    if identifier.startswith('"') and identifier.endswith('"') and len(identifier) > 1:
-        return identifier
-
-    return f'"{identifier}"'
-
-
 def _build_filter_condition(
     filter_config: FilterConfig, casts_map: Optional[Dict[str, str]] = None
 ) -> str:
     """Build a pivot filter condition (column vs constant)."""
     raw_column = filter_config.column
-    column = _format_identifier(raw_column)
+    # 过滤列名一律走 quote_identifier 严格转义(双引号加倍 + 始终引号)。旧 _format_identifier
+    # 对含空格/括号/运算符的值原样直通(为"表达式"设计),被恶意 column 如 `1=1) -- ` 利用
+    # 注入 WHERE 子句(Codex 对抗复审 critical)。过滤列本就该是纯标识符,不接受表达式。
+    column = _quote_identifier(raw_column)
     column_expr = _apply_column_cast_sql(column, raw_column, casts_map)
     operator = filter_config.operator.value
     value = filter_config.value

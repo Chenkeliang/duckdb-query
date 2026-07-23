@@ -88,12 +88,15 @@ class PivotValueConfig(BaseModel):
     aggregation: AggregationFunction = Field(
         ..., description="Aggregation function applied to the column"
     )
-    alias: Optional[str] = Field(
-        None, description="Alias for the pivoted metric column"
-    )
+    # 注:曾有 alias 字段,但原生 PIVOT 的指标列名由透视值本身决定,alias
+    # 只被回显进 metadata、从不影响输出列名(前端也不读),已移除以免误导。
     typeConversion: Optional[str] = Field(
         None,
-        description="Type conversion for the column before aggregation (e.g., 'decimal', 'double')",
+        description=(
+            "Type conversion for the column before aggregation — a canonical "
+            "DuckDB scalar type or full DECIMAL(p,s), e.g. 'DOUBLE', "
+            "'DECIMAL(38,6)'; bare DECIMAL is rejected as silently lossy"
+        ),
     )
 
     _allowed_aggregations: ClassVar[Set[AggregationFunction]] = {
@@ -112,19 +115,25 @@ class PivotValueConfig(BaseModel):
             raise ValueError("Pivot value column cannot be empty")
         return value.strip()
 
-    @field_validator("alias")
-    @classmethod
-    def validate_alias(cls, value: Optional[str]) -> Optional[str]:
-        if value is not None and not value.strip():
-            raise ValueError("Pivot value alias cannot be empty")
-        return value.strip() if value else None
-
     @field_validator("aggregation")
     @classmethod
     def validate_aggregation(cls, value: AggregationFunction) -> AggregationFunction:
         if value not in cls._allowed_aggregations:
             raise ValueError(f"Aggregation {value} is not supported for pivot values")
         return value
+
+    @field_validator("typeConversion")
+    @classmethod
+    def validate_type_conversion(cls, value: Optional[str]) -> Optional[str]:
+        # 最终原样拼进 TRY_CAST(... AS X),必须过规范类型白名单;
+        # 'auto' 是"不转换"哨兵(生成器按此跳过),原样放行。
+        if value is None or not value.strip():
+            return None
+        if value.strip().lower() == "auto":
+            return "auto"
+        from core.common.duckdb_types import validate_cast_type
+
+        return validate_cast_type(value)
 
 
 class PivotConfig(BaseModel):
@@ -149,10 +158,9 @@ class PivotConfig(BaseModel):
         None,
         description="Optional explicit list of column dimension values to enforce ordering",
     )
-    strategy: Optional[Literal["auto", "extension", "native"]] = Field(
-        "native",
-        description="Pivot strategy preference: auto|extension|native (native requires manual_column_values)",
-    )
+    # 注:曾有 strategy: auto|extension|native 字段,但生成器无条件走 native
+    # (extension 策略早已删除,uses_pivot_extension 恒 False),字段从不被读取,
+    # 已移除以免误导调用方(响应 metadata 的 strategy 由生成器内部计算)。
     column_value_limit: Optional[int] = Field(
         None,
         description="Optional max number of distinct values allowed for the first column dimension",
@@ -172,12 +180,16 @@ class PivotConfig(BaseModel):
         ]
 
         if self.manual_column_values is not None:
-            cleaned_values = []
+            # 保序去重:去空白 + 丢重复。重复值会让 DuckDB 的 PIVOT ... IN (...) 报
+            # "specified multiple times in the IN clause"(复审 P2),须在入口收口。
+            cleaned_values: List[str] = []
+            seen: set = set()
             for value in self.manual_column_values:
                 if value is None:
                     continue
                 value_str = str(value).strip()
-                if value_str:
+                if value_str and value_str not in seen:
+                    seen.add(value_str)
                     cleaned_values.append(value_str)
             self.manual_column_values = cleaned_values or None
 
@@ -197,8 +209,20 @@ class ResolvedTypeCast(BaseModel):
     """用户确认的类型转换设置"""
 
     column: str = Field(..., description="目标列名")
-    cast: str = Field(..., description="TRY_CAST 目标类型表达式")
+    cast: str = Field(
+        ...,
+        description="TRY_CAST 目标类型(规范 DuckDB 标量类型或完整 DECIMAL(p,s))",
+    )
     table: Optional[str] = Field(None, description="所属表，可选")
+
+    @field_validator("cast")
+    @classmethod
+    def validate_cast_target(cls, value: str) -> str:
+        # 最终原样拼进 TRY_CAST(... AS X):在模型层就白名单化,
+        # 非法值得到干净的 422 而非生成期 500
+        from core.common.duckdb_types import validate_cast_type
+
+        return validate_cast_type(value)
 
 
 class PivotQueryConfig(BaseModel):

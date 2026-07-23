@@ -16,6 +16,7 @@ import {
     SelectValue,
 } from "@/components/ui/select";
 import type { FilterConfig } from "@/types/pivotQuery";
+import { parseNumericPreservingPrecision } from "@/Query/JoinQuery/FilterBar/filterUtils";
 
 const OPERATORS = [
     { value: "=", labelKey: "query.filter.operators.eq" },
@@ -45,7 +46,8 @@ function toApiFilters(rows: PivotFilterRow[]): FilterConfig[] {
                 return { column: r.column.trim(), operator: op, value: null };
             }
             const raw = r.value.trim();
-            const asNumber = raw !== "" && !Number.isNaN(Number(raw)) ? Number(raw) : raw;
+            // 仅精确往返才转 number,否则保留字符串(避免大整数/高精度筛选值丢精度)
+            const asNumber = parseNumericPreservingPrecision(raw);
             return {
                 column: r.column.trim(),
                 operator: op,

@@ -25,9 +25,11 @@ import {
 } from "@dnd-kit/core";
 import { CSS } from "@dnd-kit/utilities";
 import { createPortal } from "react-dom";
-import { GripVertical, X, ChevronDown, Rows3, Columns3, Calculator } from "lucide-react";
+import { GripVertical, X, ChevronDown, Rows3, Columns3, Calculator, Plus } from "lucide-react";
 import { Badge } from "@/components/ui/badge";
 import { Button } from "@/components/ui/button";
+import { Checkbox } from "@/components/ui/checkbox";
+import { Input } from "@/components/ui/input";
 import {
     DropdownMenu,
     DropdownMenuContent,
@@ -35,11 +37,24 @@ import {
     DropdownMenuTrigger,
 } from "@/components/ui/dropdown-menu";
 import { AggregationFunction } from "@/types/pivotQuery";
+import { isNumericType, validateCastType } from "@/utils/duckdbTypes";
+import { showSuccessToast, showErrorToast } from "@/utils/toastHelpers";
+import type { InferCastResult } from "@/api";
 
 // Types
 interface PivotValueConfig {
     column: string;
     aggregation: AggregationFunction;
+    /** 文本列按数值聚合时的转换目标(如 DECIMAL(38,2));后端渲染为 TRY_CAST */
+    typeConversion?: string;
+    /** UI-only:'pending'=推断中,'unsafe'=无法安全推断需用户显式选择。二者都会挡住生成/执行。 */
+    castStatus?: 'pending' | 'unsafe';
+    /** UI-only:cast 来源。'inferred'=系统数据感知推断(上下文变化会重推);'manual'=用户手填(不覆盖)。 */
+    castSource?: 'inferred' | 'manual';
+    /** UI-only:该推断结果依据的推断上下文键(表身份+筛选);与当前不同 → 结果过期需重推。 */
+    castContextKey?: string;
+    /** UI-only:单调派发号,只应用最新一次推断派发的结果(区分同上下文的重复在途请求)。 */
+    castSeq?: number;
 }
 
 interface PivotTableDesignerProps {
@@ -51,6 +66,18 @@ interface PivotTableDesignerProps {
     onColumnsChange: (columns: string[]) => void;
     onValuesChange: (values: PivotValueConfig[]) => void;
     isLoading?: boolean;
+    /** 文本列选 SUM/AVG 时,在筛选后数据上做数据感知 cast 推断(由 PivotPanel 提供,含表/筛选/attach) */
+    onInferCast?: (column: string) => Promise<InferCastResult | null>;
+    /** 当前推断上下文键(表身份+筛选,由 PivotPanel 提供)。变化时对"系统推断"的值重新推断,并作为
+     *  异步结果的上下文标识:回来时若键已变则丢弃 stale 结果。手填(manual)的值不受其变化影响。 */
+    inferenceContextKey?: string;
+    /** 小计(需行维度≥2)。总计。手选列值(仅单透视列时;非空则绕过列上限只展开这些值)。 */
+    includeSubtotals?: boolean;
+    onIncludeSubtotalsChange?: (v: boolean) => void;
+    includeGrandTotals?: boolean;
+    onIncludeGrandTotalsChange?: (v: boolean) => void;
+    manualColumnValues?: string[];
+    onManualColumnValuesChange?: (v: string[]) => void;
 }
 
 // Draggable Field Badge (from palette)
@@ -207,8 +234,34 @@ export const PivotTableDesigner: React.FC<PivotTableDesignerProps> = ({
     onColumnsChange,
     onValuesChange,
     isLoading,
+    onInferCast,
+    inferenceContextKey,
+    includeSubtotals = false,
+    onIncludeSubtotalsChange,
+    includeGrandTotals = false,
+    onIncludeGrandTotalsChange,
+    manualColumnValues = [],
+    onManualColumnValuesChange,
 }) => {
     const { t } = useTranslation("common");
+    // 手选列值标签输入的暂存文本(回车提交为一个标签)
+    const [manualInput, setManualInput] = React.useState("");
+    const manualInputId = React.useId();
+    const subtotalHintId = React.useId();
+    // 透视列变更时清空【未提交的暂存文本】:否则旧列输一半没回车的文本会残留、再切回单列时
+    // 复现并可能被 blur/回车提交成新列的标签(复审 low)。已提交的 manualColumnValues 由 PivotPanel 清。
+    const pivotColKey = columns.length === 1 ? columns[0] : "";
+    React.useEffect(() => {
+        setManualInput("");
+    }, [pivotColKey]);
+    const addManualValue = () => {
+        const v = manualInput.trim();
+        // 保序去重:重复值会让后端 PIVOT IN 报 "specified multiple times"
+        if (v && !manualColumnValues.includes(v)) {
+            onManualColumnValuesChange?.([...manualColumnValues, v]);
+        }
+        setManualInput("");
+    };
     const [activeId, setActiveId] = React.useState<string | null>(null);
     const [activeData, setActiveData] = React.useState<any>(null);
 
@@ -220,6 +273,12 @@ export const PivotTableDesigner: React.FC<PivotTableDesignerProps> = ({
     // Get configured field names for filtering palette
     const configuredFields = new Set([...rows, ...columns, ...values.map(v => v.column)]);
     const paletteFields = availableFields.filter(f => !configuredFields.has(f.name));
+
+    // 字段是否数值类型(据 availableFields 的 type);拿不到类型时保守视为数值(维持旧默认)
+    const isFieldNumeric = (fieldName: string): boolean => {
+        const field = availableFields.find(f => f.name === fieldName);
+        return field ? isNumericType(field.type) : true;
+    };
 
     const handleDragStart = (event: DragStartEvent) => {
         setActiveId(event.active.id as string);
@@ -264,17 +323,164 @@ export const PivotTableDesigner: React.FC<PivotTableDesignerProps> = ({
             // Single column limit - replace
             onColumnsChange([fieldName]);
         } else if (targetZone === "values") {
-            onValuesChange([...values, { column: fieldName, aggregation: AggregationFunction.SUM }]);
+            // 按列类型给默认聚合:数值→SUM,非数值(文本/日期)→COUNT(避免默认 SUM 直接撞 sum(VARCHAR))
+            const defaultAgg = isFieldNumeric(fieldName)
+                ? AggregationFunction.SUM
+                : AggregationFunction.COUNT;
+            onValuesChange([...values, { column: fieldName, aggregation: defaultAgg }]);
         }
     };
 
     const handleRemoveRow = (field: string) => onRowsChange(rows.filter(r => r !== field));
     const handleRemoveColumn = (field: string) => onColumnsChange(columns.filter(c => c !== field));
     const handleRemoveValue = (idx: number) => onValuesChange(values.filter((_, i) => i !== idx));
+
+    // 用 ref 读最新 values,避免异步推断回来时用了旧闭包。updateValueAt 同步回写 ref:
+    // 筛选变化可能让【多个】推断值在同一 tick 内先后更新(重推 effect + 各自 async 回填),
+    // 若只依赖 onValuesChange(下次 render 才刷新 ref),后一次更新会读到旧 ref 覆盖掉前一次。
+    const valuesRef = React.useRef(values);
+    valuesRef.current = values;
+    const contextKeyRef = React.useRef(inferenceContextKey);
+    contextKeyRef.current = inferenceContextKey;
+    // 单调派发号:只应用【最新一次派发】的推断结果。forKey 内容寻址,A→B→A 时会出现两个同 forKey
+    // 的在途请求(d0 与 d2),仅靠 forKey/castSource 无法区分——谁后【到达】谁赢会让旧解覆盖新解。
+    // castSeq 随值同行(reorder 安全),迟到的旧派发因 seq 不再匹配被丢弃(对抗复审 flaw:inferred×inferred 竞态)。
+    const inferSeqRef = React.useRef(0);
+
+    const updateValueAt = (idx: number, patch: Partial<PivotValueConfig>) => {
+        const cur = valuesRef.current;
+        if (idx < 0 || idx >= cur.length) return;
+        const next = [...cur];
+        next[idx] = { ...next[idx], ...patch };
+        valuesRef.current = next; // 同步回写,保证同 tick 内后续更新基于最新值合成
+        onValuesChange(next);
+    };
+
+    const needsTextCast = (v: PivotValueConfig): boolean =>
+        !isFieldNumeric(v.column) &&
+        (v.aggregation === AggregationFunction.SUM || v.aggregation === AggregationFunction.AVG);
+
+    // 在推断上下文 forKey(表身份+筛选)下对 idx 列做数据感知推断:先落 pending 挡住生成/执行,再异步回填。
+    // forKey 兼作上下文标识:结果回来时若当前上下文键已变(切表/改筛选),丢弃这次 stale 结果。
+    const inferCastFor = (idx: number, col: string, forKey: string) => {
+        const seq = (inferSeqRef.current += 1);
+        updateValueAt(idx, {
+            typeConversion: undefined, castStatus: 'pending',
+            castSource: 'inferred', castContextKey: forKey, castSeq: seq,
+        });
+        if (!onInferCast) {
+            updateValueAt(idx, { castStatus: 'unsafe', castSource: 'inferred', castContextKey: forKey });
+            return;
+        }
+        void onInferCast(col).then((res) => {
+            // 按【稳定派发号 castSeq】在最新数组里重定位目标,而非信任派发时下标 idx:推断在途时删除
+            // 前置值会让目标值下标左移,按旧 idx 回填会写错槽/落空,导致幸存值永卡 pending(复审 P2)。
+            // castSeq 全局单调唯一,只有本次派发的那个值带它;更晚派发会覆盖其 castSeq,故 findIndex 落空即丢。
+            const at = valuesRef.current.findIndex((v) => v.castSeq === seq);
+            if (at < 0) return; // 值已删除,或已被更晚派发取代
+            const cur = valuesRef.current[at];
+            // 再校验:换列、上下文已变(forKey 过期)、被用户手填覆盖、已不再需要 cast(切回 COUNT/数值列)
+            if (cur.column !== col) return;
+            if (forKey !== (contextKeyRef.current ?? '')) return;
+            if (cur.castSource !== 'inferred') return;
+            if (!needsTextCast(cur)) return;
+            if (res && res.recommended) {
+                updateValueAt(at, {
+                    typeConversion: res.recommended, castStatus: undefined,
+                    castSource: 'inferred', castContextKey: forKey,
+                });
+                showSuccessToast(t, undefined, t("query.pivot.textCastRecommended", {
+                    column: col, cast: res.recommended,
+                }));
+            } else {
+                // 无法安全推断:要求显式选择。按后端 reason 给出【可操作】提示——
+                // 二进制浮点/科学计数法/超容量各有不同处置,通用文案(还带 count=0)会误导。
+                updateValueAt(at, {
+                    typeConversion: undefined, castStatus: 'unsafe',
+                    castSource: 'inferred', castContextKey: forKey,
+                });
+                const reasonKey: Record<string, string> = {
+                    non_numeric: "query.pivot.textCastUnsafeNonNumeric",
+                    binary_float: "query.pivot.textCastUnsafeBinaryFloat",
+                    scientific: "query.pivot.textCastUnsafeScientific",
+                    overflow: "query.pivot.textCastUnsafeOverflow",
+                };
+                const key = (res?.reason && reasonKey[res.reason]) || "query.pivot.textCastUnsafe";
+                showErrorToast(t, undefined, t(key, {
+                    column: col, count: res?.non_numeric ?? 0,
+                }));
+            }
+        });
+    };
+
     const handleUpdateValueAgg = (idx: number, agg: AggregationFunction) => {
-        const newValues = [...values];
-        newValues[idx] = { ...newValues[idx], aggregation: agg };
-        onValuesChange(newValues);
+        const col = values[idx].column;
+        const needsNumericCast =
+            !isFieldNumeric(col) &&
+            (agg === AggregationFunction.SUM || agg === AggregationFunction.AVG);
+        if (!needsNumericCast) {
+            // 数值列 / COUNT 等:无需转换,清掉 typeConversion 与所有 cast 状态/来源
+            updateValueAt(idx, {
+                aggregation: agg, typeConversion: undefined, castStatus: undefined,
+                castSource: undefined, castContextKey: undefined,
+            });
+            return;
+        }
+        // 文本列 SUM/AVG:不落任何固定默认(固定 scale 会舍入假匹配),在当前上下文数据上数据感知推断。
+        updateValueAt(idx, { aggregation: agg });
+        inferCastFor(idx, col, contextKeyRef.current ?? '');
+    };
+
+    // 上下文变化(切表 / 换同名异连接表 / 改筛选):对【系统推断且上下文键已过期】的文本 SUM/AVG 值
+    // 重新推断(手填的 manual 值不动)。修复:先在小范围数据上推出 DECIMAL(38,2)、再扩大筛选到含
+    // 3 位小数的数据时,旧标度会把 1.234 静默舍成 1.23——须随上下文键变化重推。仅依赖 inferenceContextKey。
+    React.useEffect(() => {
+        const key = inferenceContextKey ?? '';
+        valuesRef.current.forEach((v, idx) => {
+            if (v.castSource !== 'inferred') return;
+            if (v.castContextKey === key) return;
+            if (!needsTextCast(v)) return;
+            inferCastFor(idx, v.column, key);
+        });
+        // inferCastFor/needsTextCast 依赖当前 render 闭包,仅在上下文键变化时触发即可
+        // eslint-disable-next-line react-hooks/exhaustive-deps
+    }, [inferenceContextKey]);
+
+    // 值 chip 上的可编辑 cast 输入:用户手填即 manual 显式选择。手填值须过 validateCastType(与后端
+    // 同一口径)——裸 DECIMAL(隐性 DECIMAL(18,3) 静默舍入)、AS AUTO、非法串一律挡为 unsafe 不放行,
+    // 避免"同一配置仅因有无透视列就产生不同语义"(复审 P1)。合法则存【规范拼写】。
+    // 空 / 'auto'(=无转换):文本列仍是 SUM/AVG 则保持 unsafe 挡住(否则 SUM(VARCHAR) Binder Error)。
+    const blockAsUnsafe = (idx: number) => {
+        const cur = valuesRef.current[idx];
+        const stillNeeds = !!cur && needsTextCast(cur);
+        updateValueAt(idx, {
+            typeConversion: undefined,
+            castStatus: stillNeeds ? 'unsafe' : undefined,
+            castSource: undefined, castContextKey: undefined,
+        });
+    };
+    const handleUpdateValueCast = (idx: number, cast: string) => {
+        const trimmed = cast.trim();
+        if (!trimmed) { blockAsUnsafe(idx); return; }
+        const v = validateCastType(trimmed);
+        if (v.ok && v.normalized && v.normalized !== 'auto') {
+            updateValueAt(idx, {
+                typeConversion: v.normalized, castStatus: undefined,
+                castSource: 'manual', castContextKey: undefined,
+            });
+            return;
+        }
+        if (!v.ok) {
+            // 非法转换类型:不放行,报可操作错误
+            blockAsUnsafe(idx);
+            const key = v.reason === 'bare_decimal'
+                ? "query.pivot.castInvalidBareDecimal"
+                : "query.pivot.castInvalid";
+            showErrorToast(t, undefined, t(key, { type: trimmed }));
+            return;
+        }
+        // v.normalized === 'auto':等价于不转换,文本列仍需 cast → unsafe
+        blockAsUnsafe(idx);
     };
 
     const dropAnimation: DropAnimation = {
@@ -286,6 +492,12 @@ export const PivotTableDesigner: React.FC<PivotTableDesignerProps> = ({
     // hasConfig determines if preview should be shown
 
     const hasConfig = rows.length > 0 || columns.length > 0 || values.length > 0;
+    const previewPivotValues = manualColumnValues.length > 0
+        ? manualColumnValues.slice(0, 2)
+        : ["A", "B"];
+    const previewHasMore = manualColumnValues.length === 0
+        || manualColumnValues.length > previewPivotValues.length;
+    const previewPivotColumnCount = previewPivotValues.length + (previewHasMore ? 1 : 0);
 
     return (
         <DndContext
@@ -366,15 +578,142 @@ export const PivotTableDesigner: React.FC<PivotTableDesignerProps> = ({
                                 type="value"
                                 onRemove={() => handleRemoveValue(i)}
                                 extra={
-                                    <AggDropdown
-                                        value={v.aggregation}
-                                        onChange={(agg) => handleUpdateValueAgg(i, agg)}
-                                    />
+                                    <div className="flex items-center gap-1">
+                                        <AggDropdown
+                                            value={v.aggregation}
+                                            onChange={(agg) => handleUpdateValueAgg(i, agg)}
+                                        />
+                                        {v.castStatus === 'pending' && (
+                                            <span className="text-[11px] text-muted-foreground whitespace-nowrap">
+                                                {t("query.pivot.castInferring", "推断中…")}
+                                            </span>
+                                        )}
+                                        {(v.typeConversion !== undefined || v.castStatus === 'unsafe') && (
+                                            <input
+                                                // key 随 typeConversion/状态 变:异步推荐到达时重挂显示新值
+                                                key={`cast-${i}-${v.typeConversion ?? v.castStatus}`}
+                                                className={
+                                                    "w-28 text-[11px] px-1 py-0.5 rounded border bg-background text-foreground " +
+                                                    (v.castStatus === 'unsafe' ? "border-destructive" : "border-border")
+                                                }
+                                                defaultValue={v.typeConversion ?? ''}
+                                                placeholder={v.castStatus === 'unsafe'
+                                                    ? t("query.pivot.castPickType", "请选类型")
+                                                    : "DECIMAL(38,2)"}
+                                                title={t("query.pivot.castTypeHint", "聚合前的类型转换(可手填,如 DECIMAL(38,2);留空取消)")}
+                                                onBlur={(e) => handleUpdateValueCast(i, e.target.value)}
+                                                onKeyDown={(e) => {
+                                                    if (e.key === "Enter") (e.target as HTMLInputElement).blur();
+                                                }}
+                                            />
+                                        )}
+                                    </div>
                                 }
                             />
                         ))}
                     </DropZone>
                 </div>
+
+                {/* 透视列选项:小计/总计/手选列值——仅在【恰好一个】透视列(服务端原生 PIVOT 路径)
+                    时相关。多列走本地 GROUP BY,不消费这些开关,显示出来会是"勾了没用"的哑控件(复审)。 */}
+                {columns.length === 1 && (
+                    <div className="grid gap-3 px-1 py-1 text-sm">
+                        <div className="flex flex-wrap items-center gap-x-4 gap-y-2">
+                            <label
+                                className={"flex items-center gap-2 " +
+                                    (rows.length >= 2 ? "cursor-pointer" : "opacity-50 cursor-not-allowed")}
+                            >
+                                <Checkbox
+                                    // 如实显示存储态(不 && rows>=2):行维度<2 时置灰但保留勾选,
+                                    // 加回行维度即复用,避免"变灰=看着关了、实则悄悄弹回"的可见态撒谎(复审)。
+                                    // 实际是否发送由 PivotPanel 的 effectiveSubtotals(=includeSubtotals && rows>=2)门控。
+                                    checked={includeSubtotals}
+                                    disabled={rows.length < 2}
+                                    aria-describedby={rows.length < 2 ? subtotalHintId : undefined}
+                                    onCheckedChange={(v) => onIncludeSubtotalsChange?.(v === true)}
+                                />
+                                <span>{t("query.pivot.subtotals", "小计")}</span>
+                            </label>
+                            {rows.length < 2 && (
+                                <span id={subtotalHintId} className="text-xs text-muted-foreground">
+                                    {t("query.pivot.subtotalsNeedTwoRows", "小计需至少 2 个行维度")}
+                                </span>
+                            )}
+                            <label className="flex items-center gap-2 cursor-pointer">
+                                <Checkbox
+                                    checked={includeGrandTotals}
+                                    onCheckedChange={(v) => onIncludeGrandTotalsChange?.(v === true)}
+                                />
+                                <span>{t("query.pivot.grandTotals", "总计")}</span>
+                            </label>
+                        </div>
+
+                        {/* 指定列值(外层已保证恰好一个透视列):标签输入,回车逐个添加,
+                            可整体含逗号的值(如 "ACME, Inc"),不再按逗号切分 */}
+                        <div className="grid gap-1.5">
+                            <div className="flex flex-wrap items-baseline gap-x-2 gap-y-1">
+                                <label htmlFor={manualInputId} className="font-medium">
+                                    {t("query.pivot.manualColumnValues", "指定透视列值（可选）")}
+                                </label>
+                                <span id={`${manualInputId}-hint`} className="text-xs text-muted-foreground">
+                                    {t(
+                                        "query.pivot.manualColumnValuesDescription",
+                                        "留空时自动生成全部列；指定后只生成这些列，不受列数上限影响"
+                                    )}
+                                </span>
+                            </div>
+                            <div className="flex flex-wrap items-center gap-1.5">
+                                {manualColumnValues.map((val) => (
+                                    <Badge key={val} variant="outline" className="gap-1 max-w-48">
+                                        <span className="truncate">{val}</span>
+                                        <button
+                                            type="button"
+                                            className="shrink-0 hover:text-destructive"
+                                            aria-label={t("common.remove", "移除")}
+                                            onClick={() => onManualColumnValuesChange?.(
+                                                manualColumnValues.filter((v) => v !== val)
+                                            )}
+                                        >
+                                            <X className="h-3 w-3" />
+                                        </button>
+                                    </Badge>
+                                ))}
+                                <div className="flex min-w-64 max-w-xl flex-1 gap-1.5">
+                                    <Input
+                                        id={manualInputId}
+                                        value={manualInput}
+                                        onChange={(e) => setManualInput(e.target.value)}
+                                        onKeyDown={(e) => {
+                                            // 中文输入法组合态:Enter 是"确认候选词"而非"提交标签",此时提交会落半成品。
+                                            if (e.nativeEvent.isComposing) return;
+                                            if (e.key === "Enter") { e.preventDefault(); addManualValue(); }
+                                            else if (e.key === "Backspace" && !manualInput && manualColumnValues.length) {
+                                                onManualColumnValuesChange?.(manualColumnValues.slice(0, -1));
+                                            }
+                                        }}
+                                        onBlur={addManualValue}
+                                        aria-describedby={`${manualInputId}-hint`}
+                                        placeholder={t("query.pivot.manualColumnValuesHint", "输入一个列值后按 Enter")}
+                                        title={t("query.pivot.manualColumnValuesTitle", "只展开这些列值(绕过列上限);留空则自动展开全部")}
+                                        className="h-8 min-w-48 flex-1 text-xs"
+                                    />
+                                    <Button
+                                        type="button"
+                                        variant="outline"
+                                        size="icon"
+                                        className="h-8 w-8 shrink-0"
+                                        aria-label={t("query.pivot.manualColumnValuesAdd", "添加列值")}
+                                        disabled={!manualInput.trim()}
+                                        onPointerDown={(e) => e.preventDefault()}
+                                        onClick={addManualValue}
+                                    >
+                                        <Plus className="h-4 w-4" />
+                                    </Button>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                )}
 
                 {/* Preview Table - 更好地体现三个配置区域 */}
                 {hasConfig && (
@@ -401,7 +740,7 @@ export const PivotTableDesigner: React.FC<PivotTableDesignerProps> = ({
                                             </th>
                                             <th
                                                 className="border-b border-border px-3 py-1.5 text-center text-xs text-purple-600 dark:text-purple-400"
-                                                colSpan={3}
+                                                colSpan={previewPivotColumnCount}
                                             >
                                                 ← {t("query.pivot.pivotColumnValues", "透视列")}: <strong>{columns[0]}</strong> {t("query.pivot.uniqueValues", "的唯一值")} →
                                             </th>
@@ -423,17 +762,24 @@ export const PivotTableDesigner: React.FC<PivotTableDesignerProps> = ({
                                         {columns.length > 0 ? (
                                             // 透视模式：显示透视列的预览值 + 聚合函数
                                             <>
-                                                <th className="border-b border-border px-3 py-2 text-center font-medium text-purple-600 dark:text-purple-400">
-                                                    [{columns[0]}]=A<br />
-                                                    <span className="text-xs text-green-600 dark:text-green-400">{values.map(v => v.aggregation.toUpperCase()).join("/")}</span>
-                                                </th>
-                                                <th className="border-b border-border px-3 py-2 text-center font-medium text-purple-600 dark:text-purple-400">
-                                                    [{columns[0]}]=B<br />
-                                                    <span className="text-xs text-green-600 dark:text-green-400">{values.map(v => v.aggregation.toUpperCase()).join("/")}</span>
-                                                </th>
-                                                <th className="border-b border-border px-3 py-2 text-center text-muted-foreground">
-                                                    ...
-                                                </th>
+                                                {previewPivotValues.map(previewValue => (
+                                                    <th
+                                                        key={previewValue}
+                                                        className="border-b border-border px-3 py-2 text-center font-medium text-purple-600 dark:text-purple-400"
+                                                    >
+                                                        <span className="block max-w-48 truncate" title={`${columns[0]}=${previewValue}`}>
+                                                            [{columns[0]}]={previewValue}
+                                                        </span>
+                                                        <span className="text-xs text-green-600 dark:text-green-400">
+                                                            {values.map(v => v.aggregation.toUpperCase()).join("/")}
+                                                        </span>
+                                                    </th>
+                                                ))}
+                                                {previewHasMore && (
+                                                    <th className="border-b border-border px-3 py-2 text-center text-muted-foreground">
+                                                        ...
+                                                    </th>
+                                                )}
                                             </>
                                         ) : values.length > 0 ? (
                                             // 普通聚合模式
@@ -461,9 +807,12 @@ export const PivotTableDesigner: React.FC<PivotTableDesignerProps> = ({
                                         )}
                                         {columns.length > 0 ? (
                                             <>
-                                                <td className="border-border px-3 py-2 text-center text-green-600 dark:text-green-400">123</td>
-                                                <td className="border-border px-3 py-2 text-center text-green-600 dark:text-green-400">456</td>
-                                                <td className="border-border px-3 py-2 text-center">...</td>
+                                                {previewPivotValues.map((previewValue, i) => (
+                                                    <td key={previewValue} className="border-border px-3 py-2 text-center text-green-600 dark:text-green-400">
+                                                        {["123", "456"][i]}
+                                                    </td>
+                                                ))}
+                                                {previewHasMore && <td className="border-border px-3 py-2 text-center">...</td>}
                                             </>
                                         ) : values.length > 0 ? (
                                             values.map((_, i) => (
@@ -483,9 +832,12 @@ export const PivotTableDesigner: React.FC<PivotTableDesignerProps> = ({
                                         )}
                                         {columns.length > 0 ? (
                                             <>
-                                                <td className="border-t border-border px-3 py-2 text-center text-green-600 dark:text-green-400">789</td>
-                                                <td className="border-t border-border px-3 py-2 text-center text-green-600 dark:text-green-400">101</td>
-                                                <td className="border-t border-border px-3 py-2 text-center">...</td>
+                                                {previewPivotValues.map((previewValue, i) => (
+                                                    <td key={previewValue} className="border-t border-border px-3 py-2 text-center text-green-600 dark:text-green-400">
+                                                        {["789", "101"][i]}
+                                                    </td>
+                                                ))}
+                                                {previewHasMore && <td className="border-t border-border px-3 py-2 text-center">...</td>}
                                             </>
                                         ) : values.length > 0 ? (
                                             values.map((_, i) => (

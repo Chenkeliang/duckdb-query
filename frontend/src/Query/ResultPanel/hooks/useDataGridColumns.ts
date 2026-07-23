@@ -14,6 +14,7 @@ import {
 } from '../../DataGrid/utils/jsonCell';
 import { useColumnTypeDetection, type ColumnType } from './useColumnTypeDetection';
 import type { DuckdbColumnType } from '@/types/queryWorkspace';
+import { isNumericType, isVariantType } from '@/utils/duckdbTypes';
 
 export interface UseDataGridColumnsOptions {
   data: Record<string, unknown>[] | null;
@@ -64,30 +65,12 @@ function formatDateValue(value: unknown): string {
   if (value === null || value === undefined) {
     return 'NULL';
   }
-
-  const date = new Date(value as string | number | Date);
-  if (isNaN(date.getTime())) {
-    return String(value);
-  }
-
-  return new Intl.DateTimeFormat('zh-CN', {
-    year: 'numeric',
-    month: '2-digit',
-    day: '2-digit',
-    hour: '2-digit',
-    minute: '2-digit',
-    second: '2-digit',
-  }).format(date);
+  return String(value);
 }
 
-function isVariantDuckdbType(duckdbType: string): boolean {
-  return duckdbType.toUpperCase().includes('VARIANT');
-}
-
-// DuckDB 数值类型：以服务端类型为准强制按数值列处理（右对齐格式化 + 精确数值排序）。
-// DECIMAL / 超安全整数的 BIGINT 在 JSON 里是字符串，仅靠值采样可能误判为字符串列。
-const DUCKDB_NUMERIC_TYPE_RE =
-  /^(DECIMAL|NUMERIC|BIGINT|HUGEINT|INTEGER|SMALLINT|TINYINT|UBIGINT|UHUGEINT|UINTEGER|USMALLINT|UTINYINT|DOUBLE|FLOAT|REAL)/i;
+// DuckDB 数值/VARIANT 判定统一走 utils/duckdbTypes(别名先归一)。
+// 以服务端类型为准强制按数值列处理(右对齐格式化 + 精确数值排序):
+// DECIMAL / 超安全整数的 BIGINT 在 JSON 里是字符串,仅靠值采样会误判为字符串列。
 
 
 function booleanCellRenderer(value: unknown): React.ReactNode {
@@ -173,8 +156,8 @@ export function useDataGridColumns({
     return fields.map((field) => {
       const typeInfo = columnTypesRaw[field];
       const duckdbType = duckdbTypeByField[field];
-      const isVariantCol = duckdbType ? isVariantDuckdbType(duckdbType) : false;
-      const duckdbNumeric = duckdbType ? DUCKDB_NUMERIC_TYPE_RE.test(duckdbType) : false;
+      const isVariantCol = duckdbType ? isVariantType(duckdbType) : false;
+      const duckdbNumeric = duckdbType ? isNumericType(duckdbType) : false;
       const type: ColumnType = duckdbNumeric ? 'number' : typeInfo?.type || 'string';
       const override = columnOverrides[field] || {};
 

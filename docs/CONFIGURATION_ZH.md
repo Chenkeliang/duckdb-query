@@ -37,10 +37,10 @@ cp config/app-config.example.jsonc config/app-config.jsonc
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
 | `duckdb_memory_limit` | string | `"8GB"` | DuckDB 最大可用内存 |
-| `duckdb_threads` | integer | `8` | 并行查询线程数（建议设为 CPU 核心数） |
+| `duckdb_threads` | integer | CPU 核心数 | 并行查询线程数（省略则跟随 `os.cpu_count()`） |
 | `duckdb_temp_directory` | string | `null` | 自定义临时目录 |
 | `duckdb_extensions` | string[] | `["excel", "json", "parquet", "httpfs", "mysql", "postgres"]` | 自动加载的扩展 |
-| `duckdb_enable_object_cache` | boolean | `true` | 启用对象缓存以提升性能 |
+| `duckdb_enable_object_cache` | boolean | `true` | 对象缓存（DuckDB 1.5.3 起为 no-op，仅兼容保留） |
 
 ---
 
@@ -159,7 +159,7 @@ JOIN / 集合运算的预览、LIMIT、BY NAME 语义见 [QUERY_BEHAVIOR_ZH.md](
 
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
-| `duckdb_enable_profiling` | string | `"query_tree"` | 连接级 `SET enable_profiling` |
+| `duckdb_enable_profiling` | string | `"no_output"` | 连接级 `SET enable_profiling`（仅 v1 旧配置里遗留的 `query_tree` 会一次性迁移为 `no_output` 防刷屏；当前版本配置里主动设的 `query_tree` 予以尊重） |
 | `duckdb_profiling_output` | string \| null | `null` | Profiling 输出文件（Docker 须挂载卷，如 `/app/data/duckdb/profiling.json`） |
 | `duckdb_auto_explain_threshold_ms` | integer | `0` | 超过该毫秒数在日志中输出 `EXPLAIN`；`0` 关闭；生产可设 `5000` |
 
