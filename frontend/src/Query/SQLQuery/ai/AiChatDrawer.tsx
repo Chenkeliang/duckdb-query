@@ -11,11 +11,16 @@ import {
   User,
   BookOpen,
   Wand2,
+  Bot,
+  Square,
+  Check,
+  CircleAlert,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { showErrorToast } from '@/utils/toastHelpers';
-import { chat, type ChatMessage } from '@/api';
+import { chat, getDuckDBTables, type ChatMessage } from '@/api';
+import { agentChatStream, type AgentEvent } from '@/api/agentApi';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -56,6 +61,24 @@ export interface AiChatDrawerProps {
   /** 当前编辑器/面板生成的 SQL，用于「解释/优化」快捷动作 */
   currentSql?: string;
   locale?: 'zh' | 'en';
+}
+
+interface AgentStep {
+  id: string;
+  tool: string;
+  summary: string;
+  running: boolean;
+  ok?: boolean;
+}
+
+/** 抽屉内部消息:在 ChatMessage 之上叠加智能体轨迹(不回传后端)。 */
+interface DrawerMsg {
+  role: 'user' | 'assistant';
+  content: string;
+  steps?: AgentStep[];
+  sql?: string | null;
+  evidence?: string[];
+  failed?: boolean;
 }
 
 /** assistant 文本按 Markdown 渲染；代码块带「插入编辑器」按钮。 */
@@ -132,6 +155,34 @@ function AssistantMarkdown({
   );
 }
 
+/** 智能体探查过程步骤条。 */
+function AgentSteps({ steps, title }: { steps: AgentStep[]; title: string }) {
+  if (!steps.length) return null;
+  return (
+    <div className="mb-1.5 rounded border border-border/60 bg-background/60 px-2 py-1.5">
+      <div className="mb-1 text-[10px] font-medium text-muted-foreground">{title}</div>
+      <div className="space-y-0.5">
+        {steps.map((s) => (
+          <div key={s.id} className="flex items-center gap-1.5 text-[11px]">
+            {s.running ? (
+              <Loader2 className="h-3 w-3 shrink-0 animate-spin text-primary" />
+            ) : s.ok ? (
+              <Check className="h-3 w-3 shrink-0 text-primary" />
+            ) : (
+              <CircleAlert className="h-3 w-3 shrink-0 text-destructive" />
+            )}
+            <span className="font-mono text-muted-foreground">{s.tool}</span>
+            <span className="truncate text-muted-foreground/80">{s.summary}</span>
+          </div>
+        ))}
+      </div>
+    </div>
+  );
+}
+
+/** 输入框 @ 提及的表选择浮层触发正则:末尾 "@前缀"。 */
+const MENTION_RE = /(^|\s)@([^\s@]*)$/;
+
 export function AiChatDrawer({
   open,
   onClose,
@@ -142,26 +193,146 @@ export function AiChatDrawer({
   locale = 'zh',
 }: AiChatDrawerProps) {
   const { t } = useTranslation('common');
-  const [messages, setMessages] = useState<ChatMessage[]>([]);
+  const [mode, setMode] = useState<'agent' | 'classic'>('agent');
+  const [messages, setMessages] = useState<DrawerMsg[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
+  const [mentionTables, setMentionTables] = useState<string[]>([]);
+  const [allTables, setAllTables] = useState<string[] | null>(null);
+  const [scopeOff, setScopeOff] = useState<Record<string, boolean>>({});
   const listRef = useRef<HTMLDivElement>(null);
+  const abortRef = useRef<AbortController | null>(null);
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
   }, [messages, loading]);
 
+  useEffect(() => () => abortRef.current?.abort(), []);
+
+  const mentionMatch = MENTION_RE.exec(input);
+  useEffect(() => {
+    // 首次输入 @ 时才拉表清单(登记表序:最新在前)
+    if (mentionMatch && allTables === null) {
+      getDuckDBTables()
+        .then((tables) => setAllTables(tables.map((x) => x.name)))
+        .catch(() => setAllTables([]));
+    }
+  }, [mentionMatch, allTables]);
+
   if (!open) return null;
 
-  const send = async (override?: string) => {
-    const text = (override ?? input).trim();
-    if (!text || loading) return;
-    const next: ChatMessage[] = [...messages, { role: 'user', content: text }];
+  const activeAliases = (attachDatabases || []).filter((d) => !scopeOff[d.alias]);
+  const historyForBackend = (list: DrawerMsg[]): ChatMessage[] =>
+    list.map((m) => ({ role: m.role, content: m.content }));
+
+  const termText = (reason: string, message: string) => {
+    const map: Record<string, string> = {
+      protocol_violation: t('query.ai.termProtocol', '模型未遵守协议，已如实终止'),
+      budget_llm: t('query.ai.termBudget', '已达步数预算，给出当前结论前终止'),
+      budget_time: t('query.ai.termTime', '已达时间预算终止'),
+      cancelled: t('query.ai.termCancelled', '已停止'),
+      provider_error: t('query.ai.termProvider', '模型服务调用失败'),
+      internal_error: t('query.ai.termInternal', '内部错误'),
+    };
+    return `${map[reason] || reason}${message ? `：${message}` : ''}`;
+  };
+
+  const sendAgent = async (text: string) => {
+    const userMsg: DrawerMsg = { role: 'user', content: text };
+    const pending: DrawerMsg = { role: 'assistant', content: '', steps: [] };
+    const history = historyForBackend(messages);
+    setMessages((prev) => [...prev, userMsg, pending]);
+    setLoading(true);
+    const controller = new AbortController();
+    abortRef.current = controller;
+
+    const patchPending = (fn: (m: DrawerMsg) => DrawerMsg) =>
+      setMessages((prev) => {
+        const next = [...prev];
+        next[next.length - 1] = fn(next[next.length - 1]);
+        return next;
+      });
+
+    const onEvent = (ev: AgentEvent) => {
+      if (ev.event === 'tool_started') {
+        patchPending((m) => ({
+          ...m,
+          steps: [
+            ...(m.steps || []),
+            { id: ev.tool_call_id, tool: ev.tool, summary: ev.args_summary, running: true },
+          ],
+        }));
+      } else if (ev.event === 'tool_completed') {
+        patchPending((m) => ({
+          ...m,
+          steps: (m.steps || []).map((s) =>
+            s.id === ev.tool_call_id
+              ? { ...s, running: false, ok: ev.ok, summary: ev.ui_summary }
+              : s,
+          ),
+        }));
+      } else if (ev.event === 'answer') {
+        patchPending((m) => ({
+          ...m,
+          content: ev.answer,
+          sql: ev.sql,
+          evidence: ev.evidence,
+        }));
+      } else if (ev.event === 'error') {
+        patchPending((m) => ({
+          ...m,
+          failed: true,
+          content: termText(ev.termination_reason, ev.message),
+        }));
+      }
+    };
+
+    try {
+      await agentChatStream(
+        {
+          messages: [...history, { role: 'user', content: text }],
+          tables: Array.from(new Set([...selectedTables, ...mentionTables])),
+          attach_databases: activeAliases.map((d) => ({
+            alias: d.alias,
+            connection_id: d.connectionId,
+          })),
+          current_sql: currentSql,
+          locale,
+        },
+        { onEvent, signal: controller.signal },
+      );
+    } catch (e) {
+      if ((e as Error).name === 'AbortError') {
+        patchPending((m) => ({
+          ...m,
+          failed: true,
+          content: m.content || t('query.ai.termCancelled', '已停止'),
+        }));
+      } else {
+        showErrorToast(t, e as Error, t('query.ai.agentFailed', '智能体运行失败'));
+        patchPending((m) => ({
+          ...m,
+          failed: true,
+          content: m.content || (e as Error).message,
+        }));
+      }
+    } finally {
+      abortRef.current = null;
+      setLoading(false);
+    }
+  };
+
+  const sendClassic = async (text: string) => {
+    const next = [...messages, { role: 'user' as const, content: text }];
     setMessages(next);
-    if (override == null) setInput('');
     setLoading(true);
     try {
-      const r = await chat(next, { tables: selectedTables, attachDatabases, locale, currentSql });
+      const r = await chat(historyForBackend(next), {
+        tables: selectedTables,
+        attachDatabases,
+        locale,
+        currentSql,
+      });
       setMessages([...next, { role: 'assistant', content: r.content }]);
     } catch (e) {
       showErrorToast(t, e as Error, t('query.ai.chatFailed', 'AI 对话失败'));
@@ -169,6 +340,27 @@ export function AiChatDrawer({
       setLoading(false);
     }
   };
+
+  const send = async (override?: string) => {
+    const text = (override ?? input).trim();
+    if (!text || loading) return;
+    if (override == null) setInput('');
+    if (mode === 'agent') await sendAgent(text);
+    else await sendClassic(text);
+  };
+
+  const pickMention = (name: string) => {
+    setMentionTables((prev) => (prev.includes(name) ? prev : [...prev, name]));
+    setInput((prev) => prev.replace(MENTION_RE, '$1'));
+  };
+
+  const mentionCandidates =
+    mentionMatch && allTables
+      ? allTables
+          .filter((n) => n.toLowerCase().includes(mentionMatch[2].toLowerCase()))
+          .filter((n) => !mentionTables.includes(n))
+          .slice(0, 8)
+      : [];
 
   return (
     <div className="fixed right-0 top-14 bottom-0 z-40 flex w-[min(420px,92vw)] flex-col border-l border-border bg-surface shadow-xl">
@@ -179,6 +371,32 @@ export function AiChatDrawer({
           {t('query.ai.chatTitle', '数据助手')}
         </span>
         <div className="flex items-center gap-1">
+          {/* 模式切换:智能体(可探查数据) / 经典(单发对话) */}
+          <div className="mr-1 flex overflow-hidden rounded-md border border-border text-xs">
+            <button
+              type="button"
+              onClick={() => setMode('agent')}
+              className={`flex items-center gap-1 px-2 py-1 ${
+                mode === 'agent'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              <Bot className="h-3 w-3" />
+              {t('query.ai.agentMode', '智能体')}
+            </button>
+            <button
+              type="button"
+              onClick={() => setMode('classic')}
+              className={`px-2 py-1 ${
+                mode === 'classic'
+                  ? 'bg-primary text-primary-foreground'
+                  : 'text-muted-foreground hover:text-foreground'
+              }`}
+            >
+              {t('query.ai.classicMode', '经典')}
+            </button>
+          </div>
           {messages.length > 0 && (
             <Button
               variant="ghost"
@@ -206,10 +424,15 @@ export function AiChatDrawer({
       <div ref={listRef} className="flex-1 space-y-3 overflow-auto p-3">
         {messages.length === 0 && (
           <div className="text-xs text-muted-foreground">
-            {t(
-              'query.ai.chatEmpty',
-              '问我关于这些表的任何问题，或让我帮你写查询。我知道你选中表的结构。',
-            )}
+            {mode === 'agent'
+              ? t(
+                  'query.ai.agentEmpty',
+                  '问我关于你数据的任何问题。我会查看表结构、验证真实取值、试跑只读查询后再回答;输入 @ 可指定表。',
+                )
+              : t(
+                  'query.ai.chatEmpty',
+                  '问我关于这些表的任何问题，或让我帮你写查询。我知道你选中表的结构。',
+                )}
           </div>
         )}
         {messages.map((m, i) => {
@@ -226,7 +449,7 @@ export function AiChatDrawer({
               </div>
               {/* 气泡 */}
               <div
-                className={`max-w-[80%] rounded-2xl px-3 py-2 text-sm ${
+                className={`max-w-[85%] rounded-2xl px-3 py-2 text-sm ${
                   isUser
                     ? 'rounded-tr-sm bg-primary text-primary-foreground'
                     : 'rounded-tl-sm bg-muted text-foreground'
@@ -235,17 +458,67 @@ export function AiChatDrawer({
                 {isUser ? (
                   <p className="whitespace-pre-wrap">{m.content}</p>
                 ) : (
-                  <AssistantMarkdown
-                    content={m.content}
-                    onInsertSQL={onInsertSQL}
-                    insertLabel={t('query.ai.insertToEditor', '插入编辑器')}
-                  />
+                  <>
+                    <AgentSteps
+                      steps={m.steps || []}
+                      title={t('query.ai.agentSteps', '探查过程')}
+                    />
+                    {m.content ? (
+                      m.failed ? (
+                        <p className="flex items-start gap-1.5 text-destructive">
+                          <CircleAlert className="mt-0.5 h-3.5 w-3.5 shrink-0" />
+                          <span>{m.content}</span>
+                        </p>
+                      ) : (
+                        <AssistantMarkdown
+                          content={m.content}
+                          onInsertSQL={onInsertSQL}
+                          insertLabel={t('query.ai.insertToEditor', '插入编辑器')}
+                        />
+                      )
+                    ) : (
+                      !m.steps?.length && (
+                        <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
+                      )
+                    )}
+                    {m.sql && (
+                      <div className="my-1 rounded border border-border bg-background">
+                        <pre className="overflow-auto px-2 py-1.5 text-xs">
+                          <code>{m.sql}</code>
+                        </pre>
+                        {onInsertSQL && (
+                          <div className="border-t border-border px-2 py-1 text-right">
+                            <button
+                              type="button"
+                              onClick={() => onInsertSQL(m.sql!)}
+                              className="text-xs text-primary hover:underline"
+                            >
+                              {t('query.ai.insertToEditor', '插入编辑器')}
+                            </button>
+                          </div>
+                        )}
+                      </div>
+                    )}
+                    {!!m.evidence?.length && (
+                      <div className="mt-1 flex flex-wrap items-center gap-1 text-[10px] text-muted-foreground">
+                        {t('query.ai.evidence', '依据')}:
+                        {m.evidence.map((id) => (
+                          <span
+                            key={id}
+                            className="rounded bg-background px-1 py-0.5 font-mono"
+                          >
+                            {id}
+                          </span>
+                        ))}
+                      </div>
+                    )}
+                  </>
                 )}
               </div>
             </div>
           );
         })}
-        {loading && (
+        {loading && mode === 'classic' && (
           <div className="flex flex-row gap-2">
             <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
               <Sparkles className="h-3.5 w-3.5" />
@@ -259,7 +532,7 @@ export function AiChatDrawer({
 
       {/* 输入区 */}
       <div className="border-t border-border p-2">
-        {currentSql?.trim() && (
+        {currentSql?.trim() && !loading && (
           <div className="mb-1.5 flex flex-wrap gap-1.5">
             <button
               type="button"
@@ -289,26 +562,114 @@ export function AiChatDrawer({
             </button>
           </div>
         )}
-        <div className="flex items-center gap-2">
-          <Input
-            value={input}
-            onChange={(e) => setInput(e.target.value)}
-            onKeyDown={(e) => {
-              if (e.key === 'Enter' && !e.shiftKey) {
-                e.preventDefault();
-                send();
+        {/* 作用域:所见即所查——取消勾选的连接既不进上下文也不可被探查 */}
+        {mode === 'agent' && !!attachDatabases?.length && (
+          <div className="mb-1.5 flex flex-wrap items-center gap-1.5 text-[10px]">
+            <span className="rounded-full border border-border bg-muted px-2 py-0.5 text-muted-foreground">
+              {t('query.ai.scopeLocal', '本地 DuckDB')}
+            </span>
+            {attachDatabases.map((d) => {
+              const off = !!scopeOff[d.alias];
+              return (
+                <button
+                  key={d.alias}
+                  type="button"
+                  onClick={() => setScopeOff((p) => ({ ...p, [d.alias]: !off }))}
+                  className={`rounded-full border px-2 py-0.5 transition-colors ${
+                    off
+                      ? 'border-border text-muted-foreground/50 line-through'
+                      : 'border-primary/40 bg-primary/10 text-primary'
+                  }`}
+                >
+                  {d.alias}
+                </button>
+              );
+            })}
+          </div>
+        )}
+        {!!mentionTables.length && (
+          <div className="mb-1.5 flex flex-wrap gap-1.5">
+            {mentionTables.map((name) => (
+              <span
+                key={name}
+                className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] text-primary"
+              >
+                @{name}
+                <button
+                  type="button"
+                  onClick={() => setMentionTables((p) => p.filter((x) => x !== name))}
+                  aria-label={t('common.remove', '移除')}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              </span>
+            ))}
+          </div>
+        )}
+        <div className="relative">
+          {mentionCandidates.length > 0 && (
+            <div className="absolute bottom-full left-0 z-10 mb-1 max-h-48 w-full overflow-auto rounded-md border border-border bg-surface shadow-lg">
+              {mentionCandidates.map((name) => (
+                <button
+                  key={name}
+                  type="button"
+                  onClick={() => pickMention(name)}
+                  className="block w-full truncate px-2 py-1.5 text-left text-xs hover:bg-accent"
+                >
+                  {name}
+                </button>
+              ))}
+            </div>
+          )}
+          <div className="flex items-center gap-2">
+            <Input
+              value={input}
+              onChange={(e) => setInput(e.target.value)}
+              onKeyDown={(e) => {
+                if (e.key === 'Enter' && !e.shiftKey && !mentionCandidates.length) {
+                  e.preventDefault();
+                  send();
+                }
+                if (e.key === 'Enter' && mentionCandidates.length) {
+                  e.preventDefault();
+                  pickMention(mentionCandidates[0]);
+                }
+              }}
+              placeholder={
+                mode === 'agent'
+                  ? t('query.ai.agentPlaceholder', '问数据智能体…输入 @ 可选表（Enter 发送）')
+                  : t('query.ai.chatPlaceholder', '问数据助手…（Enter 发送）')
               }
-            }}
-            placeholder={t('query.ai.chatPlaceholder', '问数据助手…（Enter 发送）')}
-            disabled={loading}
-          />
-          <Button size="sm" disabled={loading || !input.trim()} onClick={() => send()}>
-            {loading ? <Loader2 className="h-4 w-4 animate-spin" /> : <Send className="h-4 w-4" />}
-          </Button>
+              disabled={loading}
+            />
+            {loading && mode === 'agent' ? (
+              <Button
+                size="sm"
+                variant="outline"
+                onClick={() => abortRef.current?.abort()}
+                title={t('query.ai.stop', '停止')}
+              >
+                <Square className="h-4 w-4" />
+              </Button>
+            ) : (
+              <Button size="sm" disabled={loading || !input.trim()} onClick={() => send()}>
+                {loading ? (
+                  <Loader2 className="h-4 w-4 animate-spin" />
+                ) : (
+                  <Send className="h-4 w-4" />
+                )}
+              </Button>
+            )}
+          </div>
         </div>
         <div className="mt-1 flex items-center gap-1 text-[10px] text-muted-foreground">
           <CornerDownLeft className="h-3 w-3" />
-          {t('query.ai.chatHint', '生成的 SQL 可一键插入编辑器，绝不自动执行')}
+          {mode === 'agent'
+            ? t(
+                'query.ai.agentHint',
+                '智能体会执行只读、限行、可取消的探查查询；最终 SQL 仍只插入编辑器',
+              )
+            : t('query.ai.chatHint', '生成的 SQL 可一键插入编辑器，绝不自动执行')}
         </div>
       </div>
     </div>
