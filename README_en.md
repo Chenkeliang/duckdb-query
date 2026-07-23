@@ -75,7 +75,17 @@
 | **Online Demo** | Trying SQL without installation | DuckDB-Wasm only; no AI, database connections, or Excel |
 | **Docker** | Self-hosting frontend and backend | Requires Docker and Docker Compose; data persists on the host under `./data` |
 
-**Desktop**: download a `.dmg` or Windows installer from [GitHub Releases](https://github.com/Chenkeliang/duckdb-query/releases/latest). There is currently no Linux package. The installers are not signed with official Apple / Microsoft developer certificates, so the OS may warn on first launch.
+**Desktop**: download **one installer** from [GitHub Releases](https://github.com/Chenkeliang/duckdb-query/releases/latest) using the table below (the `.sig`, `.app.tar.gz`, and `latest.json` files on the release page belong to the in-app auto-updater — you don't need them):
+
+| Your machine | Standard (recommended, smaller) | Offline full bundle (air-gapped) |
+|---|---|---|
+| **Windows 10 / 11 (64-bit)** | `*_x64-setup.exe` | `*_x64-offline-setup.exe` |
+| **Mac · Apple Silicon (M1–M4)** | `*_aarch64.dmg` | `*_aarch64-offline.dmg` |
+| **Mac · Intel** | `*_x64.dmg` | `*_x64-offline.dmg` |
+
+How to choose: with normal internet access, use the **standard** installer — DuckDB extensions (MySQL / PostgreSQL / remote files) download automatically on first use, and the Windows installer fetches WebView2 online. In air-gapped or restricted networks, use the **`-offline`** bundle — all extensions plus the WebView2 offline installer are built in, so nothing needs the network. Not sure which Mac chip you have? Apple menu → "About This Mac": Apple M-series → `aarch64`, Intel → `x64`.
+
+There is currently no Linux package. The installers are not signed with official Apple / Microsoft developer certificates, so the OS may warn on first launch.
 
 If first launch is blocked, choose **More info → Run anyway** on Windows. On macOS, move the app to **Applications**, then run `xattr -cr /Applications/DuckQuery.app` in Terminal. See the [desktop guide (Chinese)](docs/guide/桌面版使用手册.md#2-安装时弹出警告怎么办) for full steps.
 
