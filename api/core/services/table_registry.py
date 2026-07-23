@@ -16,7 +16,9 @@
 from __future__ import annotations
 
 import logging
-from datetime import datetime
+import re
+import threading
+from datetime import datetime, timezone
 from typing import Any, Callable, Dict, Optional, Sequence
 
 from core.database.duckdb_pool import with_system_connection
@@ -27,6 +29,23 @@ logger = logging.getLogger(__name__)
 _DATABASE_KEY = "main"
 _SCHEMA_NAME = "main"
 _schema_ready = False
+# 首启迁移与增量登记互斥:并发首启(侧边栏+目录同时拉)不得双份播种
+_sync_lock = threading.Lock()
+# 产品生成的表名自带创建毫秒时间戳(粘贴数据_/export_):升级用户的历史
+# 元数据 created_at 可能带旧版时区缺陷,名字里的毫秒才是普适真值
+_NAME_MS_PATTERN = re.compile(r"_(\d{13})(?:_|$)")
+
+
+def _created_at_from_name(table_name: str) -> Optional[datetime]:
+    m = _NAME_MS_PATTERN.search(table_name)
+    if not m:
+        return None
+    try:
+        return datetime.fromtimestamp(
+            int(m.group(1)) / 1000, timezone.utc
+        ).replace(tzinfo=None)
+    except (ValueError, OverflowError, OSError):
+        return None
 
 
 def _ensure_schema(conn: Any) -> None:
@@ -91,17 +110,17 @@ def _seed_order(
     没时间的(如 SQL 直建的遗留表)垫底;之后的新面孔保持调用方给定的
     目录顺序。不再从 table_oid 猜真实创建时间。
     """
-    if not registry_empty or not created_lookup:
+    if not registry_empty:
         return list(reversed(unseen))
     dated: list[tuple[str, str]] = []
     undated: list[str] = []
     for name in unseen:
-        meta = None
-        try:
-            meta = created_lookup(name)
-        except Exception as exc:  # noqa: BLE001
-            logger.debug("created_at lookup failed for %s: %s", name, exc)
-        ts = (meta or {}).get("created_at")
+        ts: Any = _created_at_from_name(name)  # 名字毫秒真值优先
+        if ts is None and created_lookup:
+            try:
+                ts = ((created_lookup(name)) or {}).get("created_at")
+            except Exception as exc:  # noqa: BLE001
+                logger.debug("created_at lookup failed for %s: %s", name, exc)
         if ts is None:
             undated.append(name)
         else:
@@ -123,7 +142,7 @@ def sync(
     result: Dict[str, Dict[str, Any]] = {}
     names = list(physical_names)
     try:
-        with with_system_connection() as conn:
+        with _sync_lock, with_system_connection() as conn:
             _ensure_schema(conn)
             rows = conn.execute(
                 "SELECT table_name, sort_seq, created_at FROM system_table_registry "
@@ -144,20 +163,21 @@ def sync(
             unseen = [n for n in names if n not in registered]
             is_migration = not registered
             for name in _seed_order(unseen, is_migration, created_lookup):
-                created: Optional[datetime] = None
-                meta = None
-                try:
-                    meta = created_lookup(name) if created_lookup else None
-                except Exception as exc:  # noqa: BLE001
-                    logger.debug("created_at lookup failed for %s: %s", name, exc)
-                raw = (meta or {}).get("created_at")
-                if isinstance(raw, datetime):
-                    created = raw
-                elif raw is not None:
+                created: Optional[datetime] = _created_at_from_name(name)
+                if created is None:
+                    meta = None
                     try:
-                        created = datetime.fromisoformat(str(raw))
-                    except ValueError:
-                        created = None
+                        meta = created_lookup(name) if created_lookup else None
+                    except Exception as exc:  # noqa: BLE001
+                        logger.debug("created_at lookup failed for %s: %s", name, exc)
+                    raw = (meta or {}).get("created_at")
+                    if isinstance(raw, datetime):
+                        created = raw
+                    elif raw is not None:
+                        try:
+                            created = datetime.fromisoformat(str(raw))
+                        except ValueError:
+                            created = None
                 if created is None and not is_migration:
                     # 迁移时无元数据的遗留表创建时间未知,留空不撒谎;
                     # 迁移后的新面孔"首见≈创建",用当前时间

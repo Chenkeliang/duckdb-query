@@ -156,6 +156,35 @@ def test_dropped_table_cleaned_and_recreate_goes_top(monkeypatch):
         connection.close()
 
 
+def test_migration_prefers_name_embedded_ms_over_stale_metadata(monkeypatch):
+    """升级用户场景:历史元数据 created_at 带旧版时区缺陷(本地钟面伪 UTC),
+    而 粘贴数据_/export_<毫秒> 名字里的时间戳是普适真值 —— 迁移种子必须以
+    名字毫秒为准(2026-07-23)。1784710162377ms = 2026-07-22 08:49:22 UTC。"""
+    _install_fake_metadata(monkeypatch, {
+        # 伪 UTC(实为 +08 本地钟面):若被采信,会把这张表排到 plain 之上
+        "粘贴数据_1784710162377": {"created_at": "2026-07-22T16:49:25"},
+        "plain_meta": {"created_at": "2026-07-22T09:00:00"},  # 真 UTC 09:00
+    })
+    connection = duckdb.connect(":memory:")
+    try:
+        connection.execute('CREATE TABLE "粘贴数据_1784710162377" (id INTEGER)')
+        connection.execute("CREATE TABLE plain_meta (id INTEGER)")
+
+        # 名字真值 08:49 UTC < plain_meta 09:00 UTC → plain_meta 更新
+        names = _list_table_names(monkeypatch, connection)
+        assert names == ["plain_meta", "粘贴数据_1784710162377"]
+
+        response = duckdb_query.list_duckdb_tables_summary()
+        item = next(
+            i for i in response["data"]["items"]
+            if i["table_name"] == "粘贴数据_1784710162377"
+        )
+        # 展示时间来自名字真值(UTC 08:49:22 → 应用时区 16:49:22)
+        assert item["created_at"].startswith("2026-07-22T16:49:22")
+    finally:
+        connection.close()
+
+
 def test_created_at_returned_in_app_timezone(monkeypatch):
     """created_at 存储 UTC、响应应用时区 ISO(§7.3):08:49 UTC → 16:49+08:00。"""
     _install_fake_metadata(monkeypatch, {
