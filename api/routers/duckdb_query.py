@@ -11,7 +11,7 @@ import threading
 import time
 import traceback
 import uuid
-from datetime import datetime, timedelta
+from datetime import datetime
 from typing import Any, Dict, List, Optional
 from uuid import uuid4
 
@@ -24,8 +24,8 @@ from core.common.sql_identifiers import quote_identifier
 from core.common.timezone_utils import (
     format_storage_time_for_response,
     get_current_time_iso,
-    get_storage_time,
 )
+from core.services import table_registry
 from core.common.utils import describe_query_column_types
 from core.common.sql_mysql_quotes import (
     normalize_mysql_double_quoted_strings_for_duckdb,
@@ -284,44 +284,29 @@ def list_duckdb_tables_summary():
 
             # 获取每个表的概要信息
             table_info = []
-            # 首见回填的时间基准:按当前目录序递减 1s,保留本次可见的相对新旧
-            backfill_base = get_storage_time()
-            for idx, (table_name, est, col_count, _table_oid) in enumerate(table_rows):
+            physical_names = [
+                r[0] for r in table_rows if not r[0].lower().startswith("system_")
+            ]
+            # 顺序唯一权威 = 登记表 sort_seq(单调持久,免疫 oid 漂移/时区/同秒);
+            # created_at 仅展示。sync 失败返回空 map → 降级为目录序
+            registry = table_registry.sync(
+                physical_names, created_lookup=file_datasource_manager.get_file_datasource
+            )
+            for table_name, est, col_count, _table_oid in table_rows:
                 if table_name.lower().startswith("system_"):
                     continue
                 # 行数估计 + 列数直接来自 duckdb_tables()（无逐表扫描）
                 row_count = int(est) if est is not None else 0
                 column_count = int(col_count) if col_count is not None else 0
 
-                metadata = file_datasource_manager.get_file_datasource(table_name)
-                if not metadata:
-                    # 首见回填:给无元数据的表(如 SQL 编辑器直接 CREATE 的)补记
-                    # created_at。此后每张表都有持久时间戳,排序不再依赖会在
-                    # 库文件重建后漂移的 table_oid —— 跨重启稳定(2026-07-22)
-                    stamp = backfill_base - timedelta(seconds=idx)
-                    try:
-                        file_datasource_manager.save_file_datasource(
-                            {
-                                "source_id": table_name,
-                                "filename": table_name,
-                                "file_type": "duckdb_table",
-                                "created_at": stamp,
-                            }
-                        )
-                        metadata = {"created_at": stamp}
-                    except Exception as exc:  # noqa: BLE001  回填失败不影响列表
-                        logger.warning(
-                            "first-seen created_at backfill failed for %s: %s",
-                            table_name,
-                            exc,
-                        )
-                raw_created_at = metadata.get("created_at") if metadata else None
-                if isinstance(raw_created_at, datetime):
-                    created_at = raw_created_at.isoformat()
-                elif raw_created_at is not None:
-                    created_at = str(raw_created_at)
-                else:
-                    created_at = None
+                entry = registry.get(table_name) or {}
+                created_dt = entry.get("created_at")
+                # created_at 以应用时区 ISO 返回(§7.3:存储 UTC、响应本地)
+                created_at = (
+                    format_storage_time_for_response(created_dt)
+                    if isinstance(created_dt, datetime)
+                    else None
+                )
 
                 table_info.append(
                     {
@@ -329,23 +314,13 @@ def list_duckdb_tables_summary():
                         "column_count": column_count,
                         "row_count": row_count,
                         "created_at": created_at,
+                        "_seq": entry.get("sort_seq") or 0,
                     }
                 )
 
-            # "最新"以元数据 created_at(UTC 存储)为权威口径,与 AI 目录一致;
-            # 同刻按表名决胜 —— 排序是 (created_at, name) 的纯函数,跨重启确定
-            table_info.sort(key=lambda t: t["table_name"])
-            table_info.sort(key=lambda t: t["created_at"] or "", reverse=True)
-
-            # created_at 以应用时区 ISO 返回(§7.3:存储 UTC、响应本地)
+            table_info.sort(key=lambda t: t["_seq"], reverse=True)
             for info in table_info:
-                if info["created_at"]:
-                    try:
-                        info["created_at"] = format_storage_time_for_response(
-                            datetime.fromisoformat(info["created_at"])
-                        )
-                    except ValueError:
-                        pass
+                info.pop("_seq", None)
 
             return create_list_response(
                 items=table_info,
@@ -608,6 +583,9 @@ def delete_duckdb_table(table_name: str):
                 logger.info(f"Deleted file datasource record: {table_name}")
             except Exception as e:
                 logger.warning(f"Failed to delete file datasource record: {str(e)}")
+
+            # 排序登记行同步删除(list 的 sync 也会兜底清理)
+            table_registry.remove(table_name)
 
             return create_success_response(
                 data={"deleted_table": table_name},

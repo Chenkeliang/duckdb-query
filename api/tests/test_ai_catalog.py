@@ -75,22 +75,27 @@ def test_catalog_lists_local_tables_newest_first(local_tables):
     assert text.index(newer) < text.index(older)
 
 
-def test_catalog_orders_by_metadata_created_at_over_oid(monkeypatch, local_tables):
-    """Regression (2026-07-22 实测):table_oid 在库文件重建后会漂(真机上一张
-    无元数据的老表 oid 排到了最前)。created_at 元数据才是"最新"的权威口径:
-    元数据说 older 表更新时,目录必须把它排到前面,且逐行标注创建时间。"""
+def test_catalog_orders_by_registry_and_annotates_creation_time(monkeypatch, local_tables):
+    """Regression (2026-07-22/23):目录顺序与侧边栏同口径 = 登记表 sort_seq;
+    迁移种子按元数据 created_at 冻结(压过 oid 序),且逐行标注创建时间
+    (存储 UTC 08:49 → 应用时区 +08 显示 16:49)。"""
+    from core.database.duckdb_pool import with_system_connection
+    from core.services import table_registry
+
+    with with_system_connection() as conn:
+        table_registry._ensure_schema(conn)
+        conn.execute("DELETE FROM system_table_registry")
+
     older, newer = local_tables  # oid 序:newer 在前
+    meta = {
+        older: {"created_at": "2026-07-22T08:49:51"},
+        newer: {"created_at": "2026-07-20T00:00:00"},
+    }
     monkeypatch.setattr(
-        ai_router.file_datasource_manager,
-        "list_file_datasources",
-        lambda: [
-            {"source_id": older, "created_at": "2026-07-22T08:49:51"},
-            {"source_id": newer, "created_at": "2026-07-20T00:00:00"},
-        ],
+        ai_router.file_datasource_manager, "get_file_datasource", meta.get
     )
     text = ai_router._build_catalog_text(set())
-    assert text.index(older) < text.index(newer)  # 元数据口径压过 oid 口径
-    # 行尾标注创建时间:存储 UTC 08:49 → 应用时区(+08)16:49 展示
+    assert text.index(older) < text.index(newer)  # 迁移按元数据时间,压过 oid 序
     assert "[created 2026-07-22 16:49]" in text
 
 

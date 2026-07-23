@@ -260,6 +260,11 @@ class FileDatasourceManager:
 
             if success:
                 logger.info("File datasource configuration saved to DuckDB: %s", file_info['source_id'])
+                # 所有托管建表链路都经过这里 → 同步登记稳定排序序号
+                # (新建/替换拿新序号,列表按 sort_seq 倒序,替换即置顶)
+                from core.services import table_registry  # pylint: disable=import-outside-toplevel
+
+                table_registry.record_creation(file_info["source_id"])
                 return True
             logger.error("Failed to save file datasource configuration to DuckDB: %s", file_info['source_id'])
             logger.error("Failed data: %s", file_info)

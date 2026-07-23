@@ -80,7 +80,7 @@
 | POST | `/api/duckdb/federated-query` | 对象 | `executeFederatedQuery`；同上含 `column_types`；额外 `optimized_sql`（半连接下推改写后 SQL）、`suggestions[]`（审计列时间界建议，**不自动改结果**）；404 `connection_id`；503 ATTACH；499 / 500 / **504 超时** |
 | POST | `/api/query/cancel/{request_id}` | 对象 | `cancelSyncQuery`；404 `QUERY_NOT_FOUND`（无活跃同步查询） |
 | POST | `/api/save_query_to_duckdb` | 对象 | 保存结果表元数据（依请求）；`apply_row_limit`（默认 `false`，兼容 `applyRowLimit`）语义与 `/api/async-tasks` 相同 | `saveQueryToDuckDB` |
-| GET | `/api/duckdb/tables` | **列表** | `items[]`: `table_name`, `row_count`, `column_count`, `created_at`（应用时区 ISO；按创建时间倒序、同刻按表名，跨重启稳定；无元数据的表首见时自动回填 `created_at`——与 AI 目录同口径） | `getDuckDBTables` |
+| GET | `/api/duckdb/tables` | **列表** | `items[]`: `table_name`, `row_count`, `column_count`, `created_at`（应用时区 ISO，仅展示，可为 null）。顺序 = `system_table_registry.sort_seq` 倒序（稳定创建序登记表，新建/替换置顶，跨重启稳定；与 AI 目录同口径） | `getDuckDBTables` |
 | GET | `/api/duckdb/tables/{name}` | 对象 | 表详情 / `table` 包装 | `getDuckDBTableDetail` |
 | DELETE | `/api/duckdb/tables/{name}` | 对象 | `deleted_table` | `deleteDuckDBTable` |
 | POST | `/api/duckdb/table/{name}/refresh` | 对象 | `table`, `refreshed` | `refreshDuckDBTableMetadata` |

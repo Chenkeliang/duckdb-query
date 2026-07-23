@@ -1,27 +1,35 @@
 """DuckDB table-list ordering regressions.
 
-2026-07-22 起排序规则:元数据 created_at(UTC 存储)倒序 + 表名决胜;
-无元数据的表在列表接口首见时回填 created_at(按当时目录序递减 1s),
-此后排序是 (created_at, name) 的纯函数,不再随 table_oid 漂移。
+2026-07-23 起排序唯一权威 = system_table_registry.sort_seq(序列,单调持久):
+- table_oid 在库文件重建/重启后漂移(2026-07-22 实测,重启即洗牌)
+- created_at 受时区/同秒/精度影响,只用于展示
+迁移(登记表为空)时按元数据 created_at 冻结初始顺序,无元数据的按目录序垫底;
+此后新面孔 nextval 置顶,托管链路替换表也拿新序号置顶。
 """
 
 from contextlib import contextmanager
 
 import duckdb
+import pytest
 
+from core.database.duckdb_pool import with_system_connection
+from core.services import table_registry
 from routers import duckdb_query
 
 
-def _install_fake_store(monkeypatch):
-    """dict 版元数据存储:隔离 system.db,同时承接首见回填的写入。"""
-    store = {}
+@pytest.fixture(autouse=True)
+def _clean_registry():
+    """每个用例从空登记表出发(system.db 为 pytest 会话隔离实例)。"""
+    with with_system_connection() as conn:
+        table_registry._ensure_schema(conn)
+        conn.execute("DELETE FROM system_table_registry")
+    yield
+
+
+def _install_fake_metadata(monkeypatch, store=None):
+    store = store or {}
     monkeypatch.setattr(
         duckdb_query.file_datasource_manager, "get_file_datasource", store.get
-    )
-    monkeypatch.setattr(
-        duckdb_query.file_datasource_manager,
-        "save_file_datasource",
-        lambda info: store.__setitem__(info["source_id"], dict(info)),
     )
     return store
 
@@ -39,7 +47,7 @@ def _list_table_names(monkeypatch, connection):
 
 def test_newly_created_table_is_listed_first(monkeypatch):
     """Regression 2026-07-21: missing created_at fell back to name order."""
-    _install_fake_store(monkeypatch)
+    _install_fake_metadata(monkeypatch)
     connection = duckdb.connect(":memory:")
     try:
         connection.execute("CREATE TABLE a_old (id INTEGER)")
@@ -52,7 +60,7 @@ def test_newly_created_table_is_listed_first(monkeypatch):
 
 def test_replaced_table_becomes_newest(monkeypatch):
     """Regression 2026-07-21: replacing a table must move it to the top."""
-    _install_fake_store(monkeypatch)
+    _install_fake_metadata(monkeypatch)
     connection = duckdb.connect(":memory:")
     try:
         connection.execute("CREATE TABLE z_old (id INTEGER)")
@@ -64,40 +72,34 @@ def test_replaced_table_becomes_newest(monkeypatch):
         connection.close()
 
 
-def test_metadata_created_at_overrides_catalog_order(monkeypatch):
-    """Regression 2026-07-22: table_oid 在库文件重建后会漂,重启后列表洗牌,
-    用户误以为新表被回退。有 created_at 元数据时必须按它倒排(与 AI 目录同口径)。"""
-    store = _install_fake_store(monkeypatch)
-    store["meta_old"] = {"created_at": "2026-07-22T08:49:51"}
-    store["meta_new"] = {"created_at": "2026-07-20T00:00:00"}
+def test_migration_seeds_order_from_metadata_created_at(monkeypatch):
+    """Regression 2026-07-22: 迁移种子按元数据 created_at 冻结,压过目录(oid)序。"""
+    _install_fake_metadata(monkeypatch, {
+        "meta_old": {"created_at": "2026-07-22T08:49:51"},
+        "meta_new": {"created_at": "2026-07-20T00:00:00"},
+    })
     connection = duckdb.connect(":memory:")
     try:
         connection.execute("CREATE TABLE meta_old (id INTEGER)")
         connection.execute("CREATE TABLE meta_new (id INTEGER)")  # oid 更新
 
-        # 元数据说 meta_old 更新 → 压过 oid 口径
         assert _list_table_names(monkeypatch, connection) == ["meta_old", "meta_new"]
     finally:
         connection.close()
 
 
-def test_first_seen_backfill_makes_order_survive_oid_shuffle(monkeypatch):
-    """Regression 2026-07-22: 无元数据的表按 oid 排,重启后 oid 漂移即洗牌。
-    首见回填后顺序持久化;换一个建表顺序相反(模拟 oid 重排)的目录再列,
-    顺序必须不变。"""
-    store = _install_fake_store(monkeypatch)
-
+def test_order_survives_catalog_oid_shuffle(monkeypatch):
+    """Regression 2026-07-22: oid 漂移(以建表顺序相反的新目录模拟)不得洗牌。"""
+    _install_fake_metadata(monkeypatch)
     first = duckdb.connect(":memory:")
     try:
         first.execute("CREATE TABLE t_alpha (id INTEGER)")
         first.execute("CREATE TABLE t_beta (id INTEGER)")
         order_before = _list_table_names(monkeypatch, first)
-        assert order_before == ["t_beta", "t_alpha"]  # 首见按目录序回填
-        assert "t_alpha" in store and "t_beta" in store  # 时间戳已持久化
+        assert order_before == ["t_beta", "t_alpha"]
     finally:
         first.close()
 
-    # "重启":新目录里建表顺序相反 → oid 序相反;但回填过的 created_at 仍在
     second = duckdb.connect(":memory:")
     try:
         second.execute("CREATE TABLE t_beta (id INTEGER)")
@@ -107,10 +109,58 @@ def test_first_seen_backfill_makes_order_survive_oid_shuffle(monkeypatch):
         second.close()
 
 
+def test_new_table_after_first_sync_goes_top(monkeypatch):
+    """迁移后新面孔 nextval 置顶(序列全程共用,序号必然高于迁移批)。"""
+    _install_fake_metadata(monkeypatch)
+    connection = duckdb.connect(":memory:")
+    try:
+        connection.execute("CREATE TABLE t_first (id INTEGER)")
+        assert _list_table_names(monkeypatch, connection) == ["t_first"]
+
+        connection.execute("CREATE TABLE t_second (id INTEGER)")
+        assert _list_table_names(monkeypatch, connection) == ["t_second", "t_first"]
+    finally:
+        connection.close()
+
+
+def test_flow_replace_bumps_to_top(monkeypatch):
+    """托管链路替换表(record_creation)拿新序号 → 置顶。"""
+    _install_fake_metadata(monkeypatch)
+    connection = duckdb.connect(":memory:")
+    try:
+        connection.execute("CREATE TABLE t_x (id INTEGER)")
+        connection.execute("CREATE TABLE t_y (id INTEGER)")
+        assert _list_table_names(monkeypatch, connection)[0] == "t_y"
+
+        table_registry.record_creation("t_x")  # 模拟导入流程覆盖重建 t_x
+        assert _list_table_names(monkeypatch, connection) == ["t_x", "t_y"]
+    finally:
+        connection.close()
+
+
+def test_dropped_table_cleaned_and_recreate_goes_top(monkeypatch):
+    """删表清登记;同名重建视为新面孔 → 置顶(旧序号不得残留)。"""
+    _install_fake_metadata(monkeypatch)
+    connection = duckdb.connect(":memory:")
+    try:
+        connection.execute("CREATE TABLE t_keep (id INTEGER)")
+        connection.execute("CREATE TABLE t_gone (id INTEGER)")
+        assert _list_table_names(monkeypatch, connection) == ["t_gone", "t_keep"]
+
+        connection.execute("DROP TABLE t_gone")
+        assert _list_table_names(monkeypatch, connection) == ["t_keep"]
+
+        connection.execute("CREATE TABLE t_gone (id INTEGER)")
+        assert _list_table_names(monkeypatch, connection) == ["t_gone", "t_keep"]
+    finally:
+        connection.close()
+
+
 def test_created_at_returned_in_app_timezone(monkeypatch):
-    """存储为 UTC naive,响应转应用时区 ISO(§7.3):08:49 UTC → 16:49 +08:00。"""
-    store = _install_fake_store(monkeypatch)
-    store["tz_probe"] = {"created_at": "2026-07-22T08:49:51"}
+    """created_at 存储 UTC、响应应用时区 ISO(§7.3):08:49 UTC → 16:49+08:00。"""
+    _install_fake_metadata(monkeypatch, {
+        "tz_probe": {"created_at": "2026-07-22T08:49:51"},
+    })
     connection = duckdb.connect(":memory:")
     try:
         connection.execute("CREATE TABLE tz_probe (id INTEGER)")

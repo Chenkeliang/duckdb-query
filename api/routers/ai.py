@@ -26,6 +26,7 @@ from core.services import (
     ai_suggest_chart,
     llm_context,
     schema_sampler,
+    table_registry,
 )
 from core.services.llm_service import AIConfigError, AIDisabledError, LLMService
 from core.services.retriever import KeywordRetriever
@@ -187,22 +188,6 @@ def _format_catalog_table(name: str, columns: list[tuple]) -> str:
     return f"{name}({col_str})"
 
 
-def _local_created_at_map() -> dict[str, str]:
-    """表名 → created_at ISO 串(文件数据源元数据;没登记的表不在 map 里)。"""
-    created: dict[str, str] = {}
-    try:
-        for entry in file_datasource_manager.list_file_datasources():
-            ts = entry.get("created_at")
-            if ts is None:
-                continue
-            created[str(entry.get("source_id"))] = (
-                ts.isoformat() if isinstance(ts, datetime) else str(ts)
-            )
-    except Exception as exc:  # noqa: BLE001  元数据不可用时目录退回 oid 序
-        logger.warning("catalog: list file datasources failed: %s", exc)
-    return created
-
-
 def _display_time(ts: str) -> str:
     """存储 UTC 时间串 → 应用时区的 'YYYY-MM-DD HH:MM'(给模型/用户看)。"""
     try:
@@ -285,9 +270,8 @@ def _build_catalog_text(selected: set, attach_databases: list[Any] | None = None
         attached: list[str] = []
         try:
             # 本地 DuckDB 表：目录名用 current_database()，不假设固定叫 main。
-            # "新旧"以元数据 created_at 为权威并按其倒排、逐行标注——table_oid
-            # 在库文件重建后会漂,表名时间戳靠猜,两者都错过(2026-07-22 实测);
-            # 无元数据的表排最后(oid 序兜底)
+            # 顺序与侧边栏同口径:登记表 sort_seq 倒序(单调持久,免疫 oid 漂移/
+            # 时区/同秒;2026-07-23 设计),created_at 仅逐行标注供模型理解"最新"
             try:
                 local_db = con.execute("SELECT current_database()").fetchone()[0]
                 local_names = [
@@ -302,10 +286,19 @@ def _build_catalog_text(selected: set, attach_databases: list[Any] | None = None
                     ).fetchall()
                 ]
                 if local_names:
-                    created_map = _local_created_at_map()
-                    # 名称决胜:同刻/无元数据的表也有确定顺序(跨重启稳定)
-                    local_names.sort()
-                    local_names.sort(key=lambda n: created_map.get(n, ""), reverse=True)
+                    registry = table_registry.sync(
+                        local_names,
+                        created_lookup=file_datasource_manager.get_file_datasource,
+                    )
+                    created_map = {
+                        name: entry["created_at"].isoformat()
+                        for name, entry in registry.items()
+                        if isinstance(entry.get("created_at"), datetime)
+                    }
+                    local_names.sort(
+                        key=lambda n: (registry.get(n) or {}).get("sort_seq") or 0,
+                        reverse=True,
+                    )
                     lines = ["Local DuckDB tables (newest created first):"]
                     lines.extend(
                         _catalog_lines_for_tables(
