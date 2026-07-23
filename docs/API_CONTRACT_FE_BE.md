@@ -212,7 +212,7 @@ BY NAME、LIMIT、预览 vs 执行语义见 [QUERY_BEHAVIOR_ZH.md](QUERY_BEHAVIO
 
 ## 9.3 AI（`aiApi.ts`，后端 `routers/ai.py`，OpenAPI tag `AI`）
 
-> AI **默认关闭**;供应商 `api_key` 服务端 **Fernet 加密**存储,读取接口返回掩码 `****`、从不回传明文。生成的 SQL 永远只填入编辑器、**绝不自动执行**。AI 上下文除表结构外还带**本地表的有界数据样例**(≤3 行样本 + 低基数文本列取值,随 prompt 发给所配置的 LLM 供应商;联邦表不采样)。
+> AI **默认关闭**;供应商 `api_key` 服务端 **Fernet 加密**存储,读取接口返回掩码 `****`、从不回传明文。AI 起草的 SQL 永远只填入编辑器、**绝不自动执行**;**数据智能体**(`agent-chat`)例外且仅限:自行执行**只读、限行(≤100)、限次(≤3)、可取消**的探查 SELECT,范围限本地表与本次请求授权的连接别名,其最终产出的 SQL 同样只填入编辑器。AI 上下文除表结构外还带**本地表的有界数据样例**(≤3 行样本 + 低基数文本列取值,随 prompt 发给所配置的 LLM 供应商;联邦表不预采样,智能体对联邦表的取值验证走上述受授权的探查查询)。
 
 | 方法 | 路径 | 请求 | 成功体 | 前端入口 |
 |------|------|------|--------|----------|
@@ -223,6 +223,21 @@ BY NAME、LIMIT、预览 vs 执行语义见 [QUERY_BEHAVIOR_ZH.md](QUERY_BEHAVIO
 | POST | `/api/ai/explain-sql` | `{ sql, locale }` | `{ explanation }` | `explainSql` |
 | POST | `/api/ai/nl-to-sql` | `{ question, tables[], locale }` | `{ sql, used_tables[], safe }`（非只读 SELECT → `safe:false`；后端返回前先 `EXPLAIN` 校验,失败自动经报错医生修复一轮,响应形状不变） | `nlToSql` |
 | POST | `/api/ai/chat` | `{ messages[], tables[], attach_databases[], locale }` | `{ content }` | `chat` |
+| POST | `/api/ai/agent-chat` | `{ messages[], tables[], attach_databases[], current_sql?, locale }` | **SSE 流**(`text/event-stream`,响应头含 `X-Accel-Buffering: no`):事件见下表;未配置/关闭在建流前返回 400 `ai_not_configured`/`ai_disabled`;历史 `messages` 只含往轮 用户问题+最终答案,不含工具轨迹 | `agentChatStream` |
+| GET | `/api/ai/agent-runs` | `limit?`(≤100) | **列表** `items[]`: `run_id`,`provider`,`model`,`llm_calls`,`tool_calls`,`sql_calls`,`sql_rejected`,`json_errors`,`termination_reason`,`elapsed_ms`,`created_at`(应用时区 ISO) | （调试/观测,暂无 FE 入口） |
+
+**agent-chat SSE 事件**（每条 `event:` + 单行 `data:` JSON,均含 `run_id`;`answer` 与 `error` 互斥,`done` 恒为最后一条;15s 无事件发注释行心跳）:
+
+| event | data |
+|---|---|
+| `run_started` | `{run_id, limits:{llm_calls, sql_calls, seconds}}` |
+| `tool_started` | `{run_id, tool_call_id, tool, args_summary}` |
+| `tool_completed` | `{run_id, tool_call_id, tool, ok, ui_summary, truncated, elapsed_ms}` |
+| `answer` | `{run_id, answer, sql\|null, evidence[], termination_reason:"completed"}`（`sql` 仅供插入编辑器） |
+| `error` | `{run_id, termination_reason: protocol_violation\|budget_llm\|budget_time\|cancelled\|provider_error, message}` |
+| `done` | `{run_id, usage:{llm_calls, tool_calls, sql_calls, elapsed_ms}}` |
+
+取消:客户端断开连接即取消(服务端中断在跑查询);执行中的探查查询也可经 `POST /api/query/cancel/{run_id}` 中断。
 | POST | `/api/ai/suggest-chart` | `{ columns[], sample[], locale }` | `ChartSpec{ type, x, y[], agg, xBin?, reason? }` | `suggestChart` |
 
 - `attach_databases`：`[{ alias, connection_id }]`；后端据此先 ATTACH 远端库,再取**联邦表**结构(对话 / 报错医生注入 schema 用)。

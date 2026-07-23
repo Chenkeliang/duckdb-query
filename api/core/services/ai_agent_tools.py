@@ -1,0 +1,335 @@
+"""数据智能体的内建只读工具集(v1:search_tables / inspect_table / run_query)。
+
+契约要点(为将来 Skills/MCP Adapter 留缝):
+- AgentTool 用 Pydantic args_model 编写,对外契约是派生的 JSON Schema
+  (未来 MCP 工具无法反向合成 Pydantic,Adapter 直接携带 schema 即可)
+- tier 字段 v1 恒为 "read",confirm 语义预留给未来写工具
+- handler 永不向循环抛业务异常:一切失败都作为 observation 文本回喂模型
+"""
+
+from __future__ import annotations
+
+import asyncio
+import logging
+import time
+from dataclasses import dataclass
+from typing import Callable, Dict, List, Optional
+
+from pydantic import BaseModel
+
+from core.database.duckdb_engine import validate_query_syntax, with_duckdb_connection
+from core.database.duckdb_pool import interruptible_connection
+from core.database.federated_attach import (
+    attach_databases_on_connection,
+    detach_databases_on_connection,
+    format_qualified_table_reference,
+)
+from core.services import ai_sql_guard, schema_sampler, table_registry
+from core.services.ai_error_doctor import _is_select_only
+
+logger = logging.getLogger(__name__)
+
+ROW_CAP = 100
+OBS_BYTE_CAP = 8192
+QUERY_TIMEOUT_S = 20
+_SEARCH_CAP = 20
+
+
+@dataclass
+class ToolResult:
+    model_text: str  # 回喂模型的紧凑内容(≤OBS_BYTE_CAP,截断带标记)
+    ui_summary: str  # 前端步骤条展示(短)
+    data: Optional[dict] = None
+    truncated: bool = False
+    elapsed_ms: int = 0
+    ok: bool = True
+
+
+@dataclass
+class AgentRunCtx:
+    run_id: str
+    authorized_aliases: List[str]
+    attach_configs: list  # resolve_attach_configs 的产物,run_query/inspect 挂载用
+    locale: str = "zh"
+    provider: str = ""
+    model: str = ""
+    sql_calls_used: int = 0
+    sql_rejected: int = 0
+
+
+@dataclass
+class AgentTool:
+    name: str
+    description: str
+    args_model: type[BaseModel]
+    handler: Callable[[AgentRunCtx, BaseModel], "ToolResult"]
+    tier: str = "read"
+    origin: str = "builtin"
+
+    def args_schema(self) -> dict:
+        return self.args_model.model_json_schema()
+
+
+class SearchTablesArgs(BaseModel):
+    query: str = ""
+
+
+class InspectTableArgs(BaseModel):
+    table: str
+
+
+class RunQueryArgs(BaseModel):
+    sql: str
+
+
+def _clip(text: str, cap: int = OBS_BYTE_CAP) -> tuple[str, bool]:
+    raw = text.encode("utf-8")
+    if len(raw) <= cap:
+        return text, False
+    return raw[:cap].decode("utf-8", errors="ignore") + "\n…(truncated)", True
+
+
+def _search_tables(ctx: AgentRunCtx, args: SearchTablesArgs) -> ToolResult:
+    t0 = time.time()
+    needle = (args.query or "").strip().lower()
+    with with_duckdb_connection() as con:
+        rows = con.execute(
+            """
+            SELECT table_name, estimated_size FROM duckdb_tables()
+            WHERE NOT internal AND database_name = current_database()
+              AND schema_name = 'main'
+            """
+        ).fetchall()
+    names = [r[0] for r in rows if not r[0].lower().startswith("system_")]
+    sizes = {r[0]: int(r[1] or 0) for r in rows}
+    registry = table_registry.sync(names)
+    names.sort(key=lambda n: (registry.get(n) or {}).get("sort_seq") or 0, reverse=True)
+    if needle:
+        names = [n for n in names if needle in n.lower()]
+    total = len(names)
+    shown = names[:_SEARCH_CAP]
+    lines = []
+    for n in shown:
+        created = (registry.get(n) or {}).get("created_at")
+        created_s = f", created {str(created)[:16]}" if created else ""
+        lines.append(f"- {n} (~{sizes.get(n, 0)} rows{created_s})")
+    if ctx.authorized_aliases:
+        lines.append(
+            "Attached aliases (query as alias.table): "
+            + ", ".join(ctx.authorized_aliases)
+        )
+    if total > len(shown):
+        lines.append(f"…and {total - len(shown)} more; refine the query.")
+    text = "\n".join(lines) if lines else "(no matching tables)"
+    return ToolResult(
+        model_text=text,
+        ui_summary=f"matched {total} tables" if needle else f"listed {min(total, _SEARCH_CAP)} tables",
+        elapsed_ms=int((time.time() - t0) * 1000),
+    )
+
+
+def _inspect_table(ctx: AgentRunCtx, args: InspectTableArgs) -> ToolResult:
+    t0 = time.time()
+    name = args.table.strip()
+    is_alias = "." in name
+    if is_alias:
+        alias = name.split(".", 1)[0].lower()
+        if alias not in {a.lower() for a in ctx.authorized_aliases}:
+            return ToolResult(
+                model_text=f"error: alias '{alias}' is not authorized in this conversation",
+                ui_summary=f"unauthorized alias {alias}",
+                ok=False,
+                elapsed_ms=int((time.time() - t0) * 1000),
+            )
+    try:
+        with with_duckdb_connection() as con:
+            attached: list[str] = []
+            try:
+                if is_alias and ctx.attach_configs:
+                    attached = attach_databases_on_connection(con, ctx.attach_configs)
+                ref = format_qualified_table_reference(name)
+                rows = con.execute(f"DESCRIBE {ref}").fetchall()
+                cols = ", ".join(f"{r[0]} {r[1]}" for r in rows)
+                parts = [f"{name}({cols})"]
+                if not is_alias:
+                    block = schema_sampler.sample_table_block(
+                        con, ref, [(r[0], r[1]) for r in rows]
+                    )
+                    if block:
+                        parts.append(block)
+                else:
+                    parts.append(
+                        "  (external table: no pre-sampling; verify values via a "
+                        "bounded run_query)"
+                    )
+                text, truncated = _clip("\n".join(parts))
+                return ToolResult(
+                    model_text=text,
+                    ui_summary=f"inspected {name} ({len(rows)} columns)",
+                    truncated=truncated,
+                    elapsed_ms=int((time.time() - t0) * 1000),
+                )
+            finally:
+                if attached:
+                    detach_databases_on_connection(con, attached)
+    except Exception as exc:  # noqa: BLE001  失败作为 observation 回喂
+        return ToolResult(
+            model_text=f"error: {str(exc)[:300]}",
+            ui_summary=f"inspect {name} failed",
+            ok=False,
+            elapsed_ms=int((time.time() - t0) * 1000),
+        )
+
+
+def _rows_to_text(columns: List[str], rows: List[tuple]) -> str:
+    header = "\t".join(columns)
+    body = "\n".join(
+        "\t".join("NULL" if v is None else str(v)[:200] for v in row) for row in rows
+    )
+    return f"{header}\n{body}" if body else f"{header}\n(no rows)"
+
+
+def _execute_guarded(ctx: AgentRunCtx, sql: str) -> ToolResult:
+    """同步执行体:跑在线程里,由 interruptible_connection 提供真实中断。"""
+    t0 = time.time()
+    with interruptible_connection(ctx.run_id, sql) as con:
+        attached: list[str] = []
+        try:
+            if ctx.attach_configs:
+                attached = attach_databases_on_connection(con, ctx.attach_configs)
+            ok, err = validate_query_syntax(sql, con=con)
+            if not ok:
+                ctx.sql_rejected += 1
+                return ToolResult(
+                    model_text=f"error: {err[:400]}",
+                    ui_summary="query failed validation",
+                    ok=False,
+                    elapsed_ms=int((time.time() - t0) * 1000),
+                )
+            # 行帽:最外层缺 LIMIT 时补 ROW_CAP;模型自带 LIMIT 也由 fetchmany 截断
+            from routers.query_sql_utils import (  # pylint: disable=import-outside-toplevel
+                ensure_query_has_limit,
+                has_top_level_limit,
+            )
+
+            # 帽 +1:留一行"哨兵"以便探测是否被截断
+            exec_sql = (
+                sql if has_top_level_limit(sql) else ensure_query_has_limit(sql, ROW_CAP + 1)
+            )
+            cur = con.execute(exec_sql)
+            columns = [d[0] for d in (cur.description or [])]
+            rows = cur.fetchmany(ROW_CAP + 1)
+            truncated_rows = len(rows) > ROW_CAP
+            rows = rows[:ROW_CAP]
+            text, clipped = _clip(_rows_to_text(columns, rows))
+            note = f"\n({len(rows)} rows returned"
+            note += ", truncated)" if (truncated_rows or clipped) else ")"
+            return ToolResult(
+                model_text=text + note,
+                ui_summary=f"returned {len(rows)} rows"
+                + (" (truncated)" if truncated_rows or clipped else ""),
+                truncated=truncated_rows or clipped,
+                elapsed_ms=int((time.time() - t0) * 1000),
+            )
+        finally:
+            if attached:
+                detach_databases_on_connection(con, attached)
+
+
+async def run_query_async(ctx: AgentRunCtx, args: RunQueryArgs, max_sql_calls: int) -> ToolResult:
+    """五层闸 + 线程执行 + 超时中断。唯一的 async 工具(其余轻查询直接同步)。"""
+    sql = args.sql.strip().rstrip(";")
+    if ctx.sql_calls_used >= max_sql_calls:
+        return ToolResult(
+            model_text=(
+                "error: query budget exhausted; finalize with what you have observed"
+            ),
+            ui_summary="query budget exhausted",
+            ok=False,
+        )
+    ctx.sql_calls_used += 1
+    if not _is_select_only(sql):
+        ctx.sql_rejected += 1
+        return ToolResult(
+            model_text="error: only a single read-only SELECT statement is allowed",
+            ui_summary="non-SELECT rejected",
+            ok=False,
+        )
+    allowed, reason = ai_sql_guard.check_sql(sql, ctx.authorized_aliases)
+    if not allowed:
+        ctx.sql_rejected += 1
+        return ToolResult(
+            model_text=f"error: {reason}",
+            ui_summary="query rejected by guard",
+            ok=False,
+        )
+    task = asyncio.create_task(asyncio.to_thread(_execute_guarded, ctx, sql))
+    try:
+        return await asyncio.wait_for(asyncio.shield(task), timeout=QUERY_TIMEOUT_S)
+    except asyncio.TimeoutError:
+        interrupt_run(ctx.run_id)
+        try:
+            await asyncio.wait_for(task, timeout=5)
+        except Exception:  # noqa: BLE001  中断后的收尾异常不再关心
+            pass
+        return ToolResult(
+            model_text=f"error: query exceeded {QUERY_TIMEOUT_S}s and was interrupted",
+            ui_summary="query timed out",
+            ok=False,
+        )
+    except asyncio.CancelledError:
+        interrupt_run(ctx.run_id)
+        task.add_done_callback(_swallow_task_result)
+        raise
+
+
+def _swallow_task_result(task: "asyncio.Task") -> None:
+    """取消/中断后的孤儿线程任务:取回异常避免 'never retrieved' 告警。"""
+    if not task.cancelled():
+        exc = task.exception()
+        if exc:
+            logger.debug("agent query task ended after interrupt: %s", exc)
+
+
+def interrupt_run(run_id: str) -> None:
+    """中断该 run 正在执行的探查查询(DuckDB interrupt + 远端 KILL)。"""
+    try:
+        from core.database.connection_registry import (  # pylint: disable=import-outside-toplevel
+            connection_registry,
+        )
+
+        connection_registry.interrupt_with_remote(run_id)
+    except Exception as exc:  # noqa: BLE001
+        logger.warning("agent interrupt failed: %s", exc)
+
+
+def build_registry() -> Dict[str, AgentTool]:
+    return {
+        "search_tables": AgentTool(
+            name="search_tables",
+            description="find tables in the catalog (newest first, with creation time)",
+            args_model=SearchTablesArgs,
+            handler=_search_tables,
+        ),
+        "inspect_table": AgentTool(
+            name="inspect_table",
+            description="columns, types, a few real rows and low-cardinality values",
+            args_model=InspectTableArgs,
+            handler=_inspect_table,
+        ),
+        "run_query": AgentTool(
+            name="run_query",
+            description="run one read-only DuckDB SELECT (row limit enforced)",
+            args_model=RunQueryArgs,
+            handler=None,  # async 特例,循环里直连 run_query_async
+        ),
+    }
+
+
+def render_tools_for_prompt(registry: Dict[str, AgentTool]) -> str:
+    lines = []
+    for tool in registry.values():
+        props = tool.args_schema().get("properties", {})
+        args = ", ".join(f'"{k}"' for k in props) or "(none)"
+        lines.append(f"{tool.name}: {tool.description} — args: {args}")
+    return "\n".join(lines)

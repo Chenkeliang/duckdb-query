@@ -94,6 +94,66 @@ def _build_request(
     return f"{base}/chat/completions", headers, body, _openai_content
 
 
+async def complete_async(
+    *,
+    provider_type: str,
+    model: str,
+    messages: List[Dict[str, str]],
+    api_key: Optional[str] = None,
+    base_url: Optional[str] = None,
+    timeout: float = 30,
+    num_retries: int = 2,
+) -> str:
+    """complete 的异步版:供 SSE 场景使用,复用同一套请求构造与重试语义。
+
+    为什么不是 to_thread 包同步版:客户端断开后 to_thread 里的同步请求无法真正
+    取消,供应商侧会继续计费;AsyncClient 在任务取消时连接真实关闭。
+    """
+    import asyncio  # pylint: disable=import-outside-toplevel
+    import httpx  # pylint: disable=import-outside-toplevel
+
+    url, headers, body, extract = _build_request(
+        provider_type, model, messages, api_key, base_url
+    )
+    attempts = max(int(num_retries), 0) + 1
+    last_err: Optional[LLMClientError] = None
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        for attempt in range(attempts):
+            if attempt:
+                await asyncio.sleep(min(0.5 * 2 ** (attempt - 1), 4.0))
+            try:
+                resp = await client.post(url, json=body, headers=headers)
+            except httpx.HTTPError as exc:
+                last_err = LLMClientError(f"LLM request failed: {exc}")
+                logger.warning(
+                    "LLM async request error (attempt %d/%d): %s",
+                    attempt + 1, attempts, exc,
+                )
+                continue
+            if resp.status_code in _RETRYABLE_STATUS:
+                last_err = LLMClientError(
+                    f"LLM upstream HTTP {resp.status_code}: {resp.text[:200]}"
+                )
+                logger.warning(
+                    "LLM async retryable status %d (attempt %d/%d)",
+                    resp.status_code, attempt + 1, attempts,
+                )
+                continue
+            if resp.status_code >= 400:
+                raise LLMClientError(
+                    f"LLM upstream HTTP {resp.status_code}: {resp.text[:200]}"
+                )
+            try:
+                data = resp.json()
+            except ValueError as exc:
+                raise LLMClientError(
+                    f"LLM upstream returned non-JSON: {resp.text[:200]}"
+                ) from exc
+            return extract(data)
+    assert last_err is not None
+    raise last_err
+
+
 def complete(
     *,
     provider_type: str,

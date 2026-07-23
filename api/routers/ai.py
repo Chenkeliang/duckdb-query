@@ -2,6 +2,8 @@
 
 from __future__ import annotations
 
+import asyncio
+import json
 import logging
 from datetime import datetime
 from typing import Any, Dict
@@ -17,7 +19,10 @@ from core.database.federated_attach import (
     resolve_attach_configs,
 )
 from models.query_models import AttachDatabase
+from core.database.duckdb_pool import with_system_connection
 from core.services import (
+    ai_agent,
+    ai_agent_tools,
     ai_chat,
     ai_config,
     ai_error_doctor,
@@ -28,12 +33,15 @@ from core.services import (
     schema_sampler,
     table_registry,
 )
+from core.services.ai_agent_tools import AgentRunCtx
 from core.services.llm_service import AIConfigError, AIDisabledError, LLMService
 from core.services.retriever import KeywordRetriever
-from fastapi import APIRouter
+from fastapi import APIRouter, Request
+from fastapi.responses import StreamingResponse
 from pydantic import BaseModel
 from utils.response_helpers import (
     MessageCode,
+    create_list_response,
     create_success_response,
     error_json_response,
 )
@@ -497,6 +505,152 @@ def chat_route(payload: ChatPayload):
             502, MessageCode.OPERATION_FAILED, f"AI chat failed: {exc}"
         )
     return create_success_response(data=result, message_code=MessageCode.OPERATION_SUCCESS)
+
+
+class AgentChatPayload(BaseModel):
+    messages: list[ChatMessage] = []
+    tables: list[str] = []
+    attach_databases: list[AttachDatabase] = []
+    current_sql: str = ""
+    locale: str = "zh"
+
+
+def _build_agent_context(payload: AgentChatPayload, ctx: AgentRunCtx) -> str:
+    """智能体初始上下文:紧凑目录 + 选中表详情(含样例) + 别名 + 当前 SQL。
+
+    渐进披露(2026-07-23 评审):目录只给名字/行数/创建时间,列结构靠
+    inspect_table 按需获取,避免大 prompt 与工具调用双重付费。
+    """
+    catalog = ai_agent_tools._search_tables(  # pylint: disable=protected-access
+        ctx, ai_agent_tools.SearchTablesArgs(query="")
+    ).model_text
+    parts = [f"[Catalog (newest first)]\n{catalog}"]
+    if payload.tables:
+        detailed = _build_schema_text(payload.tables, payload.attach_databases)
+        if detailed:
+            parts.append(f"[Selected tables (detailed, with samples)]\n{detailed}")
+    parts.append(
+        "[Attached aliases authorized this conversation] "
+        + (", ".join(ctx.authorized_aliases) if ctx.authorized_aliases else "(none)")
+    )
+    current_sql = (payload.current_sql or "").strip()[:4000]
+    if current_sql:
+        parts.append(f"[Current SQL in the user's workbench]\n```sql\n{current_sql}\n```")
+    return "\n\n".join(parts)
+
+
+def _sse(event: Dict[str, Any]) -> str:
+    name = event["event"]
+    data = {k: v for k, v in event.items() if k != "event"}
+    return f"event: {name}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+@router.post("/api/ai/agent-chat", tags=["AI"])
+async def agent_chat_route(payload: AgentChatPayload, request: Request):
+    """数据智能体(SSE)。契约见 docs/API_CONTRACT_FE_BE.md §9.3。"""
+    cfg = ai_config.load_ai_settings()
+    if not cfg.get("enabled"):
+        return _ai_error_response(AIDisabledError("AI features are disabled"))
+    resolved = ai_config.resolve_feature(cfg, "agent")
+    if not resolved["provider"] or not resolved["model"]:
+        return _ai_error_response(
+            AIConfigError("No provider/model configured for feature 'agent'")
+        )
+    try:
+        attach_configs = resolve_attach_configs(payload.attach_databases)
+    except Exception as exc:  # noqa: BLE001  单个失效连接不拦整个会话,降级为本地
+        logger.warning("agent-chat: resolve attach_databases failed: %s", exc)
+        attach_configs = []
+    ctx = AgentRunCtx(
+        run_id=ai_agent.new_run_id(),
+        authorized_aliases=[alias for alias, _ in attach_configs],
+        attach_configs=attach_configs,
+        locale=payload.locale,
+        provider=(resolved["provider"] or {}).get("id", ""),
+        model=resolved["model"] or "",
+    )
+    context_text = _build_agent_context(payload, ctx)
+    agen = ai_agent.run_agent(
+        LLMService(cfg), ctx, [m.model_dump() for m in payload.messages], context_text
+    )
+
+    async def event_stream():
+        queue: asyncio.Queue = asyncio.Queue()
+
+        async def pump():
+            # CancelledError 属 BaseException,不会被下面的 Exception 捕获,自然上抛
+            try:
+                async for ev in agen:
+                    await queue.put(ev)
+            except Exception as exc:  # noqa: BLE001  循环内部错误也走 error 事件
+                logger.error("agent run failed: %s", exc, exc_info=True)
+                await queue.put(
+                    {
+                        "event": "error",
+                        "run_id": ctx.run_id,
+                        "termination_reason": "internal_error",
+                        "message": str(exc)[:200],
+                    }
+                )
+            finally:
+                await queue.put(None)
+
+        task = asyncio.create_task(pump())
+        try:
+            while True:
+                if await request.is_disconnected():
+                    ai_agent_tools.interrupt_run(ctx.run_id)
+                    task.cancel()
+                    break
+                try:
+                    ev = await asyncio.wait_for(queue.get(), timeout=15)
+                except asyncio.TimeoutError:
+                    yield ": ka\n\n"  # SSE 心跳注释,防代理静默断连
+                    continue
+                if ev is None:
+                    break
+                yield _sse(ev)
+        finally:
+            if not task.done():
+                task.cancel()
+            try:
+                await task
+            except (asyncio.CancelledError, Exception):  # noqa: BLE001
+                pass
+
+    return StreamingResponse(
+        event_stream(),
+        media_type="text/event-stream",
+        headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@router.get("/api/ai/agent-runs", tags=["AI"])
+def list_agent_runs(limit: int = 20):
+    """智能体运行观测(调试用):不含 prompt/key/数据行。"""
+    limit = max(1, min(int(limit), 100))
+    columns = [
+        "run_id", "provider", "model", "llm_calls", "tool_calls", "sql_calls",
+        "sql_rejected", "json_errors", "termination_reason", "elapsed_ms", "created_at",
+    ]
+    try:
+        with with_system_connection() as conn:
+            rows = conn.execute(
+                f"SELECT {', '.join(columns)} FROM system_agent_runs "
+                "ORDER BY created_at DESC LIMIT ?",
+                [limit],
+            ).fetchall()
+    except Exception:  # noqa: BLE001  表未建(尚无运行)= 空列表
+        rows = []
+    items = []
+    for row in rows:
+        item = dict(zip(columns, row))
+        if isinstance(item.get("created_at"), datetime):
+            item["created_at"] = format_storage_time_for_response(item["created_at"])
+        items.append(item)
+    return create_list_response(
+        items=items, total=len(items), message_code=MessageCode.OPERATION_SUCCESS
+    )
 
 
 class SuggestChartPayload(BaseModel):
