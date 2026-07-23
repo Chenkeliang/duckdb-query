@@ -18,6 +18,8 @@
   "POSTGRESQL_CONNECTION_FAILED": "PostgreSQL connection failed",
   "SQLITE_CONNECTION_SUCCESS": "SQLite connection successful",
   "SQLITE_CONNECTION_FAILED": "SQLite connection failed",
+  "DUCKDB_CONNECTION_SUCCESS": "DuckDB connection successful",
+  "DUCKDB_CONNECTION_FAILED": "DuckDB connection failed",
   "DATASOURCES_RETRIEVED": "Data sources retrieved successfully",
   "DATASOURCE_RETRIEVED": "Data source retrieved successfully",
   "DATASOURCE_CREATED": "Data source created successfully",
