@@ -1,6 +1,6 @@
 [package]
 name = "duckquery"
-version = "1.3.0"
+version = "1.3.1"
 description = "DuckQuery — AI visual SQL workbench for files and databases"
 authors = ["Chenkeliang"]
 license = "MIT"
@@ -23,6 +23,7 @@ serde = { version = "1.0", features = ["derive"] }
 log = "0.4"
 tauri = { version = "2.11.2", features = [] }
 tauri-plugin-dialog = "2"
+tauri-plugin-http = "2.5.9"
 # 网格导出直写:save 对话框选中的路径由 dialog 插件动态授权给 fs 插件写入
 tauri-plugin-fs = "2"
 tauri-plugin-log = "2"

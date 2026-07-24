@@ -12,8 +12,8 @@ from __future__ import annotations
 import asyncio
 import logging
 import time
-from dataclasses import dataclass
-from typing import Callable, Dict, List, Optional
+from dataclasses import dataclass, field
+from typing import Callable, Dict, List, Optional, Tuple
 
 import duckdb
 from pydantic import BaseModel
@@ -26,7 +26,7 @@ from core.database.federated_attach import (
     format_qualified_table_reference,
 )
 from core.services import ai_sql_guard, schema_sampler, table_registry
-from core.services.ai_sql_validation import is_select_only
+from core.services.ai_sql_validation import is_select_only, normalize_sql
 
 logger = logging.getLogger(__name__)
 
@@ -58,6 +58,11 @@ class AgentRunCtx:
     sql_calls_used: int = 0
     sql_rejected: int = 0
     llm_calls: int = 0  # 真实 LLM 调用总数(steps + reformats)
+    executed_sql: set = field(default_factory=set)  # 本次 run 成功执行过的 run_query SQL(规范化);
+    #                                                  data_qa final 的 grounding 门控据此判定
+    unavailable_aliases: List[Tuple[str, str]] = field(default_factory=list)
+    #   本次授权但解析/连接失败、已被排除的别名 [(alias, reason)];逐别名降级(见 ai.py _prepare_agent),
+    #   由 profile 上下文显式列给 Agent,避免静默把联邦查询范围缩成本地
 
 
 @dataclass
@@ -327,7 +332,11 @@ async def run_query_async(ctx: AgentRunCtx, args: RunQueryArgs, max_sql_calls: i
         )
     task = asyncio.create_task(asyncio.to_thread(_execute_guarded, ctx, sql))
     try:
-        return await asyncio.wait_for(asyncio.shield(task), timeout=QUERY_TIMEOUT_S)
+        result = await asyncio.wait_for(asyncio.shield(task), timeout=QUERY_TIMEOUT_S)
+        if result.ok:
+            # 记录本次 run 成功执行过的查询(规范化),供 data_qa final 的 grounding 门控
+            ctx.executed_sql.add(normalize_sql(sql))
+        return result
     except asyncio.TimeoutError:
         interrupt_run(ctx.run_id)
         try:

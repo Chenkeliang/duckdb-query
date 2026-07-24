@@ -383,6 +383,7 @@ pub fn run() {
             }
         }));
         builder = builder.plugin(tauri_plugin_dialog::init());
+        builder = builder.plugin(tauri_plugin_http::init());
         // 网格导出直写本地文件:save 对话框选中的路径由 dialog 插件在运行时
         // 动态加入 fs 插件的 scope,故 capability 只需授 write 操作、无需路径白名单
         builder = builder.plugin(tauri_plugin_fs::init());

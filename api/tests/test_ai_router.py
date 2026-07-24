@@ -79,3 +79,35 @@ def test_provider_test_unknown_id_returns_error(tmp_path, monkeypatch):
     monkeypatch.setattr(ai_router.ai_config, "ai_settings_path", lambda: settings_path)
     resp = client.post("/api/ai/providers/does-not-exist/test")
     assert resp.status_code == 404
+
+
+def test_prepare_agent_federation_degrades_per_alias(monkeypatch):
+    """Bug4:一个坏连接 + 一个好连接 → 好连接照常授权,坏连接进 unavailable_aliases,
+    绝不因单个失败把整个联邦范围清空、静默退化成本地。"""
+    from core.common.exceptions import ResourceNotFoundError
+    from models.query_models import AttachDatabase
+
+    monkeypatch.setattr(ai_router.ai_config, "load_ai_settings", lambda: {"enabled": True})
+    monkeypatch.setattr(ai_router.ai_config, "resolve_feature",
+                        lambda cfg, feat: {"provider": {"id": "p"}, "model": "m"})
+    monkeypatch.setattr(ai_router, "LLMService", lambda cfg: object())
+
+    def fake_resolve(items):
+        att = items[0]
+        if att.alias == "bad":
+            raise ResourceNotFoundError("Database connection", att.connection_id)
+        return [(att.alias, {"type": "sqlite"})]
+
+    monkeypatch.setattr(ai_router, "resolve_attach_configs", fake_resolve)
+
+    req = ai_router.AgentRequest(
+        mode="data_qa",
+        input={"messages": [{"role": "user", "content": "x"}]},
+        context=ai_router.AgentContext(attach_databases=[
+            AttachDatabase(alias="good", connection_id="c1"),
+            AttachDatabase(alias="bad", connection_id="c2"),
+        ]),
+    )
+    _agen, ctx = ai_router._prepare_agent(req)
+    assert ctx.authorized_aliases == ["good"]              # 好连接照常授权
+    assert [a for a, _ in ctx.unavailable_aliases] == ["bad"]  # 坏连接被排除且明示

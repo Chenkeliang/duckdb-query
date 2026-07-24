@@ -16,8 +16,10 @@
 from __future__ import annotations
 
 import asyncio
+import hashlib
 import json
 import logging
+import os
 import time
 import uuid
 from typing import Any, AsyncIterator, Dict, List, Optional
@@ -26,7 +28,7 @@ from pydantic import ValidationError
 
 from core.services import ai_agent_tools
 from core.services.ai_agent_tools import AgentRunCtx, ToolResult
-from core.services.ai_json_protocol import extract_json
+from core.services.ai_json_protocol import extract_json, recover_sql_action
 from core.services.ai_profiles import AgentProfile
 
 logger = logging.getLogger(__name__)
@@ -99,15 +101,19 @@ def _classify_protocol_miss(parsed: Any, action: Any) -> str:
 
 def _log_protocol_miss(ctx: AgentRunCtx, raw: str, parsed: Any, action: Any,
                        *, gave_up: bool, reformats: int) -> None:
-    """保存并归类原始非法回复(仅日志观测,不改变 repair 次数/预算/循环行为)。
+    """归类导致 reformat / protocol_violation 的非法回复(仅日志观测,不改变预算/行为)。
 
-    gave_up=True 表示这是"一次 reformat 后仍失败 → protocol_violation"的那条回复,
-    用于确认为何一次修复仍不生效。raw 是模型原文(可能含 SQL,但不含密钥),截断留存。
+    生产日志**只留分类 + 长度 + 内容哈希**——engine-stderr.log 会持久化,原文可能含数据库
+    单元格值,不能落盘。需要原文诊断时置环境变量 DUCKQUERY_AGENT_LOG_RAW=1 显式采集。
     """
     kind = _classify_protocol_miss(parsed, action)
     stage = "give_up(protocol_violation)" if gave_up else "reformat(first_miss)"
-    logger.warning("agent protocol miss [%s] run=%s reformats=%d kind=%s raw=%r",
-                   stage, ctx.run_id, reformats, kind, (raw or "")[:400])
+    body = raw or ""
+    digest = hashlib.sha256(body.encode("utf-8", "ignore")).hexdigest()[:12]
+    logger.warning("agent protocol miss [%s] run=%s reformats=%d kind=%s len=%d sha=%s",
+                   stage, ctx.run_id, reformats, kind, len(body), digest)
+    if os.getenv("DUCKQUERY_AGENT_LOG_RAW"):
+        logger.warning("agent protocol miss raw run=%s: %r", ctx.run_id, body[:400])
 
 
 async def run_agent(
@@ -191,6 +197,43 @@ async def run_agent(
 
             parsed = extract_json(raw)
             action = parsed.get("action") if isinstance(parsed, dict) else None
+            # 纠错兜底:模型把要跑的 SELECT 放进 ```sql 围栏/<run_query> 标签而非 JSON 协议
+            # (实测 protocol_violation 的残余形态)→ 若 run_query 在允许集,恢复为一次探查动作。
+            # 只在 action 既非终止动作(final/refuse)、又非已知工具时触发——绝不覆盖合法的
+            # final/refuse(其 content 里可能含 ```sql 说明),也绝不恢复 final 当成功结果。
+            if (action not in profile.terminal_actions
+                    and action not in profile.allowed_tools
+                    and "run_query" in profile.allowed_tools):
+                recovered = recover_sql_action(raw)
+                if recovered is not None:
+                    parsed, action = recovered, "run_query"
+
+            if action == "refuse" and "refuse" in profile.terminal_actions:
+                # 安全拒绝 / 无需查询的答复:content-only,不过 grounding,强制 sql=null。
+                # 与普通数据 final 分开——数据 final 必须绑定本次跑过的只读 SELECT(见 validator)。
+                result_raw = parsed.get("result")
+                try:
+                    if not isinstance(result_raw, dict):
+                        raise TypeError("result must be a JSON object")
+                    validated = profile.output_model(**result_raw).model_dump()
+                except (ValidationError, TypeError) as exc:
+                    if reformats < profile.max_output_repairs:
+                        pending_reformat = True
+                        conversation.append({"role": "assistant", "content": raw or ""})
+                        conversation.append({"role": "user", "content": _obs(
+                            {"error": "output_schema_invalid", "detail": str(exc)[:300]},
+                            steps_left=profile.max_steps - steps,
+                            sql_left=profile.max_sql_calls - ctx.sql_calls_used,
+                            seconds_left=_seconds_left())})
+                        continue
+                    termination = "output_invalid"
+                    yield _apply_output_policy(profile, ctx, inp, str(exc)[:200])
+                    break
+                validated["sql"] = None
+                validated["evidence"] = []
+                termination = "completed"
+                yield _answer(ctx, validated, termination)
+                break
 
             if action == "final":
                 # 1) output_model 校验(result 非 dict/类型错也算 schema 失败,不外泄成 internal_error)

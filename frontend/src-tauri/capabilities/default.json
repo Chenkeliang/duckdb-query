@@ -9,6 +9,14 @@
     "core:default",
     "core:window:allow-start-dragging",
     "dialog:default",
+    {
+      "identifier": "http:default",
+      "allow": [
+        {
+          "url": "http://127.0.0.1:*"
+        }
+      ]
+    },
     "updater:default",
     "process:allow-restart",
     "fs:allow-write-file",

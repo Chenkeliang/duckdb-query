@@ -57,7 +57,10 @@ describe('AiChatDrawer agent mode', () => {
     });
     fireEvent.keyDown(screen.getByPlaceholderText(/问数据智能体/), { key: 'Enter' });
 
+    // 内容打字机渐进呈现,最终完整出现(B)
     await waitFor(() => expect(screen.getByText('已支付 2 笔')).toBeTruthy());
+    // 步骤在答案到达后自动折叠成摘要(A);点开摘要才看到探查明细
+    fireEvent.click(screen.getByText(/使用了/));
     expect(screen.getByText('run_query')).toBeTruthy();
     expect(screen.getByText('returned 2 rows')).toBeTruthy();
     expect(screen.getByText('t1')).toBeTruthy(); // evidence 徽标
@@ -66,6 +69,39 @@ describe('AiChatDrawer agent mode', () => {
     expect(onInsert).toHaveBeenCalledWith(
       "SELECT count(*) FROM orders WHERE status='paid'",
     );
+  });
+
+  it('auto-collapses tool steps into a summary after the answer, expandable', async () => {
+    mocks.streamAgent.mockImplementation(async (_body, { onEvent }) => {
+      onEvent({ event: 'run_started', run_id: 'r1', session_id: null, limits: { steps: 6, sql_calls: 3, seconds: 90, llm_calls: 7 } });
+      onEvent({ event: 'tool_started', run_id: 'r1', tool_call_id: 't1', tool: 'search_tables', args_summary: 'orders' });
+      onEvent({ event: 'tool_completed', run_id: 'r1', tool_call_id: 't1', tool: 'search_tables', ok: true, ui_summary: 'found 1 table', truncated: false, elapsed_ms: 5 });
+      onEvent({ event: 'answer', run_id: 'r1', result: { content: '结论', sql: null, evidence: [] }, termination_reason: 'completed' });
+      onEvent({ event: 'done', run_id: 'r1', session_id: null, usage: { llm_calls: 2, tool_calls: 1, sql_calls: 0, elapsed_ms: 100 } });
+    });
+    renderDrawer();
+    fireEvent.change(screen.getByPlaceholderText(/问数据智能体/), { target: { value: 'x' } });
+    fireEvent.keyDown(screen.getByPlaceholderText(/问数据智能体/), { key: 'Enter' });
+
+    // 答案到达 → 步骤自动折叠:摘要出现,探查明细从 DOM 收起
+    await waitFor(() => expect(screen.getByText(/使用了/)).toBeTruthy());
+    expect(screen.queryByText('search_tables')).toBeNull();
+    // 点摘要展开 → 明细可见
+    fireEvent.click(screen.getByText(/使用了/));
+    expect(screen.getByText('search_tables')).toBeTruthy();
+    expect(screen.getByText('found 1 table')).toBeTruthy();
+  });
+
+  it('never leaves a perpetual spinner when the stream ends with no answer/error', async () => {
+    // 模拟连接中断:只有 run_started,随后流结束(无 answer/无 error)
+    mocks.streamAgent.mockImplementation(async (_body, { onEvent }) => {
+      onEvent({ event: 'run_started', run_id: 'r1', session_id: null, limits: { steps: 6, sql_calls: 3, seconds: 90, llm_calls: 7 } });
+      // 流正常结束,但从未给终止事件
+    });
+    renderDrawer();
+    fireEvent.change(screen.getByPlaceholderText(/问数据智能体/), { target: { value: 'hi' } });
+    fireEvent.keyDown(screen.getByPlaceholderText(/问数据智能体/), { key: 'Enter' });
+    await waitFor(() => expect(screen.getByText(/连接中断/)).toBeTruthy());
   });
 
   it('shows honest termination on error events', async () => {
@@ -82,5 +118,30 @@ describe('AiChatDrawer agent mode', () => {
     await waitFor(() =>
       expect(screen.getByText(/模型未遵守协议/)).toBeTruthy(),
     );
+    // 页面只显示本地化文案:后端英文明细(内部标识)绝不出现在气泡里
+    expect(screen.queryByText(/model failed to follow/i)).toBeNull();
+  });
+
+  it('shows a localized message when the request itself fails (no raw English)', async () => {
+    mocks.streamAgent.mockImplementation(async () => {
+      throw new Error('Load failed'); // WKWebView/网络层原始英文
+    });
+    renderDrawer();
+    fireEvent.change(screen.getByPlaceholderText(/问数据智能体/), { target: { value: 'hi' } });
+    fireEvent.keyDown(screen.getByPlaceholderText(/问数据智能体/), { key: 'Enter' });
+    await waitFor(() => expect(screen.getByText(/智能体运行失败/)).toBeTruthy());
+    expect(screen.queryByText(/Load failed/)).toBeNull();
+  });
+
+  it('shows a localized message for an unmapped termination reason (no raw code)', async () => {
+    mocks.streamAgent.mockImplementation(async (_body, { onEvent }) => {
+      onEvent({ event: 'run_started', run_id: 'r1', session_id: null, limits: { steps: 6, sql_calls: 3, seconds: 90, llm_calls: 7 } });
+      onEvent({ event: 'error', run_id: 'r1', termination_reason: 'some_new_reason', message: 'internal detail' });
+    });
+    renderDrawer();
+    fireEvent.change(screen.getByPlaceholderText(/问数据智能体/), { target: { value: 'hi' } });
+    fireEvent.keyDown(screen.getByPlaceholderText(/问数据智能体/), { key: 'Enter' });
+    await waitFor(() => expect(screen.getByText(/运行未正常结束/)).toBeTruthy());
+    expect(screen.queryByText(/some_new_reason|internal detail/)).toBeNull();
   });
 });

@@ -8,7 +8,8 @@
  * 契约见 docs/API_CONTRACT_FE_BE.md §9.3。
  */
 
-import { apiClient, baseURL, normalizeResponse } from './client';
+import { apiClient, normalizeResponse } from './client';
+import { isTauri } from '../desktop/openExternal';
 
 export interface AgentMessage {
   role: 'user' | 'assistant';
@@ -118,35 +119,48 @@ export async function streamAgent(
   req: AgentRequest,
   { onEvent, signal }: { onEvent: (event: AgentEvent) => void; signal?: AbortSignal },
 ): Promise<void> {
-  const resp = await fetch(`${baseURL}/api/ai/agent/stream`, {
-    method: 'POST',
-    headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
-    body: JSON.stringify(req),
-    signal,
-  });
-  if (!resp.ok || !resp.body) {
-    let code = 'OPERATION_FAILED';
-    let message = `HTTP ${resp.status}`;
-    try {
-      const err = await resp.json();
-      code = err?.error?.code || code;
-      message = err?.error?.message || err?.message || message;
-    } catch {
-      /* 非 JSON 错误体 */
+  try {
+    const fetchStream = isTauri()
+      ? (await import('@tauri-apps/plugin-http')).fetch
+      : globalThis.fetch;
+    const base = (apiClient.defaults.baseURL ?? '').replace(/\/$/, '');
+    const resp = await fetchStream(`${base}/api/ai/agent/stream`, {
+      method: 'POST',
+      headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
+      body: JSON.stringify(req),
+      signal,
+    });
+    if (!resp.ok || !resp.body) {
+      let code = 'OPERATION_FAILED';
+      let message = `HTTP ${resp.status}`;
+      try {
+        const err = await resp.json();
+        code = err?.error?.code || code;
+        message = err?.error?.message || err?.message || message;
+      } catch {
+        /* 非 JSON 错误体 */
+      }
+      const error = new Error(message) as Error & { code?: string };
+      error.code = code;
+      throw error;
     }
-    const error = new Error(message) as Error & { code?: string };
-    error.code = code;
+    const reader = resp.body.getReader();
+    const decoder = new TextDecoder();
+    const parser = new AgentSseParser();
+    for (;;) {
+      const { done, value } = await reader.read();
+      if (done) break;
+      for (const event of parser.push(decoder.decode(value, { stream: true }))) {
+        onEvent(event);
+      }
+    }
+  } catch (error) {
+    if (signal?.aborted && (error as Error).name !== 'AbortError') {
+      const abortError = new Error('The operation was aborted');
+      abortError.name = 'AbortError';
+      throw abortError;
+    }
     throw error;
-  }
-  const reader = resp.body.getReader();
-  const decoder = new TextDecoder();
-  const parser = new AgentSseParser();
-  for (;;) {
-    const { done, value } = await reader.read();
-    if (done) break;
-    for (const event of parser.push(decoder.decode(value, { stream: true }))) {
-      onEvent(event);
-    }
   }
 }
 

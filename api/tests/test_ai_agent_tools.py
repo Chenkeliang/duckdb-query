@@ -171,6 +171,17 @@ def test_run_query_execution_error_is_observation_not_exception(ctx):
             con.execute(f"DROP TABLE IF EXISTS {name}")
 
 
+def test_run_query_rejects_recovered_with_cte_write(ctx):
+    """安全边界(纵深防御):即便 recover_sql_action 把 WITH...DELETE 当查询恢复(以 WITH
+    开头),run_query 工具的 is_select_only 仍拒绝为失败 observation 并计入 sql_rejected,
+    绝不执行写操作。"""
+    res = asyncio.run(ai_agent_tools.run_query_async(
+        ctx, RunQueryArgs(sql="WITH c AS (SELECT 1) DELETE FROM some_table"), 3))
+    assert res.ok is False
+    assert "read-only SELECT" in res.model_text
+    assert ctx.sql_rejected == 1
+
+
 def test_run_query_timeout_interrupts(ctx, monkeypatch):
     """超时后真实中断:长查询不应跑满,且返回超时观察。"""
     monkeypatch.setattr(ai_agent_tools, "QUERY_TIMEOUT_S", 1)

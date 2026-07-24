@@ -143,15 +143,32 @@ def _prepare_agent(req: AgentRequest):
         raise AIConfigError(f"No provider/model configured for agent mode '{req.mode}'")
     # 严格输入契约:按 Profile.input_model 校验(空 question / 缺 sql / 错 columns → 400)
     inp = profile.validate_input(req.input or {})  # 抛 pydantic ValidationError → 路由映射 400
-    try:
-        attach_configs = resolve_attach_configs(req.context.attach_databases)
-    except Exception as exc:  # noqa: BLE001  单个失效连接不拦整个会话,降级为本地
-        logger.warning("agent: resolve attach_databases failed: %s", exc)
-        attach_configs = []
+    # 逐别名解析:单个连接失效只排除**该别名**,其余照常授权,并把失败作为 observation
+    # 交给 Agent(见 _ctx_data_qa),绝不静默把整个联邦范围缩成本地(Bug 4)。
+    attach_configs: list = []
+    unavailable_aliases: list[tuple[str, str]] = []
+    for att in (req.context.attach_databases or []):
+        alias = getattr(att, "alias", None) or (
+            att.get("alias") if isinstance(att, dict) else None)
+        try:
+            resolved_one = resolve_attach_configs([att])
+        except ResourceNotFoundError as exc:
+            logger.warning("agent: attach alias %s unavailable: %s", alias, exc)
+            unavailable_aliases.append((str(alias or "?"), "connection not found"))
+            continue
+        except Exception as exc:  # noqa: BLE001  单连接解析异常不拦整个会话
+            logger.warning("agent: attach alias %s failed: %s", alias, exc)
+            unavailable_aliases.append((str(alias or "?"), "connection error"))
+            continue
+        if resolved_one:
+            attach_configs.extend(resolved_one)
+        elif alias:  # resolve 因缺 connection_id 等静默跳过 → 也算不可用,明示而非丢弃
+            unavailable_aliases.append((str(alias), "unresolved"))
     ctx = AgentRunCtx(
         run_id=ai_agent.new_run_id(),
         authorized_aliases=[alias for alias, _ in attach_configs],
         attach_configs=attach_configs,
+        unavailable_aliases=unavailable_aliases,
         locale=req.context.locale,
         provider=(resolved["provider"] or {}).get("id", ""),
         model=resolved["model"] or "",

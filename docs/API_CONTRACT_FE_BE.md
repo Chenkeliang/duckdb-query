@@ -237,6 +237,8 @@ BY NAME、LIMIT、预览 vs 执行语义见 [QUERY_BEHAVIOR_ZH.md](QUERY_BEHAVIO
 
 > 失败策略与终止码：`typed_error` → **error 事件**,`termination_reason=output_invalid`;`reject`/`fallback` → **answer 事件**,`result` 为 `null`(或 fallback),`termination_reason` 为 `output_invalid`(输出模型校验失败)或 `sql_validation_failed`(`generate_sql`/`repair_sql` 的 `EXPLAIN` 干跑失败)。故 `answer` 的 `termination_reason` 不只是 `completed`。
 >
+> **`data_qa` 的两个终止动作 `final` / `refuse`**：`final` 是**带数据的答复**——其 `result.sql` 必须是本轮**真正经 `run_query` 执行过的只读 SELECT**(确定性 grounding 门控:规范化后须命中本次执行集)。`sql` 为空、非只读、或未跑过一律**拒绝**并回喂纠错;纠错预算耗尽仍不达标 → **error 事件**、`termination_reason=ungrounded_final`(诚实终止,**绝不** `completed`;这挡住"拿 schema 样例直接算""执行 A 回答 B""写库被抹成 null 报假成功"三类静默错误)。`refuse` 是**不带数据的答复**(拒绝写/文件/越权请求,或确实无需查询)——`{"action":"refuse","result":{"content":"..."}}`,content-only、不过 grounding,后端强制 `sql=null`/`evidence=[]`,走正常 `answer` 事件、`termination_reason=completed`。前端无需特判 `refuse`(仍是 `answer`)。
+>
 > **`safe` 由后端派生,不采信模型**：`generate_sql`/`repair_sql` 结果里的 `safe` **不在 output_model**(模型若在 `result` 里带 `safe`,`model_dump()` 阶段被丢弃),而由后端 `finalize` 用 AST 只读判定(`is_select_only`)重算并追加——`generate_sql.safe = SQL 为单条只读 SELECT`;`repair_sql` 中 `fixed_sql` 非只读 SELECT 时 `fixed_sql` 抹为 `null` 且 `safe=false`。前端(`ResultPanel`)据 `safe` 决定是否允许"应用修复 SQL",故此值必须服务端可信,不能让 LLM 决定。
 
 **SSE 事件**（每条 `event:` + 单行 `data:` JSON,均含 `run_id`;`answer` 与 `error` 互斥,`done` 恒为最后一条;15s 无事件发注释行心跳）:
@@ -247,7 +249,7 @@ BY NAME、LIMIT、预览 vs 执行语义见 [QUERY_BEHAVIOR_ZH.md](QUERY_BEHAVIO
 | `tool_started` | `{run_id, tool_call_id, tool, args_summary}` |
 | `tool_completed` | `{run_id, tool_call_id, tool, ok, ui_summary, truncated, elapsed_ms}` |
 | `answer` | `{run_id, result\|null, termination_reason: completed\|output_invalid\|sql_validation_failed}`（`result` 为该 mode 的 output_model 或 `null`;`data_qa` 的 `result.sql` 仅供插入编辑器） |
-| `error` | `{run_id, termination_reason: protocol_violation\|budget_llm\|budget_time\|cancelled\|provider_error\|output_invalid\|internal_error, message}` |
+| `error` | `{run_id, termination_reason: protocol_violation\|ungrounded_final\|budget_llm\|budget_time\|cancelled\|provider_error\|output_invalid\|internal_error, message}` |
 | `done` | `{run_id, session_id\|null, usage:{steps, llm_calls, tool_calls, sql_calls, elapsed_ms}}` |
 
 取消:客户端断开连接即取消(服务端中断在跑查询);执行中的探查查询也可经 `POST /api/query/cancel/{run_id}` 中断。

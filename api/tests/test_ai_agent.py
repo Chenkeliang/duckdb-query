@@ -158,13 +158,189 @@ def test_data_qa_protocol_violation_after_one_reformat(orders):
     assert _final(events) is None
 
 
-def test_data_qa_unsafe_final_sql_stripped(orders):
-    llm = FakeLLM([json.dumps({"action": "final", "result": {
-        "content": "done", "sql": f"DELETE FROM {orders}", "evidence": []}})])
+def test_data_qa_final_trailing_brace_recovered_and_validated(orders):
+    """实测 protocol_violation 主因:final 动作 JSON 末尾多一个 } → extract_json 配平恢复,
+    恢复出的 FinalAction 仍走 output_model(Pydantic)校验、grounding 门控与 finalize。
+    (先 run_query 真跑,再用尾多一个 } 的 final,验证配平恢复 + grounding 同时生效。)"""
+    good = f"SELECT count(*) AS n FROM {orders} WHERE status='paid'"
+    raw_final = ('{"action":"final","result":{"content":"已支付 2 笔","sql":"' + good
+                 + '","evidence":["t1"]}}}')  # 末尾多一个 }(旧解析会 protocol_violation)
+    llm = FakeLLM([
+        json.dumps({"action": "run_query", "args": {"sql": good}}),  # 先跑,满足 grounding
+        raw_final,
+    ])
+    events, _ = _run(llm, "data_qa", inp={"messages": [{"role": "user", "content": "几笔"}]})
+    ans = _final(events)
+    assert _err(events) is None
+    assert ans is not None and ans["termination_reason"] == "completed"
+    assert ans["result"]["content"] == "已支付 2 笔"
+    assert ans["result"]["evidence"] == ["t1"]
+    assert len(llm.calls) == 2  # run_query → final(配平恢复),无 reformat
+
+
+def test_data_qa_recovers_run_query_from_sql_fence(orders):
+    """实测残余 protocol_violation 形态:模型首轮用 ```sql 围栏(非 JSON 协议)表达探查意图
+    → 引擎 recover_sql_action 恢复为一次 run_query 探查(真实执行、过 SQL 安全校验),模型据
+    观察给出最终答案。全程无 reformat、无 protocol_violation。"""
+    good = f"SELECT count(*) AS n FROM {orders} WHERE status='paid'"
+    llm = FakeLLM([
+        f"我先跑一下查询确认。\n\n```sql\n{good}\n```",  # 非 JSON,靠 recover_sql_action 纠错
+        json.dumps({"action": "final", "result": {
+            "content": "已支付 2 笔", "sql": good, "evidence": ["t1"]}}),
+    ])
+    events, ctx = _run(llm, "data_qa", inp={"messages": [{"role": "user", "content": "几笔"}]})
+    ans = _final(events)
+    assert _err(events) is None
+    assert ans is not None and ans["termination_reason"] == "completed"
+    assert ans["result"]["content"] == "已支付 2 笔"
+    tool_done = [e for e in events if e["event"] == "tool_completed"]
+    assert len(tool_done) == 1 and tool_done[0]["ok"] is True  # 恢复的探查真实执行
+    assert ctx.sql_calls_used == 1
+    assert len(llm.calls) == 2  # 无 reformat 额外调用
+    # 安全边界:恢复调用正常计入 steps/sql_calls/tool_calls(审计口径),不被隐藏
+    done = next(e for e in events if e["event"] == "done")
+    assert done["usage"]["sql_calls"] == 1
+    assert done["usage"]["tool_calls"] == 1
+    assert done["usage"]["steps"] >= 1
+
+
+def test_non_tool_profile_does_not_recover_sql_fence():
+    """安全边界:run_query 未在 profile.allowed_tools(explain_sql 无任何工具)时,```sql
+    围栏不得被恢复执行——不产生任何工具调用,也不消耗 sql_calls。"""
+    llm = FakeLLM([
+        "```sql\nSELECT 1\n```",  # 非 JSON;explain_sql 不允许 run_query → 不得恢复
+        json.dumps({"action": "final", "result": {"explanation": "这条 SQL 返回常量 1"}}),
+    ])
+    events, ctx = _run(llm, "explain_sql", inp={"sql": "SELECT 1"}, context={"locale": "zh"})
+    assert not [e for e in events if e["event"] == "tool_completed"]  # 未恢复执行任何查询
+    assert ctx.sql_calls_used == 0
+
+
+def test_data_qa_ungrounded_final_rejected_then_grounded(orders):
+    """静默错误防线:首个 FinalAction 带**没跑过**的 SQL(相当于拿 schema 样例直接算)→
+    被 grounding 门控拒为 observation,不 completed;模型先 run_query 真跑、再用同一条 SQL
+    final 才通过,且最终 SQL 独立执行与真值一致。"""
+    q = f"SELECT status, count(*) AS n FROM {orders} GROUP BY status ORDER BY status"
+    llm = FakeLLM([
+        json.dumps({"action": "final", "result": {  # ungrounded:没跑过就答
+            "content": "（未查直接答）", "sql": q, "evidence": []}}),
+        json.dumps({"action": "run_query", "args": {"sql": q}}),  # 真跑
+        json.dumps({"action": "final", "result": {  # grounded:同一条 SQL
+            "content": "按状态汇总完成", "sql": q, "evidence": ["t1"]}}),
+    ])
+    events, ctx = _run(llm, "data_qa", inp={"messages": [{"role": "user", "content": "按状态汇总"}]})
+    ans = _final(events)
+    assert _err(events) is None
+    assert ans is not None and ans["termination_reason"] == "completed"
+    assert ans["result"]["sql"] == q
+    assert ctx.sql_calls_used == 1
+    assert len([e for e in events if e["event"] == "tool_completed"]) == 1
+    assert len(llm.calls) == 3  # final(拒)→ run_query → final(过)
+    with with_duckdb_connection() as con:  # 最终 SQL 独立执行 = 真值(paid 2 / refunded 1)
+        got = dict(con.execute(ans["result"]["sql"]).fetchall())
+    assert got == {"paid": 2, "refunded": 1}
+
+
+def test_data_qa_execute_a_answer_b_rejected(orders):
+    """执行 A、回答 B:跑了查询 A,却 final 一条**没跑过**的 B → grounding 拒绝;
+    只有改回跑过的 A 才通过(按规范化内容匹配,非仅 sql_calls>0)。"""
+    a = f"SELECT count(*) AS n FROM {orders} WHERE status='paid'"
+    b = f"SELECT count(*) AS n FROM {orders} WHERE status='refunded'"
+    llm = FakeLLM([
+        json.dumps({"action": "run_query", "args": {"sql": a}}),
+        json.dumps({"action": "final", "result": {"content": "x", "sql": b, "evidence": ["t1"]}}),
+        json.dumps({"action": "final", "result": {"content": "y", "sql": a, "evidence": ["t1"]}}),
+    ])
+    events, _ = _run(llm, "data_qa", inp={"messages": [{"role": "user", "content": "几笔"}]})
+    ans = _final(events)
+    assert ans is not None and ans["termination_reason"] == "completed"
+    assert ans["result"]["sql"] == a  # 只有真跑过的 A 能通过
+    assert len(llm.calls) == 3
+
+
+def test_data_qa_refuse_completes_directly(orders):
+    """安全拒绝走独立 refuse 动作:content-only、不过 grounding、直接完成,sql 强制 null。
+    (取代旧的"sql=null 的 final 直接完成"——那条路已被 grounding 严格封死,见下一 test。)"""
+    llm = FakeLLM([json.dumps({"action": "refuse", "result": {
+        "content": "我是只读数据代理,无法删除数据。"}})])
+    events, _ = _run(llm, "data_qa", inp={"messages": [{"role": "user", "content": "删除订单"}]})
+    ans = _final(events)
+    assert _err(events) is None
+    assert ans is not None and ans["termination_reason"] == "completed"
+    assert ans["result"]["sql"] is None and ans["result"]["content"]
+    assert len(llm.calls) == 1  # 无需查询,直接完成
+
+
+def test_data_qa_refuse_forces_sql_null(orders):
+    """refuse 不承载数据答复:即便模型在 result 里塞了 sql/evidence,也强制清空。"""
+    llm = FakeLLM([json.dumps({"action": "refuse", "result": {
+        "content": "拒绝写库", "sql": f"DELETE FROM {orders}", "evidence": ["x"]}})])
     events, _ = _run(llm, "data_qa", inp={"messages": [{"role": "user", "content": "删"}]})
-    assert _final(events)["result"]["sql"] is None
+    ans = _final(events)
+    assert ans is not None and ans["termination_reason"] == "completed"
+    assert ans["result"]["sql"] is None and ans["result"]["evidence"] == []
+
+
+def test_data_qa_null_sql_final_rejected(orders):
+    """data answer 的 final 必须绑定跑过的 SELECT:sql=null 不再放行(旧漏洞),
+    始终 null 且步数耗尽 → ungrounded_final,绝不 completed。"""
+    llm = FakeLLM([json.dumps({"action": "final", "result": {
+        "content": "共 3 笔", "sql": None, "evidence": []}})] * 12)
+    events, _ = _run(llm, "data_qa", inp={"messages": [{"role": "user", "content": "多少笔"}]})
+    assert _final(events) is None  # 不再借空 sql 溜过
+    err = _err(events)
+    assert err is not None and err["termination_reason"] == "ungrounded_final"
+
+
+def test_data_qa_refuse_rejected_for_non_data_qa_profile():
+    """refuse 是 data_qa 专属终止动作:未声明 refuse 的 profile(generate_sql)收到它按协议违规处理。"""
+    llm = FakeLLM([json.dumps({"action": "refuse", "result": {"content": "no"}}),
+                   json.dumps({"action": "refuse", "result": {"content": "no"}}),
+                   json.dumps({"action": "refuse", "result": {"content": "no"}})])
+    events, _ = _run(llm, "generate_sql", inp={"question": "x"})
+    assert _final(events) is None
+    err = _err(events)
+    assert err is not None and err["termination_reason"] == "protocol_violation"
+
+
+def test_data_qa_ungrounded_final_terminates_ungrounded_when_no_budget(orders):
+    """预算耗尽仍 ungrounded(始终答没跑过的 SQL)→ 诚实终止 ungrounded_final,绝不 completed。"""
+    q = f"SELECT count(*) AS n FROM {orders}"
+    llm = FakeLLM([json.dumps({"action": "final", "result": {
+        "content": "x", "sql": q, "evidence": []}})] * 12)
+    events, _ = _run(llm, "data_qa", inp={"messages": [{"role": "user", "content": "多少"}]})
+    err = _err(events)
+    assert _final(events) is None  # 绝不返回 completed
+    assert err is not None and err["termination_reason"] == "ungrounded_final"
+
+
+def test_data_qa_unsafe_final_sql_rejected_not_stripped(orders):
+    """写库 SQL 的 final 不再被 finalize 抹成 null 报假成功(旧漏洞:completed + "已删除" +
+    sql=null):严格拒绝 → ungrounded_final,数据不变;声明拒绝应改用 refuse。"""
+    llm = FakeLLM([json.dumps({"action": "final", "result": {
+        "content": "已删除 3 行", "sql": f"DELETE FROM {orders}", "evidence": []}})] * 12)
+    events, _ = _run(llm, "data_qa", inp={"messages": [{"role": "user", "content": "删"}]})
+    assert _final(events) is None  # 不再假成功
+    err = _err(events)
+    assert err is not None and err["termination_reason"] == "ungrounded_final"
     with with_duckdb_connection() as con:
         assert con.execute(f"SELECT count(*) FROM {orders}").fetchone()[0] == 3
+
+
+def test_data_qa_final_with_sql_fence_in_content_not_recovered(orders):
+    """Bug5:合法 final 的 content 里含 ```sql 代码块,不得被 SQL recovery 改写成 run_query;
+    照常走 grounding 完成,且不额外多跑一次。"""
+    q = f"SELECT count(*) AS n FROM {orders}"
+    llm = FakeLLM([
+        json.dumps({"action": "run_query", "args": {"sql": q}}),
+        json.dumps({"action": "final", "result": {
+            "content": "结果:\n```sql\nSELECT ...\n```", "sql": q, "evidence": ["t1"]}}),
+    ])
+    events, _ = _run(llm, "data_qa", inp={"messages": [{"role": "user", "content": "多少"}]})
+    ans = _final(events)
+    assert ans is not None and ans["termination_reason"] == "completed"
+    assert ans["result"]["sql"] == q
+    assert len(llm.calls) == 2  # 未被 recovery 改写、未额外多跑
 
 
 # ---------- generate_sql (EXPLAIN loop, no data execution) ----------

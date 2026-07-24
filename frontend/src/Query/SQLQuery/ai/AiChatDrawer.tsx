@@ -14,6 +14,7 @@ import {
   Square,
   Check,
   CircleAlert,
+  ChevronRight,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -159,27 +160,62 @@ function AssistantMarkdown({
   );
 }
 
-/** 智能体探查过程步骤条。 */
-function AgentSteps({ steps, title }: { steps: AgentStep[]; title: string }) {
+/** 智能体探查过程步骤条:运行中展开显示当前轨迹,答案到达后自动折叠成"使用了 N 个工具"摘要
+ * (向 Claude 看齐);点击标题可再展开查看 search/inspect/run_query 明细。 */
+function AgentSteps({
+  steps,
+  streaming,
+  runningTitle,
+  doneTitle,
+}: {
+  steps: AgentStep[];
+  streaming: boolean;
+  runningTitle: string;
+  doneTitle: string;
+}) {
+  // 初始展开与否 = 是否正在流式(历史里已完成的消息一进来就折叠)
+  const [open, setOpen] = useState(streaming);
+  const prevStreaming = useRef(streaming);
+  useEffect(() => {
+    if (streaming) setOpen(true);
+    else if (prevStreaming.current) setOpen(false); // 流结束的那一刻自动折叠一次
+    prevStreaming.current = streaming;
+  }, [streaming]);
+
   if (!steps.length) return null;
   return (
-    <div className="mb-1.5 rounded border border-border/60 bg-background/60 px-2 py-1.5">
-      <div className="mb-1 text-[10px] font-medium text-muted-foreground">{title}</div>
-      <div className="space-y-0.5">
-        {steps.map((s) => (
-          <div key={s.id} className="flex items-center gap-1.5 text-[11px]">
-            {s.running ? (
-              <Loader2 className="h-3 w-3 shrink-0 animate-spin text-primary" />
-            ) : s.ok ? (
-              <Check className="h-3 w-3 shrink-0 text-primary" />
-            ) : (
-              <CircleAlert className="h-3 w-3 shrink-0 text-destructive" />
-            )}
-            <span className="font-mono text-muted-foreground">{s.tool}</span>
-            <span className="truncate text-muted-foreground/80">{s.summary}</span>
-          </div>
-        ))}
-      </div>
+    <div className="mb-1.5 rounded border border-border/60 bg-background/60">
+      <button
+        type="button"
+        onClick={() => setOpen((v) => !v)}
+        className="flex w-full items-center gap-1.5 px-2 py-1 text-[10px] font-medium text-muted-foreground hover:text-foreground"
+      >
+        {streaming ? (
+          <Loader2 className="h-3 w-3 shrink-0 animate-spin text-primary" />
+        ) : (
+          <ChevronRight
+            className={`h-3 w-3 shrink-0 transition-transform ${open ? 'rotate-90' : ''}`}
+          />
+        )}
+        <span className="truncate">{streaming ? runningTitle : doneTitle}</span>
+      </button>
+      {open && (
+        <div className="space-y-0.5 px-2 pb-1.5">
+          {steps.map((s) => (
+            <div key={s.id} className="flex items-center gap-1.5 text-[11px]">
+              {s.running ? (
+                <Loader2 className="h-3 w-3 shrink-0 animate-spin text-primary" />
+              ) : s.ok ? (
+                <Check className="h-3 w-3 shrink-0 text-primary" />
+              ) : (
+                <CircleAlert className="h-3 w-3 shrink-0 text-destructive" />
+              )}
+              <span className="font-mono text-muted-foreground">{s.tool}</span>
+              <span className="truncate text-muted-foreground/80">{s.summary}</span>
+            </div>
+          ))}
+        </div>
+      )}
     </div>
   );
 }
@@ -205,12 +241,46 @@ export function AiChatDrawer({
   const [scopeOff, setScopeOff] = useState<Record<string, boolean>>({});
   const listRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
+  const typewriterRef = useRef<ReturnType<typeof setInterval> | null>(null);
+
+  const clearTypewriter = () => {
+    if (typewriterRef.current) {
+      clearInterval(typewriterRef.current);
+      typewriterRef.current = null;
+    }
+  };
+
+  // 内容渐进流式(B):grounding 已通过、内容已校验后,前端打字机把目标串逐段 append 进渲染态,
+  // Markdown 随之增量渲染——观感对齐 Claude,但绝不流式未落地内容(仍在 grounding 后才可得)。
+  const startTypewriter = (index: number, full: string) => {
+    clearTypewriter();
+    if (!full) return;
+    const stepLen = Math.max(2, Math.ceil(full.length / 100)); // 大内容也在 ~1.6s 内显示完
+    let pos = 0;
+    typewriterRef.current = setInterval(() => {
+      pos = Math.min(full.length, pos + stepLen);
+      const shown = full.slice(0, pos);
+      setMessages((prev) => {
+        if (index >= prev.length) return prev; // 已被清空/越界:停手
+        const next = [...prev];
+        next[index] = { ...next[index], content: shown };
+        return next;
+      });
+      if (pos >= full.length) clearTypewriter();
+    }, 16);
+  };
 
   useEffect(() => {
     listRef.current?.scrollTo({ top: listRef.current.scrollHeight });
   }, [messages, loading]);
 
-  useEffect(() => () => abortRef.current?.abort(), []);
+  useEffect(
+    () => () => {
+      abortRef.current?.abort();
+      clearTypewriter();
+    },
+    [],
+  );
 
   const mentionMatch = MENTION_RE.exec(input);
   useEffect(() => {
@@ -231,19 +301,32 @@ export function AiChatDrawer({
   const termText = (reason: string, message: string) => {
     const map: Record<string, string> = {
       protocol_violation: t('query.ai.termProtocol', '模型未遵守协议，已如实终止'),
+      ungrounded_final: t(
+        'query.ai.termUngrounded',
+        '答案未基于实际查询结果，已如实终止（未采信未落地的结论）',
+      ),
+      output_invalid: t('query.ai.termOutputInvalid', '模型输出不符合结果规范，已如实终止'),
       budget_llm: t('query.ai.termBudget', '已达步数预算，给出当前结论前终止'),
       budget_time: t('query.ai.termTime', '已达时间预算终止'),
       cancelled: t('query.ai.termCancelled', '已停止'),
       provider_error: t('query.ai.termProvider', '模型服务调用失败'),
       internal_error: t('query.ai.termInternal', '内部错误'),
     };
-    return `${map[reason] || reason}${message ? `：${message}` : ''}`;
+    // 页面只显示本地化文案:后端 message 与 termination_reason 都是内部英文标识
+    // (如 "model failed to follow the action protocol"),不该出现在用户界面;
+    // 原始明细进 console 供排查,不丢诊断信息。
+    if (message || !map[reason]) {
+      console.warn('[agent] termination', reason, message);
+    }
+    return map[reason] || t('query.ai.termUnknown', '运行未正常结束，请重试');
   };
 
   const sendAgent = async (text: string) => {
+    clearTypewriter(); // 新一轮发送:停掉上一条可能仍在打字的定时器,避免写错消息
     const userMsg: DrawerMsg = { role: 'user', content: text };
     const pending: DrawerMsg = { role: 'assistant', content: '', steps: [] };
     const history = historyForBackend(messages);
+    const pendingIndex = messages.length + 1; // userMsg 在 messages.length,pending 紧随其后
     setMessages((prev) => [...prev, userMsg, pending]);
     setLoading(true);
     const controller = new AbortController();
@@ -256,7 +339,9 @@ export function AiChatDrawer({
         return next;
       });
 
+    let sawTerminal = false; // 是否收到过终止事件(answer / error)
     const onEvent = (ev: AgentEvent) => {
+      if (ev.event === 'answer' || ev.event === 'error') sawTerminal = true;
       if (ev.event === 'tool_started') {
         patchPending((m) => ({
           ...m,
@@ -276,12 +361,14 @@ export function AiChatDrawer({
         }));
       } else if (ev.event === 'answer') {
         const r = (ev.result ?? {}) as unknown as DataQaResult;
+        // content 先置空,SQL/依据立即呈现;content 交打字机渐进 append(B)
         patchPending((m) => ({
           ...m,
-          content: r.content ?? '',
+          content: '',
           sql: r.sql ?? null,
           evidence: r.evidence ?? [],
         }));
+        startTypewriter(pendingIndex, r.content ?? '');
       } else if (ev.event === 'error') {
         patchPending((m) => ({
           ...m,
@@ -308,6 +395,16 @@ export function AiChatDrawer({
         },
         { onEvent, signal: controller.signal },
       );
+      if (!sawTerminal) {
+        // SSE 流正常结束却没给 answer/error(连接中断 / 后端提前关闭 / 空闲超时)——
+        // 绝不留永久 spinner:如实标记为失败并给本地化提示,可重试。
+        clearTypewriter();
+        patchPending((m) => ({
+          ...m,
+          failed: true,
+          content: m.content || t('query.ai.termIncomplete', '连接中断，未收到完整结果，请重试'),
+        }));
+      }
     } catch (e) {
       if ((e as Error).name === 'AbortError') {
         patchPending((m) => ({
@@ -316,11 +413,14 @@ export function AiChatDrawer({
           content: m.content || t('query.ai.termCancelled', '已停止'),
         }));
       } else {
+        // 网络/HTTP 失败:原始 message 是英文内部信息(如 "Load failed"、后端英文错误体),
+        // 气泡里只放本地化文案,明细进 console(与 termText 同口径)。
+        console.warn('[agent] request failed', e);
         showErrorToast(t, e as Error, t('query.ai.agentFailed', '智能体运行失败'));
         patchPending((m) => ({
           ...m,
           failed: true,
-          content: m.content || (e as Error).message,
+          content: m.content || t('query.ai.agentFailed', '智能体运行失败'),
         }));
       }
     } finally {
@@ -346,7 +446,9 @@ export function AiChatDrawer({
       ? allTables
           .filter((n) => n.toLowerCase().includes(mentionMatch[2].toLowerCase()))
           .filter((n) => !mentionTables.includes(n))
-          .slice(0, 8)
+          // 下拉容器已是 max-h-48 可滚动;此处放宽上限,避免"@表 表不全"(旧值 8 会隐藏
+          // 绝大多数表)。仍设有界上限防超大工作区渲染过多 DOM,超出可继续输入过滤。
+          .slice(0, 50)
       : [];
 
   return (
@@ -362,7 +464,10 @@ export function AiChatDrawer({
             <Button
               variant="ghost"
               size="sm"
-              onClick={() => setMessages([])}
+              onClick={() => {
+                clearTypewriter();
+                setMessages([]);
+              }}
               title={t('common.clear', '清空')}
               aria-label={t('common.clear', '清空')}
             >
@@ -417,7 +522,11 @@ export function AiChatDrawer({
                   <>
                     <AgentSteps
                       steps={m.steps || []}
-                      title={t('query.ai.agentSteps', '探查过程')}
+                      streaming={loading && i === messages.length - 1}
+                      runningTitle={t('query.ai.agentStepsRunning', '正在探查数据…')}
+                      doneTitle={t('query.ai.agentStepsDone', '使用了 {{count}} 个工具', {
+                        count: (m.steps || []).length,
+                      })}
                     />
                     {m.content ? (
                       m.failed ? (
