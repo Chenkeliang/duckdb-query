@@ -69,12 +69,12 @@ async def test_call_raises_on_http_4xx(cfg):
 async def test_call_4xx_surfaces_envelope_message(cfg):
     respx.get("http://127.0.0.1:48001/health").mock(
         return_value=httpx.Response(200, json={"status": "healthy"}))
-    respx.post("http://127.0.0.1:48001/api/ai/explain-sql").mock(
+    respx.post("http://127.0.0.1:48001/api/ai/agent/run").mock(
         return_value=httpx.Response(400, json={
             "success": False, "messageCode": "ai_not_configured", "message": "AI not configured"}))
     client = DuckQueryClient(cfg)
     with pytest.raises(BackendError, match="not configured"):
-        await client.call("POST", "/api/ai/explain-sql", json_body={"sql": "x"})
+        await client.call("POST", "/api/ai/agent/run", json_body={"mode": "explain_sql", "input": {"sql": "x"}})
 
 
 @respx.mock

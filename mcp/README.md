@@ -51,9 +51,23 @@ Windows: `%APPDATA%\Claude\claude_desktop_config.json`):
 
 ## Tools
 
-High-level tools (query, ask, discover, add sources, configure LLM, transform,
-export) plus a generic `duckquery_request` passthrough. Safety mode gates which
-tools are exposed:
+High-level tools (query, the AI agent tools below, discover, add sources,
+configure LLM, transform, export) plus a generic `duckquery_request` passthrough.
+Safety mode gates which tools are exposed:
+
+The AI tools all call the backend's unified Agent Engine (`POST /api/ai/agent/run`,
+one thin tool per `mode`), replacing the removed single-purpose LLM services:
+- `ask_agent` (`mode=data_qa`) — conversational data agent. Runs **bounded,
+  read-only** probe queries — inspecting schemas, verifying real column values,
+  and dry-running row-capped SELECTs — over local tables and, when you pass
+  `attach_databases`, attached MySQL/PostgreSQL/SQLite/DuckDB tables, before
+  answering. Any returned `sql` is a draft; the agent never executes writes.
+- `generate_sql` (`mode=generate_sql`) — NL → an `EXPLAIN`-validated SQL draft (not executed).
+- `repair_sql` (`mode=repair_sql`) — error doctor: failing SQL + error → a fix.
+- `explain_sql` (`mode=explain_sql`) — plain-language explanation of a statement.
+- `suggest_chart` (`mode=suggest_chart`) — a chart spec for a result set.
+
+All five are `read`-tier tools — exposed in every safety mode — and never execute writes.
 - `read-only` — hides all mutating tools; non-GET `duckquery_request` calls are
   hard-blocked (`confirm` cannot override).
 - `normal` (default) — mutating tools are exposed, but changing tables,

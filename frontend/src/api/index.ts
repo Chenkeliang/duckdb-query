@@ -214,22 +214,26 @@ export {
     getAiSettings,
     saveAiSettings,
     testProvider,
-    errorFix,
-    explainSql,
-    nlToSql,
-    chat,
-    suggestChart,
     type AiProviderType,
     type AiProvider,
     type AiFeatureCfg,
     type AiSettings,
-    type ErrorFixResult,
-    type ExplainSqlResult,
-    type NlToSqlResult,
-    type ChatMessage,
-    type ChatResult,
-    type SuggestChartResult,
 } from './aiApi';
+
+// ==================== Unified Agent API ====================
+export {
+    streamAgent,
+    runAgent,
+    AgentSseParser,
+    type AgentMode,
+    type AgentRequest,
+    type AgentContext,
+    type AgentEvent,
+    type AgentMessage,
+    type AgentRunResult,
+    type DataQaResult,
+    type AgentLimitsInfo,
+} from './agentApi';
 
 // ==================== Engine Compat API ====================
 export {

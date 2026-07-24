@@ -58,7 +58,7 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
     const { t, i18n } = useTranslation("common");
     const { maxQueryRows, pivotMaxColumns } = useAppConfig();
 
-    const chatStatus = useAiStatus("chat");
+    const chatStatus = useAiStatus("data_qa");
     const [chatOpen, setChatOpen] = React.useState(false);
     const aiLocale: "zh" | "en" = i18n.language?.startsWith("zh") ? "zh" : "en";
     const chatTableNames = React.useMemo(

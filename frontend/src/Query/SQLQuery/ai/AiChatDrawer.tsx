@@ -11,7 +11,6 @@ import {
   User,
   BookOpen,
   Wand2,
-  Bot,
   Square,
   Check,
   CircleAlert,
@@ -19,8 +18,13 @@ import {
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { showErrorToast } from '@/utils/toastHelpers';
-import { chat, getDuckDBTables, type ChatMessage } from '@/api';
-import { agentChatStream, type AgentEvent } from '@/api/agentApi';
+import {
+  getDuckDBTables,
+  streamAgent,
+  type AgentEvent,
+  type AgentMessage,
+  type DataQaResult,
+} from '@/api';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
 
@@ -193,7 +197,6 @@ export function AiChatDrawer({
   locale = 'zh',
 }: AiChatDrawerProps) {
   const { t } = useTranslation('common');
-  const [mode, setMode] = useState<'agent' | 'classic'>('agent');
   const [messages, setMessages] = useState<DrawerMsg[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
@@ -222,7 +225,7 @@ export function AiChatDrawer({
   if (!open) return null;
 
   const activeAliases = (attachDatabases || []).filter((d) => !scopeOff[d.alias]);
-  const historyForBackend = (list: DrawerMsg[]): ChatMessage[] =>
+  const historyForBackend = (list: DrawerMsg[]): AgentMessage[] =>
     list.map((m) => ({ role: m.role, content: m.content }));
 
   const termText = (reason: string, message: string) => {
@@ -272,11 +275,12 @@ export function AiChatDrawer({
           ),
         }));
       } else if (ev.event === 'answer') {
+        const r = (ev.result ?? {}) as unknown as DataQaResult;
         patchPending((m) => ({
           ...m,
-          content: ev.answer,
-          sql: ev.sql,
-          evidence: ev.evidence,
+          content: r.content ?? '',
+          sql: r.sql ?? null,
+          evidence: r.evidence ?? [],
         }));
       } else if (ev.event === 'error') {
         patchPending((m) => ({
@@ -288,16 +292,19 @@ export function AiChatDrawer({
     };
 
     try {
-      await agentChatStream(
+      await streamAgent(
         {
-          messages: [...history, { role: 'user', content: text }],
-          tables: Array.from(new Set([...selectedTables, ...mentionTables])),
-          attach_databases: activeAliases.map((d) => ({
-            alias: d.alias,
-            connection_id: d.connectionId,
-          })),
-          current_sql: currentSql,
-          locale,
+          mode: 'data_qa',
+          input: { messages: [...history, { role: 'user', content: text }] },
+          context: {
+            tables: Array.from(new Set([...selectedTables, ...mentionTables])),
+            attach_databases: activeAliases.map((d) => ({
+              alias: d.alias,
+              connection_id: d.connectionId,
+            })),
+            current_sql: currentSql,
+            locale,
+          },
         },
         { onEvent, signal: controller.signal },
       );
@@ -322,31 +329,11 @@ export function AiChatDrawer({
     }
   };
 
-  const sendClassic = async (text: string) => {
-    const next = [...messages, { role: 'user' as const, content: text }];
-    setMessages(next);
-    setLoading(true);
-    try {
-      const r = await chat(historyForBackend(next), {
-        tables: selectedTables,
-        attachDatabases,
-        locale,
-        currentSql,
-      });
-      setMessages([...next, { role: 'assistant', content: r.content }]);
-    } catch (e) {
-      showErrorToast(t, e as Error, t('query.ai.chatFailed', 'AI 对话失败'));
-    } finally {
-      setLoading(false);
-    }
-  };
-
   const send = async (override?: string) => {
     const text = (override ?? input).trim();
     if (!text || loading) return;
     if (override == null) setInput('');
-    if (mode === 'agent') await sendAgent(text);
-    else await sendClassic(text);
+    await sendAgent(text);
   };
 
   const pickMention = (name: string) => {
@@ -368,35 +355,9 @@ export function AiChatDrawer({
       <div className="flex items-center justify-between border-b border-border px-3 py-2">
         <span className="flex items-center gap-1.5 text-sm font-medium">
           <Sparkles className="h-4 w-4 text-primary" />
-          {t('query.ai.chatTitle', '数据助手')}
+          {t('query.ai.agentTitle', '数据智能体')}
         </span>
         <div className="flex items-center gap-1">
-          {/* 模式切换:智能体(可探查数据) / 经典(单发对话) */}
-          <div className="mr-1 flex overflow-hidden rounded-md border border-border text-xs">
-            <button
-              type="button"
-              onClick={() => setMode('agent')}
-              className={`flex items-center gap-1 px-2 py-1 ${
-                mode === 'agent'
-                  ? 'bg-primary text-primary-foreground'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              <Bot className="h-3 w-3" />
-              {t('query.ai.agentMode', '智能体')}
-            </button>
-            <button
-              type="button"
-              onClick={() => setMode('classic')}
-              className={`px-2 py-1 ${
-                mode === 'classic'
-                  ? 'bg-primary text-primary-foreground'
-                  : 'text-muted-foreground hover:text-foreground'
-              }`}
-            >
-              {t('query.ai.classicMode', '经典')}
-            </button>
-          </div>
           {messages.length > 0 && (
             <Button
               variant="ghost"
@@ -424,15 +385,10 @@ export function AiChatDrawer({
       <div ref={listRef} className="flex-1 space-y-3 overflow-auto p-3">
         {messages.length === 0 && (
           <div className="text-xs text-muted-foreground">
-            {mode === 'agent'
-              ? t(
-                  'query.ai.agentEmpty',
-                  '问我关于你数据的任何问题。我会查看表结构、验证真实取值、试跑只读查询后再回答;输入 @ 可指定表。',
-                )
-              : t(
-                  'query.ai.chatEmpty',
-                  '问我关于这些表的任何问题，或让我帮你写查询。我知道你选中表的结构。',
-                )}
+            {t(
+              'query.ai.agentEmpty',
+              '问我关于你数据的任何问题。我会查看表结构、验证真实取值、试跑只读查询后再回答;输入 @ 可指定表。',
+            )}
           </div>
         )}
         {messages.map((m, i) => {
@@ -518,16 +474,6 @@ export function AiChatDrawer({
             </div>
           );
         })}
-        {loading && mode === 'classic' && (
-          <div className="flex flex-row gap-2">
-            <div className="mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full bg-primary/15 text-primary">
-              <Sparkles className="h-3.5 w-3.5" />
-            </div>
-            <div className="rounded-2xl rounded-tl-sm bg-muted px-3 py-2">
-              <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
-            </div>
-          </div>
-        )}
       </div>
 
       {/* 输入区 */}
@@ -563,7 +509,7 @@ export function AiChatDrawer({
           </div>
         )}
         {/* 作用域:所见即所查——取消勾选的连接既不进上下文也不可被探查 */}
-        {mode === 'agent' && !!attachDatabases?.length && (
+        {!!attachDatabases?.length && (
           <div className="mb-1.5 flex flex-wrap items-center gap-1.5 text-[10px]">
             <span className="rounded-full border border-border bg-muted px-2 py-0.5 text-muted-foreground">
               {t('query.ai.scopeLocal', '本地 DuckDB')}
@@ -635,14 +581,13 @@ export function AiChatDrawer({
                   pickMention(mentionCandidates[0]);
                 }
               }}
-              placeholder={
-                mode === 'agent'
-                  ? t('query.ai.agentPlaceholder', '问数据智能体…输入 @ 可选表（Enter 发送）')
-                  : t('query.ai.chatPlaceholder', '问数据助手…（Enter 发送）')
-              }
+              placeholder={t(
+                'query.ai.agentPlaceholder',
+                '问数据智能体…输入 @ 可选表（Enter 发送）',
+              )}
               disabled={loading}
             />
-            {loading && mode === 'agent' ? (
+            {loading ? (
               <Button
                 size="sm"
                 variant="outline"
@@ -664,12 +609,10 @@ export function AiChatDrawer({
         </div>
         <div className="mt-1 flex items-center gap-1 text-[10px] text-muted-foreground">
           <CornerDownLeft className="h-3 w-3" />
-          {mode === 'agent'
-            ? t(
-                'query.ai.agentHint',
-                '智能体会执行只读、限行、可取消的探查查询；最终 SQL 仍只插入编辑器',
-              )
-            : t('query.ai.chatHint', '生成的 SQL 可一键插入编辑器，绝不自动执行')}
+          {t(
+            'query.ai.agentHint',
+            '智能体会执行只读、限行、可取消的探查查询；最终 SQL 仍只插入编辑器',
+          )}
         </div>
       </div>
     </div>

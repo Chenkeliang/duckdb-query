@@ -99,65 +99,134 @@ async def test_run_sql_read_query_never_needs_confirm(cfg):
         assert "error" not in out
 
 
+# ============ 统一 Agent 工具:全部走 POST /api/ai/agent/run(mode 判别) ============
+
+
+def _agent_run_mock(base, data):
+    return respx.post(f"{base}/api/ai/agent/run").mock(
+        return_value=httpx.Response(200, json={"success": True, "data": data}))
+
+
 @respx.mock
-async def test_chat_passes_attach_databases(cfg):
-    """chat 透传 attach_databases 原样给后端,外部表的真实 schema 才能进 AI 上下文。
-    db_ 前缀归一化发生在 tools/__init__.py 的注册闭包层(见 test_normalize.py),
-    这里的 attach_databases 已是归一化后的形状,验证透传不改写。"""
+async def test_ask_agent_data_qa(cfg):
+    """ask_agent → mode=data_qa;history 拼在前、question 作末条 user;
+    tables/attach_databases 落在 context(外部表真实 schema 才进 agent 授权范围)。"""
     base = "http://127.0.0.1:48001"
     respx.get(f"{base}/health").mock(return_value=httpx.Response(200, json={"status": "healthy"}))
-    route = respx.post(f"{base}/api/ai/chat").mock(
-        return_value=httpx.Response(200, json={"success": True, "data": {"content": "hi"}}))
-    from duckquery_mcp.tools.query import chat
-    await chat(DuckQueryClient(cfg), cfg,
-               messages=[{"role": "user", "content": "q"}], tables=["m.t"],
-               attach_databases=[{"alias": "m", "connection_id": "SORDER"}])
+    route = _agent_run_mock(base, {
+        "result": {"content": "2 笔", "sql": "SELECT 1", "evidence": ["t1"]},
+        "termination_reason": "completed", "message": "", "run_id": "r1", "session_id": None})
+    from duckquery_mcp.tools.query import ask_agent
+    out = await ask_agent(
+        DuckQueryClient(cfg), cfg, question="已支付几笔", tables=["m.t"],
+        attach_databases=[{"alias": "m", "connection_id": "SORDER"}],
+        history=[{"role": "user", "content": "上一问"}, {"role": "assistant", "content": "上一答"}])
     sent = json.loads(route.calls.last.request.content)
-    assert sent["tables"] == ["m.t"]
-    assert sent["attach_databases"] == [{"alias": "m", "connection_id": "SORDER"}]
+    assert sent["mode"] == "data_qa"
+    assert sent["context"]["tables"] == ["m.t"]
+    assert sent["context"]["attach_databases"] == [{"alias": "m", "connection_id": "SORDER"}]
+    assert sent["input"]["messages"][-1] == {"role": "user", "content": "已支付几笔"}
+    assert sent["input"]["messages"][0] == {"role": "user", "content": "上一问"}
+    assert out["termination_reason"] == "completed"
+    assert out["result"]["content"] == "2 笔"
 
 
 @respx.mock
-async def test_chat_local_omits_attach(cfg):
+async def test_ask_agent_session_id_forwarded(cfg):
+    """session_id 仅作关联标识,给了就透传;不给则请求体里没有该键。"""
     base = "http://127.0.0.1:48001"
     respx.get(f"{base}/health").mock(return_value=httpx.Response(200, json={"status": "healthy"}))
-    route = respx.post(f"{base}/api/ai/chat").mock(
-        return_value=httpx.Response(200, json={"success": True, "data": {"content": "hi"}}))
-    from duckquery_mcp.tools.query import chat
-    await chat(DuckQueryClient(cfg), cfg, messages=[{"role": "user", "content": "q"}])
-    assert "attach_databases" not in json.loads(route.calls.last.request.content)
+    route = _agent_run_mock(base, {
+        "result": {"content": "hi", "sql": None, "evidence": []},
+        "termination_reason": "completed", "message": "", "run_id": "r1", "session_id": "s9"})
+    from duckquery_mcp.tools.query import ask_agent
+    await ask_agent(DuckQueryClient(cfg), cfg, question="q", session_id="s9")
+    sent = json.loads(route.calls.last.request.content)
+    assert sent["session_id"] == "s9"
+    # 本地无外部库:context.attach_databases 为空列表(不是缺键)
+    assert sent["context"]["attach_databases"] == []
 
 
 @respx.mock
-async def test_error_fix_passes_schema_context(cfg):
-    """error_fix 透传 tables/attach_databases/locale 原样给后端,报错医生按真实
+async def test_ask_agent_no_session_id(cfg):
+    base = "http://127.0.0.1:48001"
+    respx.get(f"{base}/health").mock(return_value=httpx.Response(200, json={"status": "healthy"}))
+    route = _agent_run_mock(base, {
+        "result": {"content": "hi", "sql": None, "evidence": []},
+        "termination_reason": "completed", "message": "", "run_id": "r1", "session_id": None})
+    from duckquery_mcp.tools.query import ask_agent
+    await ask_agent(DuckQueryClient(cfg), cfg, question="q")
+    assert "session_id" not in json.loads(route.calls.last.request.content)
+
+
+@respx.mock
+async def test_generate_sql_validates_not_executes(cfg):
+    """generate_sql → mode=generate_sql;返回校验过的 SQL 草案,不代为执行。"""
+    base = "http://127.0.0.1:48001"
+    respx.get(f"{base}/health").mock(return_value=httpx.Response(200, json={"status": "healthy"}))
+    route = _agent_run_mock(base, {
+        "result": {"sql": "SELECT 1 AS n", "used_tables": ["orders"]},
+        "termination_reason": "completed", "message": "", "run_id": "r1", "session_id": None})
+    from duckquery_mcp.tools.query import generate_sql
+    out = await generate_sql(DuckQueryClient(cfg), cfg, question="how many?", tables=["orders"])
+    sent = json.loads(route.calls.last.request.content)
+    assert sent["mode"] == "generate_sql"
+    assert sent["input"] == {"question": "how many?"}
+    assert sent["context"]["tables"] == ["orders"]
+    assert out["result"]["sql"] == "SELECT 1 AS n"
+
+
+@respx.mock
+async def test_repair_sql_passes_schema_context(cfg):
+    """repair_sql → mode=repair_sql;tables/attach_databases 落 context,报错医生按真实
     schema 出方案。db_ 前缀归一化发生在注册闭包层(见 test_normalize.py)。"""
     base = "http://127.0.0.1:48001"
     respx.get(f"{base}/health").mock(return_value=httpx.Response(200, json={"status": "healthy"}))
-    route = respx.post(f"{base}/api/ai/error-fix").mock(
-        return_value=httpx.Response(200, json={"success": True, "data": {"fixed_sql": "SELECT 1"}}))
-    from duckquery_mcp.tools.query import error_fix
-    await error_fix(DuckQueryClient(cfg), cfg, sql="SELECT x FROM m.t", error_message="boom",
-                    tables=["m.t"], attach_databases=[{"alias": "m", "connection_id": "SORDER"}])
+    route = _agent_run_mock(base, {
+        "result": {"explanation": "列名错了", "fixed_sql": "SELECT 1"},
+        "termination_reason": "completed", "message": "", "run_id": "r1", "session_id": None})
+    from duckquery_mcp.tools.query import repair_sql
+    out = await repair_sql(DuckQueryClient(cfg), cfg, sql="SELECT x FROM m.t", error_message="boom",
+                           tables=["m.t"], attach_databases=[{"alias": "m", "connection_id": "SORDER"}])
     sent = json.loads(route.calls.last.request.content)
-    assert sent["sql"] == "SELECT x FROM m.t"
-    assert sent["error"] == "boom"
-    assert sent["tables"] == ["m.t"]
-    assert sent["attach_databases"] == [{"alias": "m", "connection_id": "SORDER"}]
-    assert sent["locale"] == "zh"
+    assert sent["mode"] == "repair_sql"
+    assert sent["input"] == {"sql": "SELECT x FROM m.t", "error": "boom"}
+    assert sent["context"]["tables"] == ["m.t"]
+    assert sent["context"]["attach_databases"] == [{"alias": "m", "connection_id": "SORDER"}]
+    assert out["result"]["fixed_sql"] == "SELECT 1"
 
 
 @respx.mock
-async def test_ask_generates_then_runs(cfg):
+async def test_explain_sql_no_tools_context(cfg):
+    """explain_sql → mode=explain_sql;无表上下文,仅 locale。"""
     base = "http://127.0.0.1:48001"
     respx.get(f"{base}/health").mock(return_value=httpx.Response(200, json={"status": "healthy"}))
-    respx.post(f"{base}/api/ai/nl-to-sql").mock(
-        return_value=httpx.Response(200, json={"success": True, "data": {"sql": "SELECT 1 AS n"}}))
-    respx.post(f"{base}/api/duckdb/execute").mock(
-        return_value=httpx.Response(200, json={"success": True,
-            "data": {"columns": ["n"], "data": [{"n": 1}], "row_count": 1}}))
-    from duckquery_mcp.tools.query import ask
-    client = DuckQueryClient(cfg)
-    out = await ask(client, cfg, question="how many?")
-    assert out["generated_sql"] == "SELECT 1 AS n"
-    assert out["rows"] == [{"n": 1}]
+    route = _agent_run_mock(base, {
+        "result": {"explanation": "取所有订单"},
+        "termination_reason": "completed", "message": "", "run_id": "r1", "session_id": None})
+    from duckquery_mcp.tools.query import explain_sql
+    out = await explain_sql(DuckQueryClient(cfg), cfg, sql="SELECT * FROM orders", locale="zh")
+    sent = json.loads(route.calls.last.request.content)
+    assert sent["mode"] == "explain_sql"
+    assert sent["input"] == {"sql": "SELECT * FROM orders"}
+    assert sent["context"] == {"locale": "zh"}
+    assert out["result"]["explanation"] == "取所有订单"
+
+
+@respx.mock
+async def test_suggest_chart_result_or_null(cfg):
+    """suggest_chart → mode=suggest_chart;返回 ChartSpec 或 null(回退)。"""
+    base = "http://127.0.0.1:48001"
+    respx.get(f"{base}/health").mock(return_value=httpx.Response(200, json={"status": "healthy"}))
+    route = _agent_run_mock(base, {
+        "result": {"type": "bar", "x": "cat", "y": ["amt"], "agg": "sum"},
+        "termination_reason": "completed", "message": "", "run_id": "r1", "session_id": None})
+    from duckquery_mcp.tools.query import suggest_chart
+    out = await suggest_chart(DuckQueryClient(cfg), cfg,
+                              columns=[{"name": "cat", "type": "VARCHAR"}, {"name": "amt", "type": "DOUBLE"}],
+                              sample=[{"cat": "a", "amt": 1}])
+    sent = json.loads(route.calls.last.request.content)
+    assert sent["mode"] == "suggest_chart"
+    assert sent["input"]["columns"][0] == {"name": "cat", "type": "VARCHAR"}
+    assert sent["context"] == {"locale": "zh"}
+    assert out["result"]["type"] == "bar"

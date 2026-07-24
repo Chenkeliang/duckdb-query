@@ -131,6 +131,50 @@ def _migrate_legacy_file_to_db() -> Optional[Dict[str, Any]]:
     return merged
 
 
+# 1.3.0 破坏性升级:5 个旧独立 LLM 功能键 → 统一 Agent 的 per-profile 键
+# (profile.model_feature)。suggest_chart 键名前后一致,无需搬移;开发期 interim
+# 迁移产物 `agent` 一并收敛到 data_qa。同 target 多来源时按此表顺序取先者。
+_LEGACY_TO_PROFILE: Dict[str, str] = {
+    "chat": "data_qa",
+    "agent": "data_qa",
+    "nl_to_sql": "generate_sql",
+    "error_doctor": "repair_sql",
+    "error_fix": "repair_sql",
+    "explain": "explain_sql",
+}
+
+
+def migrate_legacy_features_to_profiles(stored: Dict[str, Any]) -> tuple[Dict[str, Any], bool]:
+    """一次性版本迁移:旧独立功能键 → 统一 Agent 的 per-profile 键(1.3.0)。
+
+    chat/agent→data_qa、nl_to_sql→generate_sql、error_doctor/error_fix→repair_sql、
+    explain→explain_sql(suggest_chart 键名不变,不动)。目标 profile 键已配置则不
+    覆盖;旧键一律删除(不留半迁移)。以是否存在任一旧键为门控,自终止且幂等
+    (迁移后旧键不复存在 → 再次读取不触发)。features 里只有 provider/model 字符串、
+    不含密钥,搬移无加密副作用。**仅数据升级**:运行时只按 profile.model_feature
+    解析(per-profile 覆盖 → default_provider 兜底),从不回退到这些旧键。
+    """
+    features = stored.get("features")
+    if not isinstance(features, dict):
+        return stored, False
+    changed = False
+    for legacy_key, profile_key in _LEGACY_TO_PROFILE.items():
+        if legacy_key not in features:
+            continue
+        legacy_cfg = features.pop(legacy_key) or {}
+        changed = True
+        target = features.get(profile_key) or {}
+        target_configured = bool(target.get("provider") or target.get("model"))
+        if not target_configured and (legacy_cfg.get("provider") or legacy_cfg.get("model")):
+            features[profile_key] = {
+                "provider": legacy_cfg.get("provider"),
+                "model": legacy_cfg.get("model"),
+            }
+    if changed:
+        stored["features"] = features
+    return stored, changed
+
+
 def load_ai_settings(path: Optional[Path] = None) -> Dict[str, Any]:
     """读取持久化的 AI 设置(存储态,api_key 为密文)。
 
@@ -144,6 +188,11 @@ def load_ai_settings(path: Optional[Path] = None) -> Dict[str, Any]:
     stored = metadata_manager.get_app_setting(_AI_SETTINGS_KEY)
     if stored is None:
         stored = _migrate_legacy_file_to_db()
+    # legacy→profile 一次性迁移:命中则持久化回库,此后幂等不再触发
+    if stored:
+        stored, changed = migrate_legacy_features_to_profiles(stored)
+        if changed:
+            metadata_manager.save_app_setting(_AI_SETTINGS_KEY, stored)
     merged = default_ai_config()
     merged.update(stored or {})
     return merged

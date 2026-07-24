@@ -12,11 +12,12 @@ describe('AgentSseParser', () => {
   it('parses complete events with names and payloads', () => {
     const p = new AgentSseParser();
     const events = p.push(
-      EV('run_started', { run_id: 'r1', limits: { llm_calls: 6, sql_calls: 3, seconds: 90 } }) +
-        EV('answer', { run_id: 'r1', answer: 'ok', sql: null, evidence: [], termination_reason: 'completed' }),
+      EV('run_started', { run_id: 'r1', session_id: null, limits: { steps: 6, sql_calls: 3, seconds: 90, llm_calls: 7 } }) +
+        EV('answer', { run_id: 'r1', result: { content: 'ok', sql: null, evidence: [] }, termination_reason: 'completed' }),
     );
     expect(events.map((e) => e.event)).toEqual(['run_started', 'answer']);
-    expect((events[1] as Extract<AgentEvent, { event: 'answer' }>).answer).toBe('ok');
+    const ans = events[1] as Extract<AgentEvent, { event: 'answer' }>;
+    expect((ans.result as { content: string }).content).toBe('ok');
   });
 
   it('handles an event split across chunks', () => {

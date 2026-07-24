@@ -243,14 +243,7 @@
       "qaExplainLead": "请解释这段 SQL 在做什么（用中文，分点说明）：",
       "qaOptimizeLead": "请帮我优化这段 SQL，并说明优化点和原因：",
       "chat": "对话",
-      "chatTitle": "数据助手",
-      "chatPlaceholder": "问数据助手…（Enter 发送）",
-      "chatHint": "生成的 SQL 可一键插入编辑器，绝不自动执行",
-      "chatEmpty": "问我关于这些表的任何问题，或让我帮你写查询。我知道你选中表的结构。",
-      "chatFailed": "AI 对话失败",
       "insertToEditor": "插入编辑器",
-      "agentMode": "智能体",
-      "classicMode": "经典",
       "agentSteps": "探查过程",
       "evidence": "依据",
       "stop": "停止",
@@ -264,7 +257,8 @@
       "termTime": "已达时间预算终止",
       "termCancelled": "已停止",
       "termProvider": "模型服务调用失败",
-      "termInternal": "内部错误"
+      "termInternal": "内部错误",
+      "agentTitle": "数据智能体"
     },
     "tableSelector": {
       "selectTable": "选择表",

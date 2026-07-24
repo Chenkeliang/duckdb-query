@@ -11,34 +11,21 @@ from typing import Any, Dict
 from core.common.exceptions import ResourceNotFoundError
 from core.common.timezone_utils import format_storage_time_for_response
 from core.data.file_datasource_manager import file_datasource_manager
-from core.database.duckdb_engine import validate_query_syntax, with_duckdb_connection
-from core.database.federated_attach import (
-    attach_databases_on_connection,
-    detach_databases_on_connection,
-    format_qualified_table_reference,
-    resolve_attach_configs,
-)
+from core.database.federated_attach import resolve_attach_configs
 from models.query_models import AttachDatabase
 from core.database.duckdb_pool import with_system_connection
 from core.services import (
     ai_agent,
     ai_agent_tools,
-    ai_chat,
+    ai_profiles,
     ai_config,
-    ai_error_doctor,
-    ai_explain,
-    ai_nl_to_sql,
-    ai_suggest_chart,
-    llm_context,
-    schema_sampler,
     table_registry,
 )
 from core.services.ai_agent_tools import AgentRunCtx
 from core.services.llm_service import AIConfigError, AIDisabledError, LLMService
-from core.services.retriever import KeywordRetriever
 from fastapi import APIRouter, Request
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, ValidationError
 from utils.response_helpers import (
     MessageCode,
     create_list_response,
@@ -104,439 +91,32 @@ def test_provider(provider_id: str):
         )
 
 
-class ErrorFixPayload(BaseModel):
-    sql: str
-    error: str
-    tables: list[str] = []
-    attach_databases: list[AttachDatabase] = []
-    locale: str = "zh"
-
-
 def _ai_error_response(exc: Exception):
     """把 LLM 服务异常映射成 spec §4.3 的稳定错误码。"""
     code = "ai_disabled" if isinstance(exc, AIDisabledError) else "ai_not_configured"
     return error_json_response(400, code, str(exc))
 
 
-def _sampled_block(con: Any, cand: str, ref: str, rows: list, budget: int) -> str:
-    """本地未限定表才采样(联邦/限定名带 ".")；返回样例块或空串。"""
-    if "." in cand or budget <= 0:
-        return ""
-    return schema_sampler.sample_table_block(
-        con,
-        ref,
-        [(r[0], r[1]) for r in rows],
-        max_chars=min(schema_sampler.PER_TABLE_CHAR_BUDGET, budget),
-    )
-
-
-def _build_schema_text(
-    tables: list[str], attach_databases: list[Any] | None = None
-) -> str:
-    if not tables:
-        return ""
-    if len(tables) > 10:
-        logger.info(
-            "schema text truncated to first 10 of %d tables for AI context", len(tables)
-        )
-    # 联邦表(如 mysql_sorder.iget_order)需要先 ATTACH 远端库，否则 DESCRIBE 取不到结构
-    attach_configs = resolve_attach_configs(attach_databases)
-    lines: list[str] = []
-    sample_budget = schema_sampler.OVERALL_CHAR_BUDGET
-    sampled_any = False
-    with with_duckdb_connection() as con:
-        attached: list[str] = []
-        try:
-            if attach_configs:
-                attached = attach_databases_on_connection(con, attach_configs)
-            for name in tables[:10]:
-                # 客户端常传裸表名(如 sservice),但 ATTACH 后联邦表在 alias 目录下,
-                # 需回退尝试 alias.table；已是限定名则直接用。逐段转义引号防注入。
-                candidates = [name]
-                if "." not in name and attached:
-                    candidates += [f"{alias}.{name}" for alias in attached]
-                for cand in candidates:
-                    try:
-                        ref = format_qualified_table_reference(cand)
-                        rows = con.execute(f"DESCRIBE {ref}").fetchall()
-                        cols = ", ".join(f"{r[0]} {r[1]}" for r in rows)
-                        lines.append(f"{name}({cols})")
-                        # 带真实取值样例,解决 WHERE 条件值靠猜的问题
-                        block = _sampled_block(con, cand, ref, rows, sample_budget)
-                        if block:
-                            lines.append(block)
-                            sample_budget -= len(block)
-                            sampled_any = True
-                        break
-                    except Exception:  # noqa: BLE001
-                        continue
-        finally:
-            if attached:
-                detach_databases_on_connection(con, attached)
-    text = "\n".join(lines)
-    if sampled_any:
-        text = schema_sampler.SAMPLE_DISCLAIMER + "\n" + text
-    return text
-
-
-# [完整目录] 预算与展开上限：见 _build_catalog_text 说明
-_CATALOG_CHAR_BUDGET = 9000
-_CATALOG_LOCAL_TABLE_LIMIT = 20
-_CATALOG_EXTERNAL_TABLE_LIMIT = 30
-_CATALOG_COLUMN_LIMIT = 30
-
-
-def _format_catalog_table(name: str, columns: list[tuple]) -> str:
-    """单表的目录行：`表名(col TYPE, ...)`，超过 30 列截断并标注剩余数量。"""
-    shown = columns[:_CATALOG_COLUMN_LIMIT]
-    col_str = ", ".join(f"{c[0]} {c[1]}" for c in shown)
-    extra = len(columns) - len(shown)
-    if extra > 0:
-        col_str += f", ... +{extra} more"
-    return f"{name}({col_str})"
-
-
-def _display_time(ts: str) -> str:
-    """存储 UTC 时间串 → 应用时区的 'YYYY-MM-DD HH:MM'(给模型/用户看)。"""
-    try:
-        local = format_storage_time_for_response(datetime.fromisoformat(ts))
-    except ValueError:
-        local = None
-    return (local or ts)[:16].replace("T", " ")
-
-
-def _catalog_lines_for_tables(
-    con: Any,
-    database_name: str,
-    table_names: list[str],
-    selected: set,
-    detail_limit: int,
-    name_prefix: str = "",
-    created_map: dict[str, str] | None = None,
-    schema_name: str | None = None,
-) -> list[str]:
-    """给一批表名生成目录行：前 detail_limit 张带列，其余仅列名。
-
-    已出现在 selected（详细段）里的表，这里跳过列只列名，避免重复。
-    created_map 提供时在行尾标注创建时间,让模型能回答"最新/今天建的表"。
-    """
-    lines: list[str] = []
-    detailed, rest = table_names[:detail_limit], table_names[detail_limit:]
-    for name in detailed:
-        qualified = f"{name_prefix}{name}" if name_prefix else name
-        ts = (created_map or {}).get(name, "")
-        suffix = f" [created {_display_time(ts)}]" if ts else ""
-        if name in selected or qualified in selected:
-            lines.append(f"  {name}{suffix}")
-            continue
-        try:
-            column_sql = """
-                SELECT column_name, data_type FROM duckdb_columns()
-                WHERE database_name = ? AND table_name = ?
-            """
-            params = [database_name, name]
-            if schema_name:
-                column_sql += " AND schema_name = ?"
-                params.append(schema_name)
-            column_sql += " ORDER BY column_index"
-            cols = con.execute(column_sql, params).fetchall()
-            lines.append(f"  {_format_catalog_table(name, cols)}{suffix}")
-        except Exception as exc:  # noqa: BLE001  单表枚举失败不影响其它表
-            logger.warning("catalog: describe %s.%s failed: %s", database_name, name, exc)
-            lines.append(f"  {name}")
-    if rest:
-        lines.append(f"  (仅名字: {', '.join(rest)})")
-    return lines
-
-
-def _build_catalog_text(selected: set, attach_databases: list[Any] | None = None) -> str:
-    """构造聊天上下文里的"完整目录"，与 _build_schema_text 互补。
-
-    _build_schema_text 只详细展开前端选中的（<=10 张）表；用户在对话里提到未选中
-    但同一连接下存在的表（如 JOIN 页只勾了 alerts，问「把 rules 也加入」）时，AI 单看
-    详细段会误判"表不存在"。本函数额外枚举本地库 + 已挂载外部库的全部表名（前 N 张
-    带列），让 AI 能在目录里确认表是否存在、以及外部表该用哪个 alias.table 引用。
-
-    任何一个来源枚举失败都 try/except 跳过并 logger.warning，不让 chat 整体失败。
-    """
-    sections: list[str] = []
-    try:
-        attach_configs = resolve_attach_configs(attach_databases)
-    except Exception as exc:  # noqa: BLE001  连接已被删除等场景不应影响本地目录
-        logger.warning("catalog: resolve attach_databases failed: %s", exc)
-        attach_configs = []
-    # alias → 引擎类型标注:让模型知道表来自哪种库(可解释类型差异),
-    # 同时目录头明示"仍需 DuckDB 语法",抑制向源库方言漂移
-    _TYPE_LABELS = {
-        "mysql": "MySQL",
-        "postgresql": "PostgreSQL",
-        "sqlite": "SQLite",
-        "duckdb": "DuckDB",
-    }
-    alias_types = {
-        alias: _TYPE_LABELS.get(str(cfg.get("type") or "").lower(), "external")
-        for alias, cfg in attach_configs
-    }
-    with with_duckdb_connection() as con:
-        attached: list[str] = []
-        try:
-            # 本地 DuckDB 表：目录名用 current_database()，不假设固定叫 main。
-            # 顺序与侧边栏同口径:登记表 sort_seq 倒序(单调持久,免疫 oid 漂移/
-            # 时区/同秒;2026-07-23 设计),created_at 仅逐行标注供模型理解"最新"
-            try:
-                local_db = con.execute("SELECT current_database()").fetchone()[0]
-                local_names = [
-                    r[0]
-                    for r in con.execute(
-                        """
-                        SELECT table_name FROM duckdb_tables()
-                        WHERE NOT internal AND database_name = ?
-                          AND schema_name = 'main'
-                          AND lower(table_name) NOT LIKE 'system_%'
-                        ORDER BY table_oid DESC
-                        """,
-                        [local_db],
-                    ).fetchall()
-                ]
-                if local_names:
-                    registry = table_registry.sync(
-                        local_names,
-                        created_lookup=file_datasource_manager.get_file_datasource,
-                    )
-                    created_map = {
-                        name: entry["created_at"].isoformat()
-                        for name, entry in registry.items()
-                        if isinstance(entry.get("created_at"), datetime)
-                    }
-                    local_names.sort(
-                        key=lambda n: (registry.get(n) or {}).get("sort_seq") or 0,
-                        reverse=True,
-                    )
-                    lines = ["Local DuckDB tables (newest created first):"]
-                    lines.extend(
-                        _catalog_lines_for_tables(
-                            con,
-                            local_db,
-                            local_names,
-                            selected,
-                            _CATALOG_LOCAL_TABLE_LIMIT,
-                            created_map=created_map,
-                            schema_name="main",
-                        )
-                    )
-                    sections.append("\n".join(lines))
-            except Exception as exc:  # noqa: BLE001
-                logger.warning("catalog: enumerate local tables failed: %s", exc)
-
-            # 外部（联邦）库：逐个 alias 枚举，单个失败不影响其它 alias / 本地段
-            if attach_configs:
-                try:
-                    attached = attach_databases_on_connection(con, attach_configs)
-                except Exception as exc:  # noqa: BLE001
-                    logger.warning("catalog: attach external databases failed: %s", exc)
-                for alias in attached:
-                    try:
-                        ext_names = [
-                            r[0]
-                            for r in con.execute(
-                                "SELECT table_name FROM duckdb_tables() "
-                                "WHERE database_name = ? ORDER BY table_name",
-                                [alias],
-                            ).fetchall()
-                        ]
-                        if not ext_names:
-                            continue
-                        db_type = alias_types.get(alias, "external")
-                        lines = [
-                            f"External database {alias} ({db_type} source, "
-                            f"reference as {alias}.table, query with DuckDB syntax):"
-                        ]
-                        lines.extend(
-                            _catalog_lines_for_tables(
-                                con,
-                                alias,
-                                ext_names,
-                                selected,
-                                _CATALOG_EXTERNAL_TABLE_LIMIT,
-                                name_prefix=f"{alias}.",
-                            )
-                        )
-                        sections.append("\n".join(lines))
-                    except Exception as exc:  # noqa: BLE001
-                        logger.warning("catalog: enumerate external db %s failed: %s", alias, exc)
-        finally:
-            if attached:
-                detach_databases_on_connection(con, attached)
-
-    text = "\n\n".join(sections)
-    if len(text) > _CATALOG_CHAR_BUDGET:
-        text = text[:_CATALOG_CHAR_BUDGET] + "\n  (catalog truncated)"
-    return text
-
-
-@router.post("/api/ai/error-fix", tags=["AI"])
-def error_fix(payload: ErrorFixPayload):
-    cfg = ai_config.load_ai_settings()
-    schema_text = _build_schema_text(payload.tables, payload.attach_databases)
-    try:
-        result = ai_error_doctor.explain_and_fix(
-            LLMService(cfg), payload.sql, payload.error, schema_text, payload.locale
-        )
-    except (AIDisabledError, AIConfigError) as exc:
-        return _ai_error_response(exc)
-    return create_success_response(
-        data=result, message_code=MessageCode.OPERATION_SUCCESS
-    )
-
-
-class ExplainSqlPayload(BaseModel):
-    sql: str
-    locale: str = "zh"
-
-
-@router.post("/api/ai/explain-sql", tags=["AI"])
-def explain_sql_route(payload: ExplainSqlPayload):
-    cfg = ai_config.load_ai_settings()
-    try:
-        result = ai_explain.explain_sql(LLMService(cfg), payload.sql, "", payload.locale)
-    except (AIDisabledError, AIConfigError) as exc:
-        return _ai_error_response(exc)
-    except Exception as exc:  # noqa: BLE001  供应商真实调用失败(网络/Key/超时)
-        return error_json_response(
-            502, MessageCode.OPERATION_FAILED, f"AI explain failed: {exc}"
-        )
-    return create_success_response(data=result, message_code=MessageCode.OPERATION_SUCCESS)
-
-
-def _list_candidate_tables() -> list[str]:
-    """main schema 下的表名,作为 KeywordRetriever 的候选池(失败则空)。"""
-    try:
-        with with_duckdb_connection() as con:
-            rows = con.execute(
-                "SELECT table_name FROM information_schema.tables "
-                "WHERE table_schema = 'main'"
-            ).fetchall()
-        return [r[0] for r in rows]
-    except Exception:  # noqa: BLE001
-        return []
-
-
-class NlToSqlPayload(BaseModel):
-    question: str
-    tables: list[str] = []
-    locale: str = "zh"
-
-
-def _explain_validator(sql: str) -> tuple[bool, str]:
-    """EXPLAIN 干跑校验(只做规划不执行,亿级大表也便宜)。"""
-    with with_duckdb_connection() as con:
-        return validate_query_syntax(sql, con=con)
-
-
-@router.post("/api/ai/nl-to-sql", tags=["AI"])
-def nl_to_sql_route(payload: NlToSqlPayload):
-    cfg = ai_config.load_ai_settings()
-    candidates = _list_candidate_tables()
-    relevant = KeywordRetriever().retrieve(payload.question, payload.tables, candidates)
-    schema_text = _build_schema_text(relevant)
-    context = llm_context.build_nl2sql_context(schema_text, locale=payload.locale)
-    try:
-        result = ai_nl_to_sql.nl_to_sql(
-            LLMService(cfg),
-            payload.question,
-            context,
-            payload.locale,
-            validator=_explain_validator,
-            schema_text=schema_text,
-        )
-    except (AIDisabledError, AIConfigError) as exc:
-        return _ai_error_response(exc)
-    except Exception as exc:  # noqa: BLE001
-        return error_json_response(
-            502, MessageCode.OPERATION_FAILED, f"AI nl-to-sql failed: {exc}"
-        )
-    return create_success_response(data=result, message_code=MessageCode.OPERATION_SUCCESS)
-
-
-class ChatMessage(BaseModel):
-    role: str
-    content: str
-
-
-class ChatPayload(BaseModel):
-    messages: list[ChatMessage] = []
-    tables: list[str] = []
-    attach_databases: list[AttachDatabase] = []
-    locale: str = "zh"
-    current_sql: str = ""
-
-
-@router.post("/api/ai/chat", tags=["AI"])
-def chat_route(payload: ChatPayload):
-    cfg = ai_config.load_ai_settings()
-    detailed_text = _build_schema_text(payload.tables, payload.attach_databases)
-    try:
-        catalog_text = _build_catalog_text(set(payload.tables), payload.attach_databases)
-    except Exception as exc:  # noqa: BLE001  目录构建失败不应影响 chat 本身
-        logger.warning("catalog build failed, falling back to detailed schema only: %s", exc)
-        catalog_text = ""
-    schema_text = f"[Selected tables (detailed)]\n{detailed_text}"
-    if catalog_text:
-        schema_text += f"\n\n[Full catalog]\n{catalog_text}"
-    # 用户工作台当前 SQL(如 JOIN 预览):放在 schema 段之后，让助手能回答
-    # "在当前 SQL 里加上……" 这类追问；截断避免超长 SQL 占满上下文
-    current_sql = (payload.current_sql or "").strip()[:4000]
-    if current_sql:
-        schema_text += (
-            "\n\nCurrent SQL in the user's workbench:\n"
-            f"```sql\n{current_sql}\n```"
-        )
-    try:
-        result = ai_chat.chat(
-            LLMService(cfg),
-            [m.model_dump() for m in payload.messages],
-            schema_text,
-            payload.locale,
-        )
-    except (AIDisabledError, AIConfigError) as exc:
-        return _ai_error_response(exc)
-    except Exception as exc:  # noqa: BLE001  供应商真实调用失败(网络/Key/超时)
-        return error_json_response(
-            502, MessageCode.OPERATION_FAILED, f"AI chat failed: {exc}"
-        )
-    return create_success_response(data=result, message_code=MessageCode.OPERATION_SUCCESS)
-
-
-class AgentChatPayload(BaseModel):
-    messages: list[ChatMessage] = []
+class AgentContext(BaseModel):
     tables: list[str] = []
     attach_databases: list[AttachDatabase] = []
     current_sql: str = ""
     locale: str = "zh"
 
 
-def _build_agent_context(payload: AgentChatPayload, ctx: AgentRunCtx) -> str:
-    """智能体初始上下文:紧凑目录 + 选中表详情(含样例) + 别名 + 当前 SQL。
+class AgentRequest(BaseModel):
+    """统一 Agent 请求(mode 判别)。input 各 mode 结构不同(见 §9.3),context 共用。
 
-    渐进披露(2026-07-23 评审):目录只给名字/行数/创建时间,列结构靠
-    inspect_table 按需获取,避免大 prompt 与工具调用双重付费。
+    - data_qa: input={messages:[{role,content}]}
+    - generate_sql: input={question}
+    - repair_sql: input={sql, error}
+    - explain_sql: input={sql}
+    - suggest_chart: input={columns, sample}
     """
-    catalog = ai_agent_tools._search_tables(  # pylint: disable=protected-access
-        ctx, ai_agent_tools.SearchTablesArgs(query="")
-    ).model_text
-    parts = [f"[Catalog (newest first)]\n{catalog}"]
-    if payload.tables:
-        detailed = _build_schema_text(payload.tables, payload.attach_databases)
-        if detailed:
-            parts.append(f"[Selected tables (detailed, with samples)]\n{detailed}")
-    parts.append(
-        "[Attached aliases authorized this conversation] "
-        + (", ".join(ctx.authorized_aliases) if ctx.authorized_aliases else "(none)")
-    )
-    current_sql = (payload.current_sql or "").strip()[:4000]
-    if current_sql:
-        parts.append(f"[Current SQL in the user's workbench]\n```sql\n{current_sql}\n```")
-    return "\n\n".join(parts)
+    mode: str
+    session_id: str | None = None  # 仅关联标识,不承载 mode/权限/模型;本轮不落库
+    input: Dict[str, Any] = {}
+    context: AgentContext = AgentContext()
 
 
 def _sse(event: Dict[str, Any]) -> str:
@@ -545,53 +125,77 @@ def _sse(event: Dict[str, Any]) -> str:
     return f"event: {name}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
 
 
-@router.post("/api/ai/agent-chat", tags=["AI"])
-async def agent_chat_route(payload: AgentChatPayload, request: Request):
-    """数据智能体(SSE)。契约见 docs/API_CONTRACT_FE_BE.md §9.3。"""
+def _prepare_agent(req: AgentRequest):
+    """两个 transport(stream / run)的共享准备:profile 解析 + 配置校验 + ctx + runner。
+
+    绝不复制两套循环——stream 与 run 消费同一个 run_agent(同一 Engine+Profile)。
+    未知 mode 抛 UnknownAgentModeError → 400 VALIDATION_ERROR(非法判别键,非配置问题);
+    配置不可用抛 AIDisabledError/AIConfigError → 400。
+    """
+    profile = ai_profiles.get_profile(req.mode)
+    if profile is None:
+        raise ai_profiles.UnknownAgentModeError(f"unknown agent mode: {req.mode}")
     cfg = ai_config.load_ai_settings()
     if not cfg.get("enabled"):
-        return _ai_error_response(AIDisabledError("AI features are disabled"))
-    resolved = ai_config.resolve_feature(cfg, "agent")
+        raise AIDisabledError("AI features are disabled")
+    resolved = ai_config.resolve_feature(cfg, profile.model_feature)
     if not resolved["provider"] or not resolved["model"]:
-        return _ai_error_response(
-            AIConfigError("No provider/model configured for feature 'agent'")
-        )
+        raise AIConfigError(f"No provider/model configured for agent mode '{req.mode}'")
+    # 严格输入契约:按 Profile.input_model 校验(空 question / 缺 sql / 错 columns → 400)
+    inp = profile.validate_input(req.input or {})  # 抛 pydantic ValidationError → 路由映射 400
     try:
-        attach_configs = resolve_attach_configs(payload.attach_databases)
+        attach_configs = resolve_attach_configs(req.context.attach_databases)
     except Exception as exc:  # noqa: BLE001  单个失效连接不拦整个会话,降级为本地
-        logger.warning("agent-chat: resolve attach_databases failed: %s", exc)
+        logger.warning("agent: resolve attach_databases failed: %s", exc)
         attach_configs = []
     ctx = AgentRunCtx(
         run_id=ai_agent.new_run_id(),
         authorized_aliases=[alias for alias, _ in attach_configs],
         attach_configs=attach_configs,
-        locale=payload.locale,
+        locale=req.context.locale,
         provider=(resolved["provider"] or {}).get("id", ""),
         model=resolved["model"] or "",
+        session_id=req.session_id,
     )
-    context_text = _build_agent_context(payload, ctx)
+    context_dict = {
+        "tables": req.context.tables,
+        "attach_databases": req.context.attach_databases,
+        "current_sql": req.context.current_sql,
+        "locale": req.context.locale,
+    }
+    messages = inp.get("messages") if isinstance(inp, dict) else None
     agen = ai_agent.run_agent(
-        LLMService(cfg), ctx, [m.model_dump() for m in payload.messages], context_text
+        LLMService(cfg), profile, ctx, inp=inp, context=context_dict, messages=messages,
     )
+    return agen, ctx
+
+
+@router.post("/api/ai/agent/stream", tags=["AI"])
+async def agent_stream_route(req: AgentRequest, request: Request):
+    """统一 Agent(SSE)。主要供 data_qa。契约见 docs/API_CONTRACT_FE_BE.md §9.3。"""
+    try:
+        agen, ctx = _prepare_agent(req)
+    except ValidationError as exc:
+        return error_json_response(400, MessageCode.VALIDATION_ERROR,
+                                   f"invalid input for mode '{req.mode}': {exc.errors()[:3]}")
+    except ai_profiles.UnknownAgentModeError as exc:
+        return error_json_response(400, MessageCode.VALIDATION_ERROR, str(exc))
+    except (AIDisabledError, AIConfigError) as exc:
+        return _ai_error_response(exc)
 
     async def event_stream():
         queue: asyncio.Queue = asyncio.Queue()
 
         async def pump():
-            # CancelledError 属 BaseException,不会被下面的 Exception 捕获,自然上抛
+            # CancelledError 属 BaseException,不被下面 Exception 捕获,自然上抛
             try:
                 async for ev in agen:
                     await queue.put(ev)
             except Exception as exc:  # noqa: BLE001  循环内部错误也走 error 事件
                 logger.error("agent run failed: %s", exc, exc_info=True)
-                await queue.put(
-                    {
-                        "event": "error",
-                        "run_id": ctx.run_id,
-                        "termination_reason": "internal_error",
-                        "message": str(exc)[:200],
-                    }
-                )
+                await queue.put({"event": "error", "run_id": ctx.run_id,
+                                 "termination_reason": "internal_error",
+                                 "message": str(exc)[:200]})
             finally:
                 await queue.put(None)
 
@@ -605,7 +209,7 @@ async def agent_chat_route(payload: AgentChatPayload, request: Request):
                 try:
                     ev = await asyncio.wait_for(queue.get(), timeout=15)
                 except asyncio.TimeoutError:
-                    yield ": ka\n\n"  # SSE 心跳注释,防代理静默断连
+                    yield ": ka\n\n"  # SSE 心跳,防代理静默断连
                     continue
                 if ev is None:
                     break
@@ -619,19 +223,58 @@ async def agent_chat_route(payload: AgentChatPayload, request: Request):
                 pass
 
     return StreamingResponse(
-        event_stream(),
-        media_type="text/event-stream",
+        event_stream(), media_type="text/event-stream",
         headers={"Cache-Control": "no-cache", "X-Accel-Buffering": "no"},
+    )
+
+
+@router.post("/api/ai/agent/run", tags=["AI"])
+async def agent_run_route(req: AgentRequest):
+    """统一 Agent(非流式 JSON)。供 generate_sql/repair_sql/explain_sql/suggest_chart
+    与 MCP。与 stream 复用同一个 run_agent。返回 {result, termination_reason, run_id}——
+    成功与各类终止都返回同结构;result 为对应 Profile 的 output_model 或 null。
+    """
+    try:
+        agen, ctx = _prepare_agent(req)
+    except ValidationError as exc:
+        return error_json_response(400, MessageCode.VALIDATION_ERROR,
+                                   f"invalid input for mode '{req.mode}': {exc.errors()[:3]}")
+    except ai_profiles.UnknownAgentModeError as exc:
+        return error_json_response(400, MessageCode.VALIDATION_ERROR, str(exc))
+    except (AIDisabledError, AIConfigError) as exc:
+        return _ai_error_response(exc)
+
+    result: Any = None
+    termination = "internal_error"
+    message = ""
+    try:
+        async for ev in agen:
+            if ev["event"] == "answer":
+                result = ev.get("result")
+                termination = ev.get("termination_reason", "completed")
+            elif ev["event"] == "error":
+                termination = ev.get("termination_reason", "internal_error")
+                message = ev.get("message", "")
+    except Exception as exc:  # noqa: BLE001  循环内部错误也如实返回
+        logger.error("agent run failed: %s", exc, exc_info=True)
+        termination = "internal_error"
+        message = str(exc)[:200]
+
+    return create_success_response(
+        data={"result": result, "termination_reason": termination,
+              "message": message, "run_id": ctx.run_id, "session_id": ctx.session_id},
+        message_code=MessageCode.OPERATION_SUCCESS,
     )
 
 
 @router.get("/api/ai/agent-runs", tags=["AI"])
 def list_agent_runs(limit: int = 20):
-    """智能体运行观测(调试用):不含 prompt/key/数据行。"""
+    """Agent 运行观测(调试用):不含 prompt/key/数据行。"""
     limit = max(1, min(int(limit), 100))
     columns = [
-        "run_id", "provider", "model", "llm_calls", "tool_calls", "sql_calls",
-        "sql_rejected", "json_errors", "termination_reason", "elapsed_ms", "created_at",
+        "run_id", "mode", "provider", "model", "steps", "llm_calls", "tool_calls",
+        "sql_calls", "sql_rejected", "json_errors", "termination_reason", "elapsed_ms",
+        "created_at",
     ]
     try:
         with with_system_connection() as conn:
@@ -651,25 +294,3 @@ def list_agent_runs(limit: int = 20):
     return create_list_response(
         items=items, total=len(items), message_code=MessageCode.OPERATION_SUCCESS
     )
-
-
-class SuggestChartPayload(BaseModel):
-    columns: list[Dict[str, Any]] = []
-    sample: list[Dict[str, Any]] = []
-    locale: str = "zh"
-
-
-@router.post("/api/ai/suggest-chart", tags=["AI"])
-def suggest_chart_route(payload: SuggestChartPayload):
-    cfg = ai_config.load_ai_settings()
-    try:
-        result = ai_suggest_chart.suggest_chart(
-            LLMService(cfg), payload.columns, payload.sample, payload.locale
-        )
-    except (AIDisabledError, AIConfigError) as exc:
-        return _ai_error_response(exc)
-    except Exception as exc:  # noqa: BLE001
-        return error_json_response(
-            502, MessageCode.OPERATION_FAILED, f"AI suggest-chart failed: {exc}"
-        )
-    return create_success_response(data=result, message_code=MessageCode.OPERATION_SUCCESS)

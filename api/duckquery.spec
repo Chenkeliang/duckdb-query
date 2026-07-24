@@ -16,7 +16,8 @@ a = Analysis(
         # NOTE: no ('config', 'config') — runtime config is resolved from
         # get_config_dir() (CONFIG_DIR env / per-user dir), never the bundle.
         # api/config is a runtime-generated dir, absent in a clean CI checkout.
-        ('prompts', 'prompts'),            # read-only prompt templates
+        # (api/prompts removed with the old nl2sql service — 1.3.0 agent profiles
+        #  carry their prompts inline in core/services/ai_profiles.py.)
         *collect_data_files('openpyxl'),
     ],
     # NOTE: DuckDB extensions (Mach-O dylibs) are copied post-build via shutil below

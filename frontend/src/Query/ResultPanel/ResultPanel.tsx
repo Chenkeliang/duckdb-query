@@ -10,6 +10,7 @@ import {
   getQueryExportDownloadUrl,
   saveQueryExportToPath,
   toAttachDatabasesPayload,
+  runAgent,
 } from '@/api';
 import {
   showErrorToast,
@@ -23,7 +24,13 @@ import { pickSavePath } from '@/desktop/saveLocal';
 import { Button } from '@/components/ui/button';
 import { SQLHighlight } from '@/components/SQLHighlight';
 import { useAiEnabled } from '@/hooks/useAiEnabled';
-import { errorFix, type ErrorFixResult } from '@/api';
+
+/** repair_sql 的 result 形状(= 旧 ErrorFixResult:结构不变)。 */
+interface RepairResult {
+  explanation: string;
+  fixed_sql: string | null;
+  safe: boolean;
+}
 import { parseSQLTableReferences } from '@/utils/sqlUtils';
 import { EngineCompatSelfHealBanner } from '@/Query/components/EngineCompatSelfHealBanner';
 import { IS_DEMO } from '@/demo/isDemo';
@@ -204,7 +211,7 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
 
   // AI 报错医生（LLM 解释并修复），仅在 AI 开启时露出入口
   const aiEnabled = useAiEnabled();
-  const [aiFix, setAiFix] = useState<ErrorFixResult | null>(null);
+  const [aiFix, setAiFix] = useState<RepairResult | null>(null);
   const [aiFixing, setAiFixing] = useState(false);
 
   // 图表数据源（多页用激活 tab,单槽用外层),供单/多页两条渲染路径共用
@@ -499,13 +506,20 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
     const runAiFix = async () => {
       setAiFixing(true);
       try {
-        const r = await errorFix(effectiveSQL || '', error.message, {
-          // 带上 SQL 里引用的表(联邦表用限定名)+ 外部库，让医生看到真实列名
-          tables: parseSQLTableReferences(effectiveSQL || '').map((ref) => ref.fullName),
-          attachDatabases: effectiveAttachDatabases,
-          locale: i18n.language?.startsWith('zh') ? 'zh' : 'en',
+        const r = await runAgent<RepairResult>({
+          mode: 'repair_sql',
+          input: { sql: effectiveSQL || '', error: error.message },
+          context: {
+            // SQL 里引用的表(联邦表用限定名)+ 外部库，让 agent 看到真实列名
+            tables: parseSQLTableReferences(effectiveSQL || '').map((ref) => ref.fullName),
+            attach_databases: (effectiveAttachDatabases || []).map((d) => ({
+              alias: d.alias,
+              connection_id: d.connectionId,
+            })),
+            locale: i18n.language?.startsWith('zh') ? 'zh' : 'en',
+          },
         });
-        setAiFix(r);
+        setAiFix(r.result);
       } catch (e) {
         showErrorToast(t, e as Error, t('query.result.aiFixFailed', 'AI 修复失败'));
       } finally {

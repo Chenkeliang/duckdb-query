@@ -1,13 +1,12 @@
 /**
- * AiChatDrawer 智能体模式:事件驱动的步骤条与答案渲染、插入编辑器、经典模式回退。
+ * AiChatDrawer(纯 Agent):事件驱动的步骤条与答案渲染、插入编辑器、诚实终止。
  */
 import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
-  chat: vi.fn(),
   getDuckDBTables: vi.fn().mockResolvedValue([]),
-  agentChatStream: vi.fn(),
+  streamAgent: vi.fn(),
 }));
 
 vi.mock('react-i18next', () => ({
@@ -17,12 +16,8 @@ vi.mock('react-i18next', () => ({
 }));
 
 vi.mock('@/api', () => ({
-  chat: mocks.chat,
   getDuckDBTables: mocks.getDuckDBTables,
-}));
-
-vi.mock('@/api/agentApi', () => ({
-  agentChatStream: mocks.agentChatStream,
+  streamAgent: mocks.streamAgent,
 }));
 
 import { AiChatDrawer } from '../AiChatDrawer';
@@ -48,12 +43,12 @@ function renderDrawer(onInsertSQL = vi.fn()) {
 
 describe('AiChatDrawer agent mode', () => {
   it('renders steps and final answer from the event stream, insert works', async () => {
-    mocks.agentChatStream.mockImplementation(async (_body, { onEvent }) => {
-      onEvent({ event: 'run_started', run_id: 'r1', limits: { llm_calls: 6, sql_calls: 3, seconds: 90 } });
+    mocks.streamAgent.mockImplementation(async (_body, { onEvent }) => {
+      onEvent({ event: 'run_started', run_id: 'r1', session_id: null, limits: { steps: 6, sql_calls: 3, seconds: 90, llm_calls: 7 } });
       onEvent({ event: 'tool_started', run_id: 'r1', tool_call_id: 't1', tool: 'run_query', args_summary: 'SELECT …' });
       onEvent({ event: 'tool_completed', run_id: 'r1', tool_call_id: 't1', tool: 'run_query', ok: true, ui_summary: 'returned 2 rows', truncated: false, elapsed_ms: 12 });
-      onEvent({ event: 'answer', run_id: 'r1', answer: '已支付 2 笔', sql: "SELECT count(*) FROM orders WHERE status='paid'", evidence: ['t1'], termination_reason: 'completed' });
-      onEvent({ event: 'done', run_id: 'r1', usage: { llm_calls: 2, tool_calls: 1, sql_calls: 1, elapsed_ms: 900 } });
+      onEvent({ event: 'answer', run_id: 'r1', result: { content: '已支付 2 笔', sql: "SELECT count(*) FROM orders WHERE status='paid'", evidence: ['t1'] }, termination_reason: 'completed' });
+      onEvent({ event: 'done', run_id: 'r1', session_id: null, usage: { llm_calls: 2, tool_calls: 1, sql_calls: 1, elapsed_ms: 900 } });
     });
     const onInsert = renderDrawer();
 
@@ -71,15 +66,13 @@ describe('AiChatDrawer agent mode', () => {
     expect(onInsert).toHaveBeenCalledWith(
       "SELECT count(*) FROM orders WHERE status='paid'",
     );
-    // 智能体模式不调用经典 chat
-    expect(mocks.chat).not.toHaveBeenCalled();
   });
 
   it('shows honest termination on error events', async () => {
-    mocks.agentChatStream.mockImplementation(async (_body, { onEvent }) => {
-      onEvent({ event: 'run_started', run_id: 'r1', limits: { llm_calls: 6, sql_calls: 3, seconds: 90 } });
+    mocks.streamAgent.mockImplementation(async (_body, { onEvent }) => {
+      onEvent({ event: 'run_started', run_id: 'r1', session_id: null, limits: { steps: 6, sql_calls: 3, seconds: 90, llm_calls: 7 } });
       onEvent({ event: 'error', run_id: 'r1', termination_reason: 'protocol_violation', message: 'bad json' });
-      onEvent({ event: 'done', run_id: 'r1', usage: { llm_calls: 2, tool_calls: 0, sql_calls: 0, elapsed_ms: 100 } });
+      onEvent({ event: 'done', run_id: 'r1', session_id: null, usage: { llm_calls: 2, tool_calls: 0, sql_calls: 0, elapsed_ms: 100 } });
     });
     renderDrawer();
     fireEvent.change(screen.getByPlaceholderText(/问数据智能体/), {
@@ -89,17 +82,5 @@ describe('AiChatDrawer agent mode', () => {
     await waitFor(() =>
       expect(screen.getByText(/模型未遵守协议/)).toBeTruthy(),
     );
-  });
-
-  it('classic mode falls back to the existing chat endpoint', async () => {
-    mocks.chat.mockResolvedValue({ content: '经典回复' });
-    renderDrawer();
-    fireEvent.click(screen.getByText('经典'));
-    fireEvent.change(screen.getByPlaceholderText(/问数据助手/), {
-      target: { value: '你好' },
-    });
-    fireEvent.keyDown(screen.getByPlaceholderText(/问数据助手/), { key: 'Enter' });
-    await waitFor(() => expect(screen.getByText('经典回复')).toBeTruthy());
-    expect(mocks.agentChatStream).not.toHaveBeenCalled();
   });
 });

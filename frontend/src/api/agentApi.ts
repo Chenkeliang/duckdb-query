@@ -1,28 +1,58 @@
 /**
- * 数据智能体(agent-chat)的 SSE 客户端。
+ * 统一 Agent API：一个 Engine + 多个 mode + 两个 transport。
  *
- * EventSource 只支持 GET,本端点是 POST——用 fetch + ReadableStream 手读。
- * 解析器独立导出便于单测(事件可能跨 chunk 断开)。
+ * - streamAgent → POST /api/ai/agent/stream (SSE)，主要供 data_qa 展示步骤/取消。
+ * - runAgent    → POST /api/ai/agent/run (JSON)，供 generate_sql/repair_sql/
+ *   explain_sql/suggest_chart 等一次性 mode。
+ * 请求统一为 {mode, session_id?, input, context}；组件只调这两个函数,不各自拼协议。
  * 契约见 docs/API_CONTRACT_FE_BE.md §9.3。
  */
 
-import { baseURL } from './client';
+import { apiClient, baseURL, normalizeResponse } from './client';
+
+export interface AgentMessage {
+  role: 'user' | 'assistant';
+  content: string;
+}
+
+export type AgentMode =
+  | 'data_qa'
+  | 'generate_sql'
+  | 'repair_sql'
+  | 'explain_sql'
+  | 'suggest_chart';
+
+export interface AgentContext {
+  tables?: string[];
+  attach_databases?: { alias: string; connection_id: string }[];
+  current_sql?: string;
+  locale?: 'zh' | 'en';
+}
+
+export interface AgentRequest {
+  mode: AgentMode;
+  session_id?: string | null;
+  input: Record<string, unknown>;
+  context?: AgentContext;
+}
 
 export interface AgentLimitsInfo {
-  llm_calls: number;
+  steps: number;
   sql_calls: number;
   seconds: number;
+  llm_calls: number;
+}
+
+/** data_qa 的 result 形状(其它 mode 的 result 结构见各自 output_model)。 */
+export interface DataQaResult {
+  content: string;
+  sql: string | null;
+  evidence: string[];
 }
 
 export type AgentEvent =
-  | { event: 'run_started'; run_id: string; limits: AgentLimitsInfo }
-  | {
-      event: 'tool_started';
-      run_id: string;
-      tool_call_id: string;
-      tool: string;
-      args_summary: string;
-    }
+  | { event: 'run_started'; run_id: string; session_id: string | null; limits: AgentLimitsInfo }
+  | { event: 'tool_started'; run_id: string; tool_call_id: string; tool: string; args_summary: string }
   | {
       event: 'tool_completed';
       run_id: string;
@@ -33,27 +63,22 @@ export type AgentEvent =
       truncated: boolean;
       elapsed_ms: number;
     }
-  | {
-      event: 'answer';
-      run_id: string;
-      answer: string;
-      sql: string | null;
-      evidence: string[];
-      termination_reason: 'completed';
-    }
+  | { event: 'answer'; run_id: string; result: Record<string, unknown> | null; termination_reason: string }
   | { event: 'error'; run_id: string; termination_reason: string; message: string }
   | {
       event: 'done';
       run_id: string;
-      usage: { llm_calls: number; tool_calls: number; sql_calls: number; elapsed_ms: number };
+      session_id: string | null;
+      usage: { steps: number; llm_calls: number; tool_calls: number; sql_calls: number; elapsed_ms: number };
     };
 
-export interface AgentChatRequest {
-  messages: { role: 'user' | 'assistant'; content: string }[];
-  tables?: string[];
-  attach_databases?: { alias: string; connection_id: string }[];
-  current_sql?: string;
-  locale?: 'zh' | 'en';
+/** 非流式结果:result 为对应 mode 的 output_model,或 null(校验失败/回退)。 */
+export interface AgentRunResult<T = Record<string, unknown>> {
+  result: T | null;
+  termination_reason: string;
+  message: string;
+  run_id: string;
+  session_id: string | null;
 }
 
 /** 增量 SSE 解析器:按空行分事件,容忍事件跨 chunk;注释行(心跳)忽略。 */
@@ -86,20 +111,17 @@ export class AgentSseParser {
 }
 
 /**
- * 发起智能体对话,onEvent 逐事件回调;返回时流已结束。
+ * 流式 Agent（SSE）。onEvent 逐事件回调;返回时流已结束。
  * 取消:传入 AbortSignal 并 abort——服务端检测断连后会中断在跑的探查查询。
  */
-export async function agentChatStream(
-  body: AgentChatRequest,
-  {
-    onEvent,
-    signal,
-  }: { onEvent: (event: AgentEvent) => void; signal?: AbortSignal },
+export async function streamAgent(
+  req: AgentRequest,
+  { onEvent, signal }: { onEvent: (event: AgentEvent) => void; signal?: AbortSignal },
 ): Promise<void> {
-  const resp = await fetch(`${baseURL}/api/ai/agent-chat`, {
+  const resp = await fetch(`${baseURL}/api/ai/agent/stream`, {
     method: 'POST',
     headers: { 'Content-Type': 'application/json', Accept: 'text/event-stream' },
-    body: JSON.stringify(body),
+    body: JSON.stringify(req),
     signal,
   });
   if (!resp.ok || !resp.body) {
@@ -126,4 +148,12 @@ export async function agentChatStream(
       onEvent(event);
     }
   }
+}
+
+/** 非流式 Agent（JSON）。返回 {result, termination_reason, ...}。 */
+export async function runAgent<T = Record<string, unknown>>(
+  req: AgentRequest,
+): Promise<AgentRunResult<T>> {
+  const res = await apiClient.post('/api/ai/agent/run', req);
+  return normalizeResponse<AgentRunResult<T>>(res).data;
 }

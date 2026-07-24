@@ -8,7 +8,7 @@ import {
 import { Dialog, DialogContent } from '@/components/ui/dialog';
 import { Popover, PopoverAnchor, PopoverContent } from '@/components/ui/popover';
 import { showErrorToast } from '@/utils/toastHelpers';
-import { suggestChart } from '@/api';
+import { runAgent } from '@/api';
 import { executeDuckDBSQL, executeFederatedQuery } from '@/api/queryApi';
 import {
   classifyColumns, defaultSpec, validateSpec, buildChartSql, buildDrilldownSql, aggregateRows, capCategories,
@@ -51,8 +51,9 @@ export function ChartView({ columns, rows, truncated, source, aiEnabled, locale 
     setServerAgg(null);
     if (aiEnabled && columns.length) {
       setSuggesting(true);
-      suggestChart(columns, rows.slice(0, 5), { locale })
-        .then((s) => { if (alive) setSpec(validateSpec(s as ChartSpec, columns)); })
+      runAgent<ChartSpec>({ mode: 'suggest_chart', input: { columns, sample: rows.slice(0, 5) }, context: { locale } })
+        // result 为 null(校验失败/回退)时用 defaultSpec,图表页面不报错
+        .then((r) => { if (alive) setSpec(r.result ? validateSpec(r.result as ChartSpec, columns) : defaultSpec(columns)); })
         .catch(() => {})
         .finally(() => { if (alive) setSuggesting(false); });
     }
@@ -167,8 +168,8 @@ export function ChartView({ columns, rows, truncated, source, aiEnabled, locale 
         {aiEnabled && (
           <Button variant="ghost" size="sm" disabled={suggesting} onClick={() => {
             setSuggesting(true);
-            suggestChart(columns, rows.slice(0, 5), { locale })
-              .then((s) => setSpec(validateSpec(s as ChartSpec, columns)))
+            runAgent<ChartSpec>({ mode: 'suggest_chart', input: { columns, sample: rows.slice(0, 5) }, context: { locale } })
+              .then((r) => setSpec(r.result ? validateSpec(r.result as ChartSpec, columns) : defaultSpec(columns)))
               .catch((e) => showErrorToast(t, e as Error, t('query.chart.suggest', 'AI 推荐')))
               .finally(() => setSuggesting(false));
           }}>

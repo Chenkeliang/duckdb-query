@@ -243,14 +243,7 @@
       "qaExplainLead": "Explain what this SQL does (in bullet points):",
       "qaOptimizeLead": "Optimize this SQL and explain what you changed and why:",
       "chat": "Chat",
-      "chatTitle": "Data Assistant",
-      "chatPlaceholder": "Ask the data assistant… (Enter to send)",
-      "chatHint": "Generated SQL can be inserted into the editor; never auto-executed",
-      "chatEmpty": "Ask me anything about these tables, or have me write a query. I know your selected tables’ schema.",
-      "chatFailed": "AI chat failed",
       "insertToEditor": "Insert into editor",
-      "agentMode": "Agent",
-      "classicMode": "Classic",
       "agentSteps": "Exploration",
       "evidence": "Evidence",
       "stop": "Stop",
@@ -264,7 +257,8 @@
       "termTime": "Time budget reached",
       "termCancelled": "Stopped",
       "termProvider": "Model provider call failed",
-      "termInternal": "Internal error"
+      "termInternal": "Internal error",
+      "agentTitle": "Data Agent"
     },
     "tableSelector": {
       "selectTable": "Select table",

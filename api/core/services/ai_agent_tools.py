@@ -15,6 +15,7 @@ import time
 from dataclasses import dataclass
 from typing import Callable, Dict, List, Optional
 
+import duckdb
 from pydantic import BaseModel
 
 from core.database.duckdb_engine import validate_query_syntax, with_duckdb_connection
@@ -25,7 +26,7 @@ from core.database.federated_attach import (
     format_qualified_table_reference,
 )
 from core.services import ai_sql_guard, schema_sampler, table_registry
-from core.services.ai_error_doctor import _is_select_only
+from core.services.ai_sql_validation import is_select_only
 
 logger = logging.getLogger(__name__)
 
@@ -53,8 +54,10 @@ class AgentRunCtx:
     locale: str = "zh"
     provider: str = ""
     model: str = ""
+    session_id: Optional[str] = None  # 仅关联标识,回显用;不落库(不做会话历史)
     sql_calls_used: int = 0
     sql_rejected: int = 0
+    llm_calls: int = 0  # 真实 LLM 调用总数(steps + reformats)
 
 
 @dataclass
@@ -63,8 +66,8 @@ class AgentTool:
     description: str
     args_model: type[BaseModel]
     handler: Callable[[AgentRunCtx, BaseModel], "ToolResult"]
-    tier: str = "read"
-    origin: str = "builtin"
+    capability: str = "read"  # v1 恒 read;confirm 语义预留给未来写工具
+    origin: str = "builtin"   # builtin / skill / mcp:<server>(未来 Adapter)
 
     def args_schema(self) -> dict:
         return self.args_model.model_json_schema()
@@ -106,26 +109,70 @@ def _search_tables(ctx: AgentRunCtx, args: SearchTablesArgs) -> ToolResult:
     names.sort(key=lambda n: (registry.get(n) or {}).get("sort_seq") or 0, reverse=True)
     if needle:
         names = [n for n in names if needle in n.lower()]
-    total = len(names)
-    shown = names[:_SEARCH_CAP]
+    # 联邦发现:枚举已授权别名下的远端表,返回限定名 alias.table(只取元数据不采样)。
+    remote = _discover_attached_tables(ctx, needle)
+    local_total, remote_total = len(names), len(remote)
+    # 本地与联邦共用一个有界上限:本地优先占额,余额给远端
+    shown_local = names[:_SEARCH_CAP]
+    shown_remote = remote[: max(0, _SEARCH_CAP - len(shown_local))]
     lines = []
-    for n in shown:
+    for n in shown_local:
         created = (registry.get(n) or {}).get("created_at")
         created_s = f", created {str(created)[:16]}" if created else ""
         lines.append(f"- {n} (~{sizes.get(n, 0)} rows{created_s})")
+    for qn in shown_remote:
+        lines.append(f"- {qn} (attached, query by this qualified name)")
     if ctx.authorized_aliases:
         lines.append(
             "Attached aliases (query as alias.table): "
             + ", ".join(ctx.authorized_aliases)
         )
-    if total > len(shown):
-        lines.append(f"…and {total - len(shown)} more; refine the query.")
+    extra = (local_total - len(shown_local)) + (remote_total - len(shown_remote))
+    if extra > 0:
+        lines.append(f"…and {extra} more; refine the query.")
     text = "\n".join(lines) if lines else "(no matching tables)"
+    grand_total = local_total + remote_total
     return ToolResult(
         model_text=text,
-        ui_summary=f"matched {total} tables" if needle else f"listed {min(total, _SEARCH_CAP)} tables",
+        ui_summary=(
+            f"matched {grand_total} tables" if needle
+            else f"listed {min(grand_total, _SEARCH_CAP)} tables"
+        ),
         elapsed_ms=int((time.time() - t0) * 1000),
     )
+
+
+def _discover_attached_tables(ctx: AgentRunCtx, needle: str) -> List[str]:
+    """枚举本次请求已授权别名(ctx.attach_configs)下的远端表,返回限定名 alias.table。
+
+    只 ATTACH 当前请求明确授权的配置;每个别名独立容错(一个连接失败不阻断本地及
+    其他别名);ATTACH 必在 finally DETACH;发现阶段只返回表名元数据,不采样、不外发
+    远端数据行。复用既有 ATTACH/DETACH 原语与连接池。
+    """
+    if not ctx.attach_configs:
+        return []
+    out: List[str] = []
+    for alias, db_config in ctx.attach_configs:
+        try:
+            with with_duckdb_connection() as con:
+                attached = attach_databases_on_connection(con, [(alias, db_config)])
+                try:
+                    rrows = con.execute(
+                        "SELECT table_name FROM duckdb_tables() "
+                        "WHERE database_name = ? AND NOT internal ORDER BY table_name",
+                        [alias],
+                    ).fetchall()
+                finally:
+                    if attached:
+                        detach_databases_on_connection(con, attached)
+            for (tname,) in rrows:
+                qualified = f"{alias}.{tname}"
+                if needle and needle not in qualified.lower():
+                    continue
+                out.append(qualified)
+        except Exception as exc:  # noqa: BLE001  单别名失败不阻断本地/其他别名发现
+            logger.warning("agent search: discover attached alias '%s' failed: %s", alias, exc)
+    return out
 
 
 def _inspect_table(ctx: AgentRunCtx, args: InspectTableArgs) -> ToolResult:
@@ -216,9 +263,24 @@ def _execute_guarded(ctx: AgentRunCtx, sql: str) -> ToolResult:
             exec_sql = (
                 sql if has_top_level_limit(sql) else ensure_query_has_limit(sql, ROW_CAP + 1)
             )
-            cur = con.execute(exec_sql)
-            columns = [d[0] for d in (cur.description or [])]
-            rows = cur.fetchmany(ROW_CAP + 1)
+            # 执行期异常(EXPLAIN 过、con.execute/fetchmany 才炸,如 Conversion/InvalidInput/
+            # OutOfRange)必须作为 observation 回喂,让模型自修复(改 json_extract_string、
+            # TRY_CAST 等),不能逃逸成 Loop 的 internal_error(见模块契约 §7、回归
+            # test_ai_agent_tools 运行期错误用例)。InterruptException 是中断/超时信号,
+            # 原样上抛交回 run_query_async,绝不吞——不改变取消与超时行为。
+            try:
+                cur = con.execute(exec_sql)
+                columns = [d[0] for d in (cur.description or [])]
+                rows = cur.fetchmany(ROW_CAP + 1)
+            except duckdb.InterruptException:
+                raise
+            except duckdb.Error as exc:
+                return ToolResult(
+                    model_text=f"error: query execution failed: {str(exc)[:280]}",
+                    ui_summary="query execution failed",
+                    ok=False,
+                    elapsed_ms=int((time.time() - t0) * 1000),
+                )
             truncated_rows = len(rows) > ROW_CAP
             rows = rows[:ROW_CAP]
             text, clipped = _clip(_rows_to_text(columns, rows))
@@ -248,7 +310,7 @@ async def run_query_async(ctx: AgentRunCtx, args: RunQueryArgs, max_sql_calls: i
             ok=False,
         )
     ctx.sql_calls_used += 1
-    if not _is_select_only(sql):
+    if not is_select_only(sql):
         ctx.sql_rejected += 1
         return ToolResult(
             model_text="error: only a single read-only SELECT statement is allowed",
@@ -326,9 +388,13 @@ def build_registry() -> Dict[str, AgentTool]:
     }
 
 
-def render_tools_for_prompt(registry: Dict[str, AgentTool]) -> str:
+def render_tools_for_prompt(
+    registry: Dict[str, AgentTool], allowed: Optional[tuple] = None
+) -> str:
     lines = []
-    for tool in registry.values():
+    for name, tool in registry.items():
+        if allowed is not None and name not in allowed:
+            continue
         props = tool.args_schema().get("properties", {})
         args = ", ".join(f'"{k}"' for k in props) or "(none)"
         lines.append(f"{tool.name}: {tool.description} — args: {args}")

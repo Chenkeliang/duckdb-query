@@ -129,7 +129,7 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
   });
 
   // ===== AI:统一对话(解释/优化/问数据 收敛到对话,三态门控) =====
-  const chatStatus = useAiStatus('chat');
+  const chatStatus = useAiStatus('data_qa');
   const aiLocale: 'zh' | 'en' = i18n.language?.startsWith('zh') ? 'zh' : 'en';
   const openAiSettings = onOpenAiSettings ?? (() => {});
   const [chatOpen, setChatOpen] = useState(false);
