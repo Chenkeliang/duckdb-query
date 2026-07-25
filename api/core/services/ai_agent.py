@@ -99,6 +99,17 @@ def _classify_protocol_miss(parsed: Any, action: Any) -> str:
     return f"unknown_action:{action!r}"   # action 值不在允许工具集/final 内
 
 
+def _looks_like_json_action(raw: str) -> bool:
+    """回复"看起来是 JSON 动作但没解析出来"——用于给出针对转义的纠正提示。
+
+    实测形态:模型把单元格文本连同双引号写进 content 字符串却没转义,整个对象因此
+    解析失败,被归类成 no_json_object。此时泛泛地说"请回复 JSON"没有任何信息量。
+    """
+    if not raw:
+        return False
+    return '"action"' in raw and "{" in raw
+
+
 def _log_protocol_miss(ctx: AgentRunCtx, raw: str, parsed: Any, action: Any,
                        *, gave_up: bool, reformats: int) -> None:
     """归类导致 reformat / protocol_violation 的非法回复(仅日志观测,不改变预算/行为)。
@@ -291,14 +302,23 @@ async def run_agent(
                     yield _error(ctx, termination, "model failed to follow the action protocol")
                     break
                 pending_reformat = True
-                # 合法动作必须包含该 Profile 的**全部终止动作**(不能写死 final):
-                # 实测 24_注入 场景里模型想"拒绝",但清单里没有 refuse,于是它一字不差地
-                # 重复散文拒绝,一次纠错机会白白浪费掉。
+                # 合法动作必须包含该 Profile 的**全部终止动作**(不能写死 final)。
                 valid = ", ".join([*profile.allowed_tools, *profile.terminal_actions])
-                hint = f"reply with exactly one JSON object and nothing else; valid actions: {valid}"
-                if "refuse" in profile.terminal_actions:
-                    hint += ('. A refusal or a caveat is ALSO an action — send '
-                             '{"action":"refuse","result":{"content":"..."}}, never plain prose')
+                if _looks_like_json_action(raw):
+                    # 实测主因(24_注入):模型发的是完整 final 动作,但在 content 里引用
+                    # 单元格文本时把双引号原样写进 JSON 字符串 → 解析失败。此时告诉它
+                    # "请回复一个 JSON 对象"毫无意义——它认为自己已经照做了,于是原样重发。
+                    # 必须点明是转义问题。
+                    hint = ("your reply contained a JSON object but it FAILED TO PARSE — almost "
+                            "always an unescaped double quote or raw newline inside a string "
+                            'value. Re-send the SAME action, escaping every inner quote as \\" '
+                            "and every newline as \\n. Quote cell text without adding raw quotes.")
+                else:
+                    hint = ("reply with exactly one JSON object and nothing else; "
+                            f"valid actions: {valid}")
+                    if "refuse" in profile.terminal_actions:
+                        hint += ('. A refusal or a caveat is ALSO an action — send '
+                                 '{"action":"refuse","result":{"content":"..."}}, never plain prose')
                 conversation.append({"role": "assistant", "content": raw or ""})
                 conversation.append({"role": "user", "content": _obs(
                     {"error": "invalid_action", "hint": hint},
