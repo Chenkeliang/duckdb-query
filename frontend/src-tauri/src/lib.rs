@@ -60,36 +60,59 @@ const ENGINE_LOG_CAP_BYTES: u64 = 4 * 1024 * 1024;
 
 /// 后端 stderr 的落盘副本:启动失败/异常退出的完整 traceback(含 PyInstaller
 /// 引导期报错)都在这里,用户发一个文件即可定位,不依赖截图。每次 spawn 覆盖
-/// 重写(与 startup.log 同策略);写满上限后停写——启动期日志远小于上限,上限
-/// 只为防长会话的请求日志无限膨胀。任何写失败都静默降级,日志决不能反过来
-/// 影响后端运行。
+/// 重写(与 startup.log 同策略)。
+///
+/// 写满上限后**轮转**(当前文件改名为 .log.1,再开新文件继续写),而不是停写:
+/// 停写会让长会话里最该被诊断的那次失败恰好落在上限之后而无迹可寻——一次 80 轮
+/// 验收就撞过这个坑,唯一一次 protocol_violation 的分类日志被丢掉了。轮转把占用
+/// 仍限制在两个文件(约 8MB),但保证"最近的日志一定在"。任何写失败都静默降级,
+/// 日志决不能反过来影响后端运行。
 struct EngineLog {
     file: Option<std::fs::File>,
+    path: Option<PathBuf>,
     written: u64,
 }
 
 impl EngineLog {
     fn create_at(path: Option<PathBuf>) -> Self {
-        let file = path.and_then(|p| {
+        let file = path.as_ref().and_then(|p| {
             if let Some(dir) = p.parent() {
                 let _ = std::fs::create_dir_all(dir);
             }
             std::fs::File::create(p).ok() // 覆盖重写,只保留本次启动
         });
-        EngineLog { file, written: 0 }
+        EngineLog { file, path, written: 0 }
     }
 
     fn create() -> Self {
         Self::create_at(engine_log_path())
     }
 
-    fn line(&mut self, s: &str) {
-        let Some(f) = self.file.as_mut() else { return };
-        if self.written >= ENGINE_LOG_CAP_BYTES {
-            let _ = writeln!(f, "[engine-stderr.log capped at 4MB; further output dropped]");
+    /// 轮转到 .log.1 并开新文件;任何一步失败就退回"停写",绝不让日志影响后端。
+    fn rotate(&mut self) {
+        let Some(path) = self.path.clone() else {
             self.file = None;
             return;
+        };
+        self.file = None; // 先关掉旧句柄再改名
+        let mut previous = path.clone();
+        previous.set_extension("log.1");
+        let _ = std::fs::remove_file(&previous);
+        if std::fs::rename(&path, &previous).is_err() {
+            return; // 改名失败:保持停写,避免无限膨胀
         }
+        self.file = std::fs::File::create(&path).ok();
+        self.written = 0;
+        if let Some(f) = self.file.as_mut() {
+            let _ = writeln!(f, "[engine-stderr.log rotated; previous 4MB kept as engine-stderr.log.1]");
+        }
+    }
+
+    fn line(&mut self, s: &str) {
+        if self.file.is_some() && self.written >= ENGINE_LOG_CAP_BYTES {
+            self.rotate();
+        }
+        let Some(f) = self.file.as_mut() else { return };
         let _ = writeln!(f, "{s}");
         self.written += s.len() as u64 + 1;
     }
@@ -451,16 +474,25 @@ mod tests {
     }
 
     #[test]
-    fn engine_log_stops_writing_at_cap() {
+    fn engine_log_rotates_at_cap_and_keeps_newest() {
+        // 回归:上限到了要轮转而不是停写。停写会让长会话里最该诊断的那次失败
+        // 恰好落在上限之后(80 轮验收里唯一一次 protocol_violation 就是这样丢的)。
         let dir = std::env::temp_dir().join(format!("dq-engine-cap-test-{}", std::process::id()));
         let path = dir.join("engine-stderr.log");
         let mut log = EngineLog::create_at(Some(path.clone()));
+        log.line("old line before cap");
         log.written = ENGINE_LOG_CAP_BYTES; // 模拟已写满
-        log.line("dropped line");
-        log.line("also dropped");
-        let content = std::fs::read_to_string(&path).unwrap();
-        assert!(content.contains("capped at 4MB"));
-        assert!(!content.contains("dropped line"));
+        log.line("line after cap");
+        drop(log);
+
+        let current = std::fs::read_to_string(&path).unwrap();
+        assert!(current.contains("line after cap"), "轮转后最新日志必须还在");
+        assert!(!current.contains("old line before cap"), "新文件不应含旧内容");
+
+        let mut previous = path.clone();
+        previous.set_extension("log.1");
+        let kept = std::fs::read_to_string(&previous).unwrap();
+        assert!(kept.contains("old line before cap"), "上一段日志应保留为 .log.1");
         let _ = std::fs::remove_dir_all(&dir);
     }
 
