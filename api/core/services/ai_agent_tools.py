@@ -86,6 +86,10 @@ class InspectTableArgs(BaseModel):
     table: str
 
 
+class DescribeTablesArgs(BaseModel):
+    tables: List[str] = []
+
+
 class RunQueryArgs(BaseModel):
     sql: str
 
@@ -147,36 +151,89 @@ def _search_tables(ctx: AgentRunCtx, args: SearchTablesArgs) -> ToolResult:
     )
 
 
+# 远端表清单的**进程内**短 TTL 缓存(绝不落盘):远端库结构随时可能被 DDL 改动,
+# 缓存只用来省掉同一轮对话里的重复 ATTACH 扫描;真正写 SQL 前仍由执行链上的
+# EXPLAIN(活库)裁决,所以最坏后果是多跑一轮,而不是给出错误答案。
+_ATTACHED_TTL_S = 45.0
+_ATTACHED_CACHE: Dict[str, Tuple[float, List[str]]] = {}
+# 默认 schema:这些不进限定名(DuckDB/SQLite 是 main);其余 schema(PostgreSQL 的
+# public/业务 schema、MySQL 的库名)保留成三段名 alias.schema.table。
+_DEFAULT_SCHEMAS = {"main"}
+
+
+def _cache_key(alias: str, db_config: dict) -> str:
+    ident = "|".join(str(db_config.get(k, "")) for k in
+                     ("type", "host", "port", "database", "path"))
+    return f"{alias.lower()}::{ident}"
+
+
+def _scan_attached_tables(alias: str, db_config: dict) -> List[str]:
+    """ATTACH 一个别名并枚举其表(含 schema),返回限定名列表。只取元数据,不采样。"""
+    with with_duckdb_connection() as con:
+        attached = attach_databases_on_connection(con, [(alias, db_config)])
+        try:
+            rrows = con.execute(
+                "SELECT schema_name, table_name FROM duckdb_tables() "
+                "WHERE database_name = ? AND NOT internal "
+                "ORDER BY schema_name, table_name",
+                [alias],
+            ).fetchall()
+        finally:
+            if attached:
+                detach_databases_on_connection(con, attached)
+    out: List[str] = []
+    for schema, tname in rrows:
+        sname = str(schema or "")
+        if sname.lower() in _DEFAULT_SCHEMAS or not sname:
+            out.append(f"{alias}.{tname}")
+        else:
+            out.append(f"{alias}.{sname}.{tname}")
+    return out
+
+
+def attached_tables_cached(alias: str, db_config: dict,
+                           ttl: float = _ATTACHED_TTL_S) -> Tuple[List[str], float]:
+    """返回 (限定名列表, 缓存年龄秒)。命中 TTL 内的缓存则不再连远端。"""
+    key = _cache_key(alias, db_config)
+    now = time.time()
+    hit = _ATTACHED_CACHE.get(key)
+    if hit and (now - hit[0]) < ttl:
+        return hit[1], now - hit[0]
+    names = _scan_attached_tables(alias, db_config)
+    _ATTACHED_CACHE[key] = (now, names)
+    return names, 0.0
+
+
+def invalidate_attached_tables(alias: Optional[str] = None) -> None:
+    """强制下次重新读取库结构(用户点"刷新结构",或查询报表/列不存在时自愈)。"""
+    if alias is None:
+        _ATTACHED_CACHE.clear()
+        return
+    prefix = f"{alias.lower()}::"
+    for key in [k for k in _ATTACHED_CACHE if k.startswith(prefix)]:
+        _ATTACHED_CACHE.pop(key, None)
+
+
 def _discover_attached_tables(ctx: AgentRunCtx, needle: str) -> List[str]:
-    """枚举本次请求已授权别名(ctx.attach_configs)下的远端表,返回限定名 alias.table。
+    """枚举本次请求已授权别名(ctx.attach_configs)下的远端表,返回限定名。
 
     只 ATTACH 当前请求明确授权的配置;每个别名独立容错(一个连接失败不阻断本地及
     其他别名);ATTACH 必在 finally DETACH;发现阶段只返回表名元数据,不采样、不外发
-    远端数据行。复用既有 ATTACH/DETACH 原语与连接池。
+    远端数据行。带 schema 的库(PostgreSQL 等)返回三段名 alias.schema.table。
     """
     if not ctx.attach_configs:
         return []
     out: List[str] = []
     for alias, db_config in ctx.attach_configs:
         try:
-            with with_duckdb_connection() as con:
-                attached = attach_databases_on_connection(con, [(alias, db_config)])
-                try:
-                    rrows = con.execute(
-                        "SELECT table_name FROM duckdb_tables() "
-                        "WHERE database_name = ? AND NOT internal ORDER BY table_name",
-                        [alias],
-                    ).fetchall()
-                finally:
-                    if attached:
-                        detach_databases_on_connection(con, attached)
-            for (tname,) in rrows:
-                qualified = f"{alias}.{tname}"
-                if needle and needle not in qualified.lower():
-                    continue
-                out.append(qualified)
+            names, _age = attached_tables_cached(alias, db_config)
         except Exception as exc:  # noqa: BLE001  单别名失败不阻断本地/其他别名发现
             logger.warning("agent search: discover attached alias '%s' failed: %s", alias, exc)
+            continue
+        for qualified in names:
+            if needle and needle not in qualified.lower():
+                continue
+            out.append(qualified)
     return out
 
 
@@ -231,6 +288,76 @@ def _inspect_table(ctx: AgentRunCtx, args: InspectTableArgs) -> ToolResult:
             ok=False,
             elapsed_ms=int((time.time() - t0) * 1000),
         )
+
+
+_DESCRIBE_CAP = 8          # 每次最多描述几张表(挡住"把整库列定义一次性灌进上下文")
+_DESCRIBE_COL_CAP = 60     # 单表列数上限,超出截断并标注
+
+
+def _describe_tables(ctx: AgentRunCtx, args: DescribeTablesArgs) -> ToolResult:
+    """一次挂载、批量取多张表的列定义(本地 + 已授权别名)。
+
+    广度工具:只读元数据、不采样数据行、不计入 sql_calls,用来替代"一张表一个 step"的
+    inspect_table 轮询;要看真实取值仍走 inspect_table(本地)或带行帽的 run_query。
+    单表失败只影响该表(错误写进该行),其余照常返回。
+    """
+    t0 = time.time()
+    names = [n.strip() for n in (args.tables or []) if n and n.strip()]
+    if not names:
+        return ToolResult(
+            model_text="error: tables must be a non-empty list of table names",
+            ui_summary="no table given", ok=False,
+            elapsed_ms=int((time.time() - t0) * 1000),
+        )
+    dropped = max(0, len(names) - _DESCRIBE_CAP)
+    names = names[:_DESCRIBE_CAP]
+    authorized = {a.lower() for a in ctx.authorized_aliases}
+    lines: List[str] = []
+    ok_count = 0
+    try:
+        with with_duckdb_connection() as con:
+            attached: list[str] = []
+            try:
+                if any("." in n for n in names) and ctx.attach_configs:
+                    attached = attach_databases_on_connection(con, ctx.attach_configs)
+                for name in names:
+                    alias = name.split(".", 1)[0].lower() if "." in name else ""
+                    if alias and alias not in authorized:
+                        lines.append(f"{name}: error: alias '{alias}' is not authorized")
+                        continue
+                    try:
+                        ref = format_qualified_table_reference(name)
+                        rows = con.execute(f"DESCRIBE {ref}").fetchall()
+                    except Exception as exc:  # noqa: BLE001  单表失败不拖垮整批
+                        lines.append(f"{name}: error: {str(exc)[:160]}")
+                        continue
+                    shown = rows[:_DESCRIBE_COL_CAP]
+                    cols = ", ".join(f"{r[0]} {r[1]}" for r in shown)
+                    more = (f" …and {len(rows) - len(shown)} more columns"
+                            if len(rows) > len(shown) else "")
+                    lines.append(f"{name}({cols}){more}")
+                    ok_count += 1
+            finally:
+                if attached:
+                    detach_databases_on_connection(con, attached)
+    except Exception as exc:  # noqa: BLE001
+        return ToolResult(
+            model_text=f"error: {str(exc)[:300]}",
+            ui_summary="describe failed", ok=False,
+            elapsed_ms=int((time.time() - t0) * 1000),
+        )
+    if dropped:
+        lines.append(f"(only the first {_DESCRIBE_CAP} tables were described; "
+                     f"{dropped} more were skipped — call again for the rest)")
+    lines.append("Values are NOT sampled here — verify literals with a bounded run_query.")
+    text, truncated = _clip("\n".join(lines))
+    return ToolResult(
+        model_text=text,
+        ui_summary=f"described {ok_count}/{len(names)} tables",
+        ok=ok_count > 0,
+        truncated=truncated,
+        elapsed_ms=int((time.time() - t0) * 1000),
+    )
 
 
 def _rows_to_text(columns: List[str], rows: List[tuple]) -> str:
@@ -387,6 +514,13 @@ def build_registry() -> Dict[str, AgentTool]:
             description="columns, types, a few real rows and low-cardinality values",
             args_model=InspectTableArgs,
             handler=_inspect_table,
+        ),
+        "describe_tables": AgentTool(
+            name="describe_tables",
+            description=("columns of several tables at once (local or alias.table); "
+                         "metadata only, no sample rows, does not use a query budget"),
+            args_model=DescribeTablesArgs,
+            handler=_describe_tables,
         ),
         "run_query": AgentTool(
             name="run_query",

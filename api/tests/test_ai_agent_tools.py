@@ -9,6 +9,7 @@ from core.database.duckdb_engine import with_duckdb_connection
 from core.services import ai_agent_tools
 from core.services.ai_agent_tools import (
     AgentRunCtx,
+    DescribeTablesArgs,
     InspectTableArgs,
     RunQueryArgs,
     SearchTablesArgs,
@@ -196,3 +197,120 @@ def test_run_query_timeout_interrupts(ctx, monkeypatch):
     )
     assert result.ok is False
     assert "interrupted" in result.model_text or "exceeded" in result.model_text
+
+
+# ---- describe_tables:广度工具(批量列定义、不采样、不计 sql_calls) ----
+
+def test_describe_tables_batches_multiple_tables(ctx, table):
+    """一次调用拿到多张表的列定义;不消耗 sql_calls 预算(广度探查不该和查询抢额度)。"""
+    before = ctx.sql_calls_used
+    result = ai_agent_tools._describe_tables(ctx, DescribeTablesArgs(tables=[table, table]))
+    assert result.ok
+    assert result.model_text.count(f"{table}(") == 2
+    assert "id INTEGER" in result.model_text and "status VARCHAR" in result.model_text
+    assert ctx.sql_calls_used == before  # 关键:不占查询预算
+
+
+def test_describe_tables_does_not_sample_values(ctx, table):
+    """只给结构:不得出现表里的真实取值(远端库尤其不能把数据行带出来)。"""
+    result = ai_agent_tools._describe_tables(ctx, DescribeTablesArgs(tables=[table]))
+    assert "'ok'" not in result.model_text and "fail" not in result.model_text
+    assert "verify literals with a bounded run_query" in result.model_text
+
+
+def test_describe_tables_unauthorized_alias_rejected_per_table(ctx, table):
+    """未授权别名只影响该行,其余表照常返回(单表失败不拖垮整批)。"""
+    result = ai_agent_tools._describe_tables(
+        ctx, DescribeTablesArgs(tables=[table, "rogue.public.orders"])
+    )
+    assert result.ok  # 仍有成功项
+    assert f"{table}(" in result.model_text
+    assert "is not authorized" in result.model_text
+
+
+def test_describe_tables_missing_table_reported_not_raised(ctx, table):
+    result = ai_agent_tools._describe_tables(
+        ctx, DescribeTablesArgs(tables=[table, "no_such_table_xyz"])
+    )
+    assert result.ok
+    assert "no_such_table_xyz: error:" in result.model_text
+
+
+def test_describe_tables_caps_batch_size(ctx, table):
+    result = ai_agent_tools._describe_tables(ctx, DescribeTablesArgs(tables=[table] * 12))
+    assert "only the first 8 tables" in result.model_text
+
+
+def test_describe_tables_empty_input_is_error(ctx):
+    result = ai_agent_tools._describe_tables(ctx, DescribeTablesArgs(tables=[]))
+    assert result.ok is False
+
+
+def test_three_part_qualified_name_end_to_end(ctx, table, tmp_path):
+    """三段名 alias.schema.table 全链路(guard → describe_tables → run_query)。
+
+    用真实 DuckDB 文件挂载:它带 main schema,限定名天然是三段(与 PostgreSQL 的
+    alias.public.table 同形),从而在没有 PG 环境时也能守住"PG 多 schema 可查"这条线。
+    """
+    import duckdb as _duckdb
+
+    dbfile = tmp_path / "remote.duckdb"
+    rc = _duckdb.connect(str(dbfile))
+    rc.execute("CREATE TABLE targets(status VARCHAR, target INTEGER)")
+    rc.execute("INSERT INTO targets VALUES ('ok', 100), ('fail', 50)")
+    rc.close()
+    ctx.attach_configs = [("agent_pgish", {"type": "duckdb", "path": str(dbfile)})]
+    ctx.authorized_aliases = ["agent_pgish"]
+
+    # 1) describe_tables 接受三段名并返回列定义(不采样数据行)
+    desc = ai_agent_tools._describe_tables(
+        ctx, DescribeTablesArgs(tables=[table, "agent_pgish.main.targets"])
+    )
+    assert desc.ok, desc.model_text
+    assert "agent_pgish.main.targets(status VARCHAR, target INTEGER)" in desc.model_text
+    assert "100" not in desc.model_text
+
+    # 2) 三段名参与跨源 JOIN 能通过 guard 并执行出正确值
+    sql = (
+        f"SELECT t.status, count(*) AS n FROM {table} t "
+        "JOIN agent_pgish.main.targets r ON t.status = r.status "
+        "GROUP BY t.status ORDER BY t.status"
+    )
+    res = asyncio.run(ai_agent_tools.run_query_async(ctx, RunQueryArgs(sql=sql), 3))
+    assert res.ok, res.model_text
+    assert "125" in res.model_text
+
+
+# ---- 结构缓存:进程内短 TTL、不落盘、可强制失效 ----
+
+def test_attached_tables_cache_avoids_rescan_and_can_be_invalidated(ctx, tmp_path):
+    """同一连接在 TTL 内复用缓存(不再连远端);invalidate 后重新读取并看到新表。"""
+    import duckdb as _duckdb
+
+    dbfile = tmp_path / "cache.duckdb"
+    rc = _duckdb.connect(str(dbfile))
+    rc.execute("CREATE TABLE t_one(a INTEGER)")
+    rc.close()
+    cfg = {"type": "duckdb", "path": str(dbfile)}
+    ai_agent_tools.invalidate_attached_tables("cache_alias")
+
+    names1, age1 = ai_agent_tools.attached_tables_cached("cache_alias", cfg)
+    assert "cache_alias.t_one" in names1 and age1 == 0.0
+
+    # 远端新增一张表,但 TTL 未到 → 仍返回缓存(证明没有重复扫描)
+    rc = _duckdb.connect(str(dbfile))
+    rc.execute("CREATE TABLE t_two(b INTEGER)")
+    rc.close()
+    names2, age2 = ai_agent_tools.attached_tables_cached("cache_alias", cfg)
+    assert names2 == names1 and age2 >= 0.0
+
+    # 用户点"刷新结构"/自愈失效 → 立刻看到新表
+    ai_agent_tools.invalidate_attached_tables("cache_alias")
+    names3, _ = ai_agent_tools.attached_tables_cached("cache_alias", cfg)
+    assert "cache_alias.t_two" in names3
+
+
+def test_attached_tables_cache_is_process_local_only():
+    """缓存必须只在进程内存里(不落盘):清空后无任何持久化残留可用。"""
+    ai_agent_tools.invalidate_attached_tables()
+    assert ai_agent_tools._ATTACHED_CACHE == {}

@@ -61,6 +61,35 @@ def test_authorized_alias_qualifier_allowed():
     assert allowed is True, reason
 
 
+# ---- 三段名 catalog.schema.table(PostgreSQL 多 schema;旧实现把 schema 段当别名判定,全拒) ----
+
+@pytest.mark.parametrize("sql", [
+    "SELECT * FROM sorder.public.orders LIMIT 3",
+    "SELECT * FROM demo_duck.analytics.fact_sales LIMIT 3",
+    # 跨源 JOIN:本地表 × 远端三段名
+    "SELECT o.id FROM guard_orders o JOIN sorder.public.orders p ON p.id = o.id",
+])
+def test_three_part_name_with_authorized_catalog_allowed(sql):
+    allowed, reason = check_sql(sql, ALIASES)
+    assert allowed is True, f"误伤三段名: {sql} -> {reason}"
+
+
+@pytest.mark.parametrize("sql,hint", [
+    # 首段不是授权别名 → 仍然拒绝(授权边界不能被三段名绕过)
+    ("SELECT * FROM rogue.public.orders", "unauthorized"),
+    # 首段合法但第二段是系统/元数据 schema → 拒绝
+    ("SELECT * FROM sorder.information_schema.tables", "system schema"),
+    ("SELECT * FROM main_db.pg_catalog.pg_tables", "system schema"),
+    ("SELECT * FROM sorder.mysql.user", "system schema"),
+    # 两段名的元数据 schema 也照旧拒绝
+    ("SELECT * FROM information_schema.tables", "unauthorized"),
+])
+def test_three_part_name_boundaries_still_rejected(sql, hint):
+    allowed, reason = check_sql(sql, ALIASES)
+    assert allowed is False, f"应拒绝: {sql}"
+    assert hint in reason, f"{sql} -> {reason}"
+
+
 @pytest.fixture(name="con")
 def _con():
     c = duckdb.connect()

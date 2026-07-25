@@ -627,3 +627,42 @@ def test_session_id_echoed_not_persisted():
     with with_system_connection() as conn:
         cols = [r[1] for r in conn.execute("PRAGMA table_info(system_agent_runs)").fetchall()]
     assert "session_id" not in cols
+
+
+# ---- 连接级作用域:库内表清单进入上下文(L1 渐进披露) ----
+
+def test_attached_catalog_injected_into_context(orders, tmp_path):
+    """整库授权时,上下文里应直接列出该连接的表(限定名)+ 结构读取时效,
+    模型不必先花一个 step 去 search_tables。"""
+    import duckdb as _duckdb
+    from core.services import ai_agent_tools
+    from core.services.ai_profiles import _ctx_data_qa
+
+    dbfile = tmp_path / "scope.duckdb"
+    rc = _duckdb.connect(str(dbfile))
+    rc.execute("CREATE TABLE remote_orders(id INTEGER)")
+    rc.execute("CREATE TABLE remote_refunds(id INTEGER)")
+    rc.close()
+    ai_agent_tools.invalidate_attached_tables("scoped")
+
+    ctx = _ctx()
+    ctx.attach_configs = [("scoped", {"type": "duckdb", "path": str(dbfile)})]
+    ctx.authorized_aliases = ["scoped"]
+    text = _ctx_data_qa({}, {"tables": []}, ctx)
+
+    assert "scoped.remote_orders" in text and "scoped.remote_refunds" in text
+    assert "2 tables" in text and "structure read" in text
+    assert "describe_tables" in text  # 指引用批量工具取列定义
+
+
+def test_attached_catalog_failure_is_stated_not_silent(orders):
+    """连接枚举失败必须如实写进上下文(否则模型会以为这个库是空的/不存在)。"""
+    from core.services import ai_agent_tools
+    from core.services.ai_profiles import _ctx_data_qa
+
+    ai_agent_tools.invalidate_attached_tables("deadconn")
+    ctx = _ctx()
+    ctx.attach_configs = [("deadconn", {"type": "sqlite", "path": "/nonexistent/x.sqlite"})]
+    ctx.authorized_aliases = ["deadconn"]
+    text = _ctx_data_qa({}, {"tables": []}, ctx)
+    assert "deadconn" in text and "could not read its structure" in text

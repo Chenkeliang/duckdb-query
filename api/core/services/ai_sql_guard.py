@@ -29,6 +29,13 @@ logger = logging.getLogger(__name__)
 
 # 本地目录/模式限定名的合法取值(current_database()=main_db,schema=main)
 _LOCAL_QUALIFIERS = {"main", "main_db", "memory"}
+# 三段名 catalog.schema.table 里,库内 schema 段的黑名单:首段已是被授权的库/别名,
+# 第二段是该库内部的 schema,不能再拿"是否是授权别名"来判定(PostgreSQL 多 schema 就
+# 卡在这)。改为只挡系统/元数据 schema,避免绕过限定符校验去读目录与系统表。
+_DENIED_SCHEMAS = {
+    "information_schema", "pg_catalog", "pg_toast",
+    "mysql", "performance_schema", "sys",
+}
 # 环境/系统信息泄露面的标量函数
 _DENIED_FUNCTIONS = {"getenv"}
 # 无外部副作用的纯生成器表函数(模型做日期/数列脚手架的正当用法)
@@ -54,10 +61,18 @@ def _denied_reason_for_table(table: exp.Table, allowed: set, cte_names: set) -> 
         return f"file path or URL relation is not allowed: {name[:80]}"
     if name.lower().startswith("system_"):
         return f"system table is not allowed: {name[:80]}"
-    for qualifier in (table.catalog, table.db):
-        q = str(qualifier).lower() if qualifier else ""
-        if q and q not in allowed:
-            return f"unauthorized database qualifier: {q}"
+    catalog = str(table.catalog).lower() if table.catalog else ""
+    db = str(table.db).lower() if table.db else ""
+    if catalog:
+        # 三段名:首段必须是本地库或本次授权的别名;第二段是该库内部的 schema,
+        # 只挡系统/元数据 schema(PostgreSQL 的 public 等业务 schema 照常放行)。
+        if catalog not in allowed:
+            return f"unauthorized database qualifier: {catalog}"
+        if db in _DENIED_SCHEMAS:
+            return f"system schema is not allowed: {db}"
+    elif db and db not in allowed:
+        # 两段名:限定符要么是本地目录/模式,要么是授权别名
+        return f"unauthorized database qualifier: {db}"
     return None
 
 
