@@ -75,3 +75,22 @@ describe('agentScope', () => {
     expect(scopeChipLabel(connectionEntry(SORDER, 'tables', ['a', 'b']))).toBe('SORDER · 2 张表');
   });
 });
+
+describe('sqlSourcesFrom', () => {
+  it('flags a cross-source query (local × remote)', async () => {
+    const { sqlSourcesFrom } = await import('../agentScope');
+    const sql = 'SELECT * FROM agent_eval_orders o JOIN mysql_sorder.store_order.crm_order m ON 1=1';
+    expect(sqlSourcesFrom(sql, ['mysql_sorder'])).toEqual(['本地 DuckDB', 'mysql_sorder']);
+  });
+
+  it('flags a remote-only query without claiming local', async () => {
+    const { sqlSourcesFrom } = await import('../agentScope');
+    const sql = 'SELECT count(*) FROM mysql_sorder.store_order.crm_order';
+    expect(sqlSourcesFrom(sql, ['mysql_sorder'])).toEqual(['mysql_sorder']);
+  });
+
+  it('local-only query lists just the local source', async () => {
+    const { sqlSourcesFrom } = await import('../agentScope');
+    expect(sqlSourcesFrom('SELECT * FROM orders', ['mysql_sorder'])).toEqual(['本地 DuckDB']);
+  });
+});

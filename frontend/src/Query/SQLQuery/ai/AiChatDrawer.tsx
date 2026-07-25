@@ -37,6 +37,7 @@ import {
   localEntry,
   loadScopeCandidates,
   scopeChipLabel,
+  sqlSourcesFrom,
   LOCAL_SOURCE_ID,
   type ConnectionLite,
   type ScopeCandidate,
@@ -98,6 +99,28 @@ interface DrawerMsg {
   sql?: string | null;
   evidence?: string[];
   failed?: boolean;
+  /** 本轮实际作用域快照:回答隔天再看也说得清数据来自哪个库 */
+  scope?: { label: string; kind: 'local' | 'connection' }[];
+}
+
+/** 本轮作用域小卡:把"这次查了哪些库"变成可审计的事实。 */
+function ScopeCard({ scope, label }: { scope: DrawerMsg['scope']; label: string }) {
+  if (!scope?.length) return null;
+  return (
+    <div className="mb-1.5 flex flex-wrap items-center gap-1.5 rounded border border-border/60 bg-background/40 px-2 py-1 text-[10px] text-muted-foreground">
+      <span>{label}</span>
+      {scope.map((s) => (
+        <span key={s.label} className="inline-flex items-center gap-1 text-foreground">
+          <span
+            className={`h-1.5 w-1.5 rounded-full ${
+              s.kind === 'local' ? 'bg-primary' : 'bg-info'
+            }`}
+          />
+          {s.label}
+        </span>
+      ))}
+    </div>
+  );
 }
 
 /** assistant 文本按 Markdown 渲染；代码块带「插入编辑器」按钮。 */
@@ -128,15 +151,22 @@ function AssistantMarkdown({
         blockquote: ({ node: _n, ...p }) => (
           <blockquote className="border-l-2 border-border pl-2 text-muted-foreground" {...p} />
         ),
+        // 跨源结果常是 4 列以上,抽屉再宽也可能放不下:表格自身按内容取宽,由外层横向滚动,
+        // 否则列会被挤成竖排(实测 420px 抽屉必现)。
         table: ({ node: _n, ...p }) => (
-          <div className="my-1 overflow-auto">
-            <table className="w-full border-collapse text-xs" {...p} />
+          <div className="my-1 overflow-x-auto rounded border border-border">
+            <table className="w-max min-w-full border-collapse text-xs" {...p} />
           </div>
         ),
         th: ({ node: _n, ...p }) => (
-          <th className="border border-border px-2 py-1 text-left font-medium" {...p} />
+          <th
+            className="whitespace-nowrap border-b border-border bg-muted/40 px-2 py-1 text-left font-medium"
+            {...p}
+          />
         ),
-        td: ({ node: _n, ...p }) => <td className="border border-border px-2 py-1" {...p} />,
+        td: ({ node: _n, ...p }) => (
+          <td className="whitespace-nowrap border-b border-border/60 px-2 py-1" {...p} />
+        ),
         pre: ({ children }) => <>{children}</>,
         code: ({ node: _n, className, children, ...rest }) => {
           const isBlock = /language-/.test(className || '');
@@ -237,6 +267,11 @@ function AgentSteps({
 /** 输入框 @ 提及的表选择浮层触发正则:末尾 "@前缀"。 */
 const MENTION_RE = /(^|\s)@([^\s@]*)$/;
 
+const DRAWER_WIDTH_KEY = 'dq-ai-drawer-width';
+const DRAWER_DEFAULT_W = 480;
+const DRAWER_MIN_W = 380;
+const DRAWER_MAX_W = 860;
+
 export function AiChatDrawer({
   open,
   onClose,
@@ -255,9 +290,40 @@ export function AiChatDrawer({
   const [connections, setConnections] = useState<ConnectionLite[]>([]);
   const [candidates, setCandidates] = useState<ScopeCandidate[] | null>(null);
   const [scopeOpen, setScopeOpen] = useState(false);
+  const [actionsOpen, setActionsOpen] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const typewriterRef = useRef<ReturnType<typeof setInterval> | null>(null);
+  // 抽屉宽度可拖拽:跨源回答常是多列表格,420px 会把表头挤成竖排
+  const [width, setWidth] = useState(() => {
+    const saved = Number(localStorage.getItem(DRAWER_WIDTH_KEY));
+    return saved >= DRAWER_MIN_W && saved <= DRAWER_MAX_W ? saved : DRAWER_DEFAULT_W;
+  });
+  const dragRef = useRef<{ startX: number; startW: number } | null>(null);
+
+  const onGripDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    dragRef.current = { startX: e.clientX, startW: width };
+    const onMove = (ev: MouseEvent) => {
+      if (!dragRef.current) return;
+      const next = Math.min(
+        DRAWER_MAX_W,
+        Math.max(DRAWER_MIN_W, dragRef.current.startW - (ev.clientX - dragRef.current.startX)),
+      );
+      setWidth(next);
+    };
+    const onUp = () => {
+      dragRef.current = null;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      setWidth((w) => {
+        localStorage.setItem(DRAWER_WIDTH_KEY, String(w));
+        return w;
+      });
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
 
   const clearTypewriter = () => {
     if (typewriterRef.current) {
@@ -364,7 +430,13 @@ export function AiChatDrawer({
   const sendAgent = async (text: string) => {
     clearTypewriter(); // 新一轮发送:停掉上一条可能仍在打字的定时器,避免写错消息
     const userMsg: DrawerMsg = { role: 'user', content: text };
-    const pending: DrawerMsg = { role: 'assistant', content: '', steps: [] };
+    const pending: DrawerMsg = {
+      role: 'assistant',
+      content: '',
+      steps: [],
+      // 快照发问那一刻的作用域(之后用户改作用域也不影响这条回答的可追溯性)
+      scope: scopeEntries.map((e) => ({ label: scopeChipLabel(e), kind: e.kind })),
+    };
     const history = historyForBackend(messages);
     const pendingIndex = messages.length + 1; // userMsg 在 messages.length,pending 紧随其后
     setMessages((prev) => [...prev, userMsg, pending]);
@@ -514,8 +586,24 @@ export function AiChatDrawer({
   const removeScopeEntry = (id: string) =>
     setScope((prev) => (prev ?? scopeEntries).filter((e) => e.id !== id));
 
+  const knownAliases = scopeEntries.map((e) => e.alias).filter(Boolean) as string[];
+  const sqlSources = (sql: string) => sqlSourcesFrom(sql, knownAliases);
+
   return (
-    <div className="fixed right-0 top-14 bottom-0 z-40 flex w-[min(420px,92vw)] flex-col border-l border-border bg-surface shadow-xl">
+    <div
+      className="fixed right-0 top-14 bottom-0 z-40 flex max-w-[95vw] flex-col border-l border-border bg-surface shadow-xl"
+      style={{ width }}
+    >
+      {/* 左缘拖拽把手:向左拖变宽 */}
+      <div
+        onMouseDown={onGripDown}
+        role="separator"
+        aria-orientation="vertical"
+        aria-label={t('query.ai.resize', '调整宽度')}
+        className="group absolute left-0 top-0 bottom-0 z-50 w-1.5 -translate-x-1/2 cursor-col-resize"
+      >
+        <div className="mx-auto h-full w-0.5 bg-transparent transition-colors group-hover:bg-primary/60" />
+      </div>
       {/* 头 */}
       <div className="flex items-center justify-between border-b border-border px-3 py-2">
         <span className="flex items-center gap-1.5 text-sm font-medium">
@@ -664,6 +752,7 @@ export function AiChatDrawer({
                   <p className="whitespace-pre-wrap">{m.content}</p>
                 ) : (
                   <>
+                    <ScopeCard scope={m.scope} label={t('query.ai.scopeThisTurn', '本轮范围')} />
                     <AgentSteps
                       steps={m.steps || []}
                       streaming={loading && i === messages.length - 1}
@@ -692,6 +781,18 @@ export function AiChatDrawer({
                     )}
                     {m.sql && (
                       <div className="my-1 rounded border border-border bg-background">
+                        <div className="flex items-center gap-1.5 border-b border-border px-2 py-1 text-[10px] text-muted-foreground">
+                          {sqlSources(m.sql).length > 1 && (
+                            <span className="inline-flex items-center gap-1 rounded-full border border-primary/45 bg-primary/10 px-1.5 py-0.5 text-primary">
+                              {t('query.ai.crossSource', '跨源查询 · {{list}}', {
+                                list: sqlSources(m.sql).join(' × '),
+                              })}
+                            </span>
+                          )}
+                          <span className="ml-auto">
+                            {t('query.ai.sqlExecuted', '本次实际执行的查询')}
+                          </span>
+                        </div>
                         <pre className="overflow-auto px-2 py-1.5 text-xs">
                           <code>{m.sql}</code>
                         </pre>
@@ -711,14 +812,22 @@ export function AiChatDrawer({
                     {!!m.evidence?.length && (
                       <div className="mt-1 flex flex-wrap items-center gap-1 text-[10px] text-muted-foreground">
                         {t('query.ai.evidence', '依据')}:
-                        {m.evidence.map((id) => (
-                          <span
-                            key={id}
-                            className="rounded bg-background px-1 py-0.5 font-mono"
-                          >
-                            {id}
-                          </span>
-                        ))}
+                        {m.evidence.map((id) => {
+                          const remote = id.includes('.');
+                          return (
+                            <span
+                              key={id}
+                              className="inline-flex items-center gap-1 rounded bg-background px-1 py-0.5 font-mono"
+                            >
+                              <span
+                                className={`h-1.5 w-1.5 rounded-full ${
+                                  remote ? 'bg-info' : 'bg-primary'
+                                }`}
+                              />
+                              {id}
+                            </span>
+                          );
+                        })}
                       </div>
                     )}
                   </>
@@ -729,36 +838,43 @@ export function AiChatDrawer({
         })}
       </div>
 
-      {/* 输入区 */}
-      <div className="border-t border-border p-2">
-        {currentSql?.trim() && !loading && (
-          <div className="mb-1.5 flex flex-wrap gap-1.5">
+      {/* 输入区:高度恒定——快捷动作收进「＋」菜单,不再随编辑器有无 SQL 撑开/塌陷 */}
+      <div className="relative border-t border-border p-2">
+        {actionsOpen && (
+          <div className="absolute bottom-[68px] left-2 z-30 min-w-[190px] overflow-hidden rounded-md border border-border bg-surface-elevated shadow-lg">
             <button
               type="button"
-              disabled={loading}
-              onClick={() =>
+              disabled={!currentSql?.trim() || loading}
+              onClick={() => {
+                setActionsOpen(false);
                 send(
-                  `${t('query.ai.qaExplainLead', '请解释这段 SQL 在做什么（用中文，分点说明）：')}\n\`\`\`sql\n${currentSql.trim()}\n\`\`\``,
-                )
-              }
-              className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/50 px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+                  `${t('query.ai.qaExplainLead', '请解释这段 SQL 在做什么（用中文，分点说明）：')}\n\`\`\`sql\n${(currentSql || '').trim()}\n\`\`\``,
+                );
+              }}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-accent disabled:opacity-40"
             >
-              <BookOpen className="h-3 w-3" />
+              <BookOpen className="h-3.5 w-3.5" />
               {t('query.ai.qaExplain', '解释当前 SQL')}
             </button>
             <button
               type="button"
-              disabled={loading}
-              onClick={() =>
+              disabled={!currentSql?.trim() || loading}
+              onClick={() => {
+                setActionsOpen(false);
                 send(
-                  `${t('query.ai.qaOptimizeLead', '请帮我优化这段 SQL，并说明优化点和原因：')}\n\`\`\`sql\n${currentSql.trim()}\n\`\`\``,
-                )
-              }
-              className="inline-flex items-center gap-1 rounded-full border border-border bg-muted/50 px-2.5 py-1 text-xs text-muted-foreground transition-colors hover:bg-muted hover:text-foreground disabled:opacity-50"
+                  `${t('query.ai.qaOptimizeLead', '请帮我优化这段 SQL，并说明优化点和原因：')}\n\`\`\`sql\n${(currentSql || '').trim()}\n\`\`\``,
+                );
+              }}
+              className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-accent disabled:opacity-40"
             >
-              <Wand2 className="h-3 w-3" />
+              <Wand2 className="h-3.5 w-3.5" />
               {t('query.ai.qaOptimize', '优化建议')}
             </button>
+            {!currentSql?.trim() && (
+              <div className="border-t border-border px-3 py-1.5 text-[10px] text-muted-foreground">
+                {t('query.ai.qaNeedSql', '编辑器里有 SQL 时可用')}
+              </div>
+            )}
           </div>
         )}
         <div className="relative">
@@ -799,6 +915,15 @@ export function AiChatDrawer({
             </div>
           )}
           <div className="flex items-center gap-2">
+            <button
+              type="button"
+              onClick={() => setActionsOpen((v) => !v)}
+              title={t('query.ai.moreActions', '更多动作')}
+              aria-label={t('query.ai.moreActions', '更多动作')}
+              className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
+            >
+              <Plus className="h-4 w-4" />
+            </button>
             <Input
               value={input}
               onChange={(e) => setInput(e.target.value)}

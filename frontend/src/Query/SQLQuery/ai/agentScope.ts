@@ -148,6 +148,26 @@ export async function loadScopeCandidates(
   return out;
 }
 
+/**
+ * 从最终 SQL 里推断这条查询碰了哪些数据源(用于"跨源查询"徽标)。
+ * 只按限定名前缀识别:出现 `alias.` 前缀记为该别名,出现裸表名记为本地。
+ */
+export function sqlSourcesFrom(sql: string, aliases: string[]): string[] {
+  const text = sql || '';
+  const found: string[] = [];
+  for (const alias of aliases) {
+    const re = new RegExp(`(^|[^\\w.])${alias.replace(/[.*+?^${}()|[\]\\]/g, '\\$&')}\\.`, 'i');
+    if (re.test(text)) found.push(alias);
+  }
+  // 去掉带别名前缀的引用后仍有 FROM/JOIN 目标 → 说明也用到了本地表
+  const stripped = aliases.reduce(
+    (acc, a) => acc.replace(new RegExp(`\\b${a}\\.[\\w".]+`, 'gi'), ' '),
+    text,
+  );
+  if (/\b(from|join)\s+["\w]/i.test(stripped)) found.unshift('本地 DuckDB');
+  return found;
+}
+
 /** 选中一个候选后的新作用域:远端表会自动把它所属连接加入授权(修"选了却查不到")。 */
 export function addCandidateToScope(
   entries: ScopeEntry[],
