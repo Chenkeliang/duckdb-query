@@ -54,22 +54,26 @@
 
 ## Core Capabilities
 
-| Capability | In one line | Details |
+| Capability | In one line | What it actually does |
 |---|---|---|
-| **File ingestion** | CSV · Excel · Parquet · JSON · JSONL | Drop a file and it becomes a table; also paste tabular data, import URLs, browse server-mounted directories, and pick Excel sheets |
-| **Databases and federation** | MySQL · PostgreSQL · SQLite · DuckDB | Query them alongside local tables through DuckDB `ATTACH` — one SQL statement can join across sources |
-| **Query workflow** | Write SQL, or don't | CodeMirror editor, JOIN workbench, set operations, pivot tables, async tasks, cancellation, bookmarks, history |
-| **Data agent** | Ask your data in plain language | Inspects schemas, verifies real values and dry-runs read-only row-capped queries before answering; every step visible and stoppable |
-| **Ask your databases** | Local and remote in one answer | Add a connection to the scope and ask; **only structure is read, no data rows are loaded**, values come from row-capped read-only queries, and each answer names the databases it used |
-| **Other AI assistance** | Error doctor · SQL explanation · Chart suggestions | Uses the model provider and endpoint you configure; AI-drafted SQL is only inserted into the editor for you to run |
-| **Results and export** | DataGrid + 6 chart types | Virtualized grid; bar, line, area, pie, donut, KPI; click a chart element for detail SQL; export CSV / Excel / JSON / Parquet |
-| **MCP automation** | 24 tools | Querying, discovery, ingestion, transforms, AI settings, export; `read-only` / `normal` / `full` modes |
+| **File ingestion** | Drop a file, get a table | • CSV / Excel / Parquet / JSON / JSONL<br>• Paste tabular data, import from URL<br>• Browse server-mounted directories<br>• Pick individual Excel sheets |
+| **Databases and federation** | `ATTACH` a database and query it | • MySQL / PostgreSQL / SQLite / DuckDB files<br>• Queried alongside local tables — one SQL statement joins across sources<br>• Semi-join pushdown rewrite to reduce remote scanning |
+| **Query workflow** | Write SQL, or don't | • CodeMirror editor with completion and formatting<br>• JOIN workbench / set operations / pivot tables<br>• Async tasks and query cancellation<br>• SQL bookmarks and history |
+| **Data agent** | Ask in plain language, it goes and looks | • Inspects schemas, verifies real values, dry-runs read-only queries before answering<br>• **Connected databases can be added to the question scope** — structure only, no data rows loaded<br>• A single answer can draw on local tables and remote ones together<br>• Steps stream live and can be stopped; each answer names the databases it used |
+| **Other AI assistance** | A hand when you're stuck | • Error doctor: a fix when SQL fails<br>• SQL explanation: what a statement actually does<br>• Chart suggestions based on the result shape<br>• Uses the model endpoint you configure; drafts land in the editor for you to run |
+| **Results and export** | Read it, or plot it | • Virtualized DataGrid for large result sets<br>• Bar, line, area, pie, donut, KPI charts<br>• Click a chart element to generate detail SQL<br>• Export CSV / Excel / JSON / Parquet |
+| **MCP automation** | Let an AI client drive it | • 24 tools: querying, discovery, ingestion, transforms, AI settings, export<br>• `read-only` / `normal` / `full` modes<br>• Finds a running backend automatically |
 
 ## Why DuckQuery
 
-- **Database GUIs** (DBeaver, TablePlus, …) center on database connections; local CSV / Excel files usually need to be imported as tables first.
-- **BI platforms** (Metabase, Superset, …) excel at durable dashboards; ad-hoc analysis often means configuring sources or even building a warehouse with ETL first.
-- **DuckQuery** covers the middle ground: drop in a file to get a table, `ATTACH` a remote database, and JOIN both in one SQL statement — with AI drafting SQL that you review and run.
+| Kind of tool | Typical examples | Good at | Local files in a query |
+|---|---|---|---|
+| Database GUI | DBeaver, TablePlus | Connecting, writing SQL, browsing schemas | Usually import them into a table first |
+| BI platform | Metabase, Superset | Durable dashboards, sharing | Configure a source first; ad-hoc work often needs a warehouse and ETL |
+| **DuckQuery** | — | **Ad-hoc analysis across sources** | **Drop a file and it is a table; `ATTACH` a database and it is queryable** |
+
+That middle ground is the point: files and remote databases join in the same SQL statement;
+AI drafts SQL for you to confirm, and the agent runs its own read-only queries before answering.
 
 ## Get Started
 
