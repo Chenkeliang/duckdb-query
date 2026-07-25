@@ -210,24 +210,53 @@ BY NAME、LIMIT、预览 vs 执行语义见 [QUERY_BEHAVIOR_ZH.md](QUERY_BEHAVIO
 | POST | `/api/query` | 对象 | `performJoinQuery`；`data`: `data`, `columns`, `column_types[]`, `sql`, `row_count` |
 | POST | `/api/save_query_to_duckdb` | 对象 | 见 §2 `saveQueryToDuckDB` |
 
-## 9.3 AI（`aiApi.ts`，后端 `routers/ai.py`，OpenAPI tag `AI`）
+## 9.3 AI（统一 Agent Engine；`agentApi.ts`/`aiApi.ts`，后端 `routers/ai.py`，OpenAPI tag `AI`）
 
-> AI **默认关闭**;供应商 `api_key` 服务端 **Fernet 加密**存储,读取接口返回掩码 `****`、从不回传明文。生成的 SQL 永远只填入编辑器、**绝不自动执行**。AI 上下文除表结构外还带**本地表的有界数据样例**(≤3 行样本 + 低基数文本列取值,随 prompt 发给所配置的 LLM 供应商;联邦表不采样)。
+> **1.3.0 破坏性升级**:5 个旧独立 LLM 服务(chat/nl-to-sql/error-doctor/explain-sql/suggest-chart)已合并为**单一 Agent Engine + 多 Profile**。所有 AI 调用统一走 `POST /api/ai/agent/{stream,run}`,请求体 `{ mode, session_id?, input, context }`,由 `mode` 判别 Profile(prompt/工具/预算/输出模型/失败策略)。**禁止**按 `session_id` 前缀判断功能:`session_id` 仅作会话关联,`run_id` 标识单次执行/取消/观测,`mode` 决定行为。
+>
+> AI **默认关闭**;供应商 `api_key` 服务端 **Fernet 加密**存储,读取接口返回掩码 `****`、从不回传明文。AI 起草的 SQL 永远只填入编辑器、**绝不自动执行**;**数据智能体**(`mode=data_qa`)例外且仅限:自行执行**只读、限行(≤100)、限次(≤3)、可取消**的探查 SELECT,范围限本地表与本次请求授权的连接别名,其最终产出的 SQL 同样只填入编辑器。AI 上下文除表结构外还带**本地表的有界数据样例**(≤3 行样本 + 低基数文本列取值,随 prompt 发给所配置的 LLM 供应商;联邦表不预采样,智能体对联邦表的取值验证走上述受授权的探查查询)。
 
 | 方法 | 路径 | 请求 | 成功体 | 前端入口 |
 |------|------|------|--------|----------|
 | GET | `/api/settings/ai` | — | `AiSettings`（`providers[].api_key` 掩码为 `****`） | `getAiSettings` |
 | PUT | `/api/settings/ai` | `AiSettings` | `{ saved: true }` | `saveAiSettings` |
 | POST | `/api/ai/providers/{id}/test` | — | `{ ok, sample? }` | `testProvider` |
-| POST | `/api/ai/error-fix` | `{ sql, error, tables[], attach_databases[], locale }` | `{ explanation, fixed_sql, safe }` | `errorFix` |
-| POST | `/api/ai/explain-sql` | `{ sql, locale }` | `{ explanation }` | `explainSql` |
-| POST | `/api/ai/nl-to-sql` | `{ question, tables[], locale }` | `{ sql, used_tables[], safe }`（非只读 SELECT → `safe:false`；后端返回前先 `EXPLAIN` 校验,失败自动经报错医生修复一轮,响应形状不变） | `nlToSql` |
-| POST | `/api/ai/chat` | `{ messages[], tables[], attach_databases[], locale }` | `{ content }` | `chat` |
-| POST | `/api/ai/suggest-chart` | `{ columns[], sample[], locale }` | `ChartSpec{ type, x, y[], agg, xBin?, reason? }` | `suggestChart` |
+| POST | `/api/ai/agent/stream` | `AgentRequest`(见下) | **SSE 流**(`text/event-stream`,响应头含 `X-Accel-Buffering: no`):事件见下表;主要供 `data_qa` 展示步骤/取消。未配置/关闭在建流前返回 400 `ai_not_configured`/`ai_disabled`;**未知 `mode` 或输入不合 Profile 契约**返回 400 `VALIDATION_ERROR`(未知 mode 是判别键取值错误,属非法输入,**不是** `ai_not_configured`) | `streamAgent` |
+| POST | `/api/ai/agent/run` | `AgentRequest` | **非流式 JSON**:`{ result, termination_reason, message, run_id, session_id }`——与 stream 复用同一个 run_agent(同 Engine+Profile)。`result` 为该 mode 的 output_model 或 `null`(校验失败/回退)。供 `generate_sql`/`repair_sql`/`explain_sql`/`suggest_chart` 与 MCP。成功与各类终止均返回同结构。未配置/关闭/输入非法同上 400 | `runAgent<T>` |
+| GET | `/api/ai/agent-runs` | `limit?`(≤100) | **列表** `items[]`: `run_id`,`mode`,`provider`,`model`,`steps`,`llm_calls`,`tool_calls`,`sql_calls`,`sql_rejected`,`json_errors`,`termination_reason`,`elapsed_ms`,`created_at`(应用时区 ISO) | （调试/观测,暂无 FE 入口） |
 
-- `attach_databases`：`[{ alias, connection_id }]`；后端据此先 ATTACH 远端库,再取**联邦表**结构(对话 / 报错医生注入 schema 用)。
+**AgentRequest**：`{ mode, session_id?, input, context }`,`context = { tables[], attach_databases[], current_sql?, locale }`。`mode` 与 `input`/`result`(output_model)/失败策略：
+
+| mode | input | result（output_model） | 失败策略 | 入口 |
+|---|---|---|---|---|
+| `data_qa` | `{ messages:[{role,content}] }` | `{ content, sql\|null, evidence[] }` | typed_error | 前端问数对话抽屉（`streamAgent`） |
+| `generate_sql` | `{ question }` | `{ sql, used_tables[], safe }`（`EXPLAIN` 干跑校验,不执行) | reject（`null`） | **后端 / MCP `generate_sql`**（当前无现役前端按钮） |
+| `repair_sql` | `{ sql, error }` | `{ explanation, fixed_sql\|null, safe }` | reject（`null`） | 前端结果面板报错修复（`runAgent`）+ MCP |
+| `explain_sql` | `{ sql }` | `{ explanation }`（无工具,`max_steps=1`) | typed_error | **后端 / MCP `explain_sql`**（当前无现役前端按钮） |
+| `suggest_chart` | `{ columns[], sample[] }` | `ChartSpec{ type, x, y[], agg?, xBin?, reason? }` | fallback（`null`→前端 `defaultSpec`） | 前端图表 AI 推荐（`runAgent`）+ MCP |
+
+> 失败策略与终止码：`typed_error` → **error 事件**,`termination_reason=output_invalid`;`reject`/`fallback` → **answer 事件**,`result` 为 `null`(或 fallback),`termination_reason` 为 `output_invalid`(输出模型校验失败)或 `sql_validation_failed`(`generate_sql`/`repair_sql` 的 `EXPLAIN` 干跑失败)。故 `answer` 的 `termination_reason` 不只是 `completed`。
+>
+> **`data_qa` 的两个终止动作 `final` / `refuse`**：`final` 是**带数据的答复**——其 `result.sql` 必须是本轮**真正经 `run_query` 执行过的只读 SELECT**(确定性 grounding 门控:规范化后须命中本次执行集)。`sql` 为空、非只读、或未跑过一律**拒绝**并回喂纠错;纠错预算耗尽仍不达标 → **error 事件**、`termination_reason=ungrounded_final`(诚实终止,**绝不** `completed`;这挡住"拿 schema 样例直接算""执行 A 回答 B""写库被抹成 null 报假成功"三类静默错误)。`refuse` 是**不带数据的答复**(拒绝写/文件/越权请求,或确实无需查询)——`{"action":"refuse","result":{"content":"..."}}`,content-only、不过 grounding,后端强制 `sql=null`/`evidence=[]`,走正常 `answer` 事件、`termination_reason=completed`。前端无需特判 `refuse`(仍是 `answer`)。
+>
+> **`safe` 由后端派生,不采信模型**：`generate_sql`/`repair_sql` 结果里的 `safe` **不在 output_model**(模型若在 `result` 里带 `safe`,`model_dump()` 阶段被丢弃),而由后端 `finalize` 用 AST 只读判定(`is_select_only`)重算并追加——`generate_sql.safe = SQL 为单条只读 SELECT`;`repair_sql` 中 `fixed_sql` 非只读 SELECT 时 `fixed_sql` 抹为 `null` 且 `safe=false`。前端(`ResultPanel`)据 `safe` 决定是否允许"应用修复 SQL",故此值必须服务端可信,不能让 LLM 决定。
+
+**SSE 事件**（每条 `event:` + 单行 `data:` JSON,均含 `run_id`;`answer` 与 `error` 互斥,`done` 恒为最后一条;15s 无事件发注释行心跳）:
+
+| event | data |
+|---|---|
+| `run_started` | `{run_id, session_id\|null, limits:{steps, sql_calls, seconds, llm_calls}}` |
+| `tool_started` | `{run_id, tool_call_id, tool, args_summary}`（`data_qa` 的 `tool` 取值:`search_tables` / `describe_tables` / `inspect_table` / `run_query`;前端按名字展示即可,新增工具不需要前端改动） |
+| `tool_completed` | `{run_id, tool_call_id, tool, ok, ui_summary, truncated, elapsed_ms}` |
+| `answer` | `{run_id, result\|null, termination_reason: completed\|output_invalid\|sql_validation_failed}`（`result` 为该 mode 的 output_model 或 `null`;`data_qa` 的 `result.sql` 仅供插入编辑器） |
+| `error` | `{run_id, termination_reason: protocol_violation\|ungrounded_final\|budget_llm\|budget_time\|cancelled\|provider_error\|output_invalid\|internal_error, message}` |
+| `done` | `{run_id, session_id\|null, usage:{steps, llm_calls, tool_calls, sql_calls, elapsed_ms}}` |
+
+取消:客户端断开连接即取消(服务端中断在跑查询);执行中的探查查询也可经 `POST /api/query/cancel/{run_id}` 中断。
+
+- `attach_databases`：`[{ alias, connection_id }]`；后端据此先 ATTACH 远端库,再取**联邦表**结构(注入 schema 用)。
 - 未配置 / 关闭时返回错误码 `ai_not_configured` / `ai_disabled`,前端据此引导去「AI 模型」设置。
-- `AiSettings`：`{ enabled, default_provider, providers[], features, timeout_seconds, num_retries }`；provider 类型 `openai | anthropic | ollama | openai_compatible`。详见 `docs/CONFIGURATION.md` → AI / LLM。
+- `AiSettings`：`{ enabled, default_provider, providers[], features, timeout_seconds, num_retries }`;`features` 键为 Profile 的 `model_feature`(`data_qa`/`generate_sql`/`repair_sql`/`explain_sql`/`suggest_chart`),解析顺序 per-profile 覆盖 → `default_provider` 兜底 → 首个启用供应商。旧功能键(chat/nl_to_sql/error_doctor/explain)升级时一次性迁移到对应 Profile 键。provider 类型 `openai | anthropic | anthropic_compatible | ollama | openai_compatible`(后两者需填 `base_url`;`anthropic_compatible` 走 `/v1/messages` 协议的第三方网关)。详见 `docs/CONFIGURATION.md` → AI / LLM。
 
 ## 10. 已移除的历史端点（勿再使用）
 
@@ -241,6 +270,11 @@ BY NAME、LIMIT、预览 vs 执行语义见 [QUERY_BEHAVIOR_ZH.md](QUERY_BEHAVIO
 | `GET /api/database_tables/{id}` | `GET /api/datasources/databases/{id}/tables` |
 | `GET /api/database_table_details/{id}/{table}` | `GET /api/datasources/databases/{id}/tables/detail` |
 | `GET /api/databases/{id}/schemas` | `GET /api/datasources/databases/{id}/schemas` |
+| `POST /api/ai/nl-to-sql` | `POST /api/ai/agent/run`（`mode=generate_sql`） |
+| `POST /api/ai/error-fix` | `POST /api/ai/agent/run`（`mode=repair_sql`） |
+| `POST /api/ai/explain-sql` | `POST /api/ai/agent/run`（`mode=explain_sql`） |
+| `POST /api/ai/suggest-chart` | `POST /api/ai/agent/run`（`mode=suggest_chart`） |
+| `POST /api/ai/agent-chat` / `…/result` | `POST /api/ai/agent/stream`（`mode=data_qa`）/ `POST /api/ai/agent/run` |
 
 ## 11. 易混字段说明
 

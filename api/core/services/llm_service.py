@@ -20,23 +20,48 @@ class LLMService:
     def __init__(self, cfg: Dict[str, Any]):
         self._cfg = cfg
 
-    def complete(self, feature: str, messages: List[Dict[str, str]]) -> str:
+    def _resolve(self, feature: str) -> Dict[str, Any]:
         if not self._cfg.get("enabled"):
             raise AIDisabledError("AI features are disabled")
-
         resolved = ai_config.resolve_feature(self._cfg, feature)
-        provider = resolved["provider"]
-        model = resolved["model"]
-        if not provider or not model:
+        if not resolved["provider"] or not resolved["model"]:
             raise AIConfigError(f"No provider/model configured for feature '{feature}'")
+        return resolved
 
+    def complete(self, feature: str, messages: List[Dict[str, str]]) -> str:
+        resolved = self._resolve(feature)
+        provider = resolved["provider"]
         api_key = crypto.decrypt_secret(provider.get("api_key") or "")
         return llm_client.complete(
             provider_type=provider.get("type") or "openai_compatible",
-            model=model,
+            model=resolved["model"],
             messages=messages,
             api_key=api_key or None,
             base_url=provider.get("base_url") or None,
             timeout=self._cfg.get("timeout_seconds", 30),
             num_retries=self._cfg.get("num_retries", 2),
+        )
+
+    async def complete_async(
+        self,
+        feature: str,
+        messages: List[Dict[str, str]],
+        *,
+        timeout: float | None = None,
+        num_retries: int | None = None,
+    ) -> str:
+        """异步 completion,供 agent/SSE 场景;timeout/num_retries 可按剩余预算覆盖。"""
+        resolved = self._resolve(feature)
+        provider = resolved["provider"]
+        api_key = crypto.decrypt_secret(provider.get("api_key") or "")
+        return await llm_client.complete_async(
+            provider_type=provider.get("type") or "openai_compatible",
+            model=resolved["model"],
+            messages=messages,
+            api_key=api_key or None,
+            base_url=provider.get("base_url") or None,
+            timeout=timeout if timeout is not None else self._cfg.get("timeout_seconds", 30),
+            num_retries=(
+                num_retries if num_retries is not None else self._cfg.get("num_retries", 2)
+            ),
         )

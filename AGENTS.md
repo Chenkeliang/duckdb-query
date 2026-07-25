@@ -45,7 +45,7 @@
 | 桌面壳 | Tauri 2.x（`@tauri-apps/api` ^2） | `frontend/src-tauri/` |
 | 后端框架 | FastAPI + Python（CI 3.11，本地 3.13） | |
 | 数据库 | DuckDB 1.5.3（本地）+ MySQL/PostgreSQL/SQLite/DuckDB 文件（联邦 ATTACH） | |
-| AI | OpenAI 兼容 LLM 接入（问数 / 报错医生 / SQL 解释 / 图表建议 / 对话） | `api/routers/ai.py`，密钥 Fernet 加密 |
+| AI | OpenAI 兼容 LLM 接入；统一 **Agent Engine + 多 Profile**（`data_qa` / `generate_sql` / `repair_sql` / `explain_sql` / `suggest_chart`，`mode` 判别），端点 `POST /api/ai/agent/{stream,run}`。`data_qa` 工具集 `search_tables` / `describe_tables` / `inspect_table` / `run_query`，终止动作 `final`（必须绑定本轮执行过的只读 SELECT，否则 `ungrounded_final`）与 `refuse`（content-only、不过 grounding）；联邦别名经 SQL guard 授权，支持 `alias.schema.table` | `api/routers/ai.py` + `core/services/ai_{agent,profiles,agent_tools,sql_guard}.py`，密钥 Fernet 加密 |
 | MCP | 独立子包 `mcp/duckquery_mcp`（Python ≥3.10） | 见 §9 |
 | 国际化 | react-i18next（zh / en 全量） | |
 | 质量 | 自定义 pylint 插件（W9020-9023）+ 自定义 eslint 插件（见 §5 落差标注） | `lint-rules/` |
@@ -75,9 +75,8 @@ duckdb-query/
 │   │   ├── database/                 # DuckDB 引擎、联邦 ATTACH/优化器、元数据管理
 │   │   ├── foundation/               # 基础设施（crypto_utils: Fernet，供 AI 密钥）
 │   │   ├── security/                 # encryption.py（Fernet 兼容读取路径）
-│   │   └── services/                 # 透视/集合 SQL 生成、表元数据、AI 配置
+│   │   └── services/                 # 透视/集合 SQL 生成、表元数据、AI 配置、Agent Engine + Profiles
 │   ├── middleware/                   # 中间件
-│   ├── prompts/                      # AI prompt 素材（duckdb_dialect.md 等）
 │   ├── routers/                      # 21 个路由（见下表）
 │   ├── models/                       # Pydantic 模型
 │   ├── services/                     # 顶层服务（datasource_aggregator 等，≠ core/services）
@@ -199,6 +198,7 @@ cd frontend && npx tauri build --bundles app --config '{"bundle":{"createUpdater
 - 业务代码从 **`@/api`**（barrel `index.ts`）导入 API 函数；禁止 `@/api/xxxApi`、`@/api/client`、`@/api/types` 深路径。
 - `frontend/src/api/*.ts` 内部模块间用相对路径（`./client`），**禁止**在 api 子模块内 `from '@/api'`（barrel 循环依赖）。
 - **禁止**对本后端 `/api/...` 裸 `fetch` 或绕过 `apiClient` 的 axios（会绕开统一错误体、`normalizeResponse`、超时约定）。例外仅第三方 URL，且须注释「第三方」。
+- **SSE streaming 例外（仅限 API 模块内）**：`POST` 流式端点（如 `/api/ai/agent/stream`）必须用浏览器 `fetch` + `ReadableStream` 读取（`EventSource` 只支持 `GET`，`apiClient`/axios 不给逐块流）。此裸 `fetch` **只允许写在 `frontend/src/api/*.ts`（如 `agentApi.ts` 的 `streamAgent`）内并封装为函数**；业务组件仍**禁止**裸 `fetch`，一律经 barrel 调 `streamAgent`/`runAgent` 等封装。
 - 新增固定端点：先在 `frontend/src/api/` 建封装、**在 `index.ts` 导出**，业务侧从 `@/api` 导入。
 - UI 组件从 `@/components/ui/*`；图标 `lucide-react`；TanStack Query `@tanstack/react-query`。
 
@@ -390,6 +390,9 @@ return error_json_response(status_code=400, code="VALIDATION_ERROR", message="..
 - [ ] pylint 全项目 10/10（pre-commit 同款命令）；pytest 过
 - [ ] MCP 写类工具接 `confirm_required` 且有门控测试
 
+### 文档
+- [ ] 改 `README.md` 的结构或事实：**同步改 `README_en.md`**（曾出现中文已表格化、英文仍是旧 bullet 的漂移）
+
 ### API / 契约
 - [ ] 改响应字段或端点：已同步 [`docs/API_CONTRACT_FE_BE.md`](docs/API_CONTRACT_FE_BE.md)
 
@@ -417,7 +420,7 @@ return error_json_response(status_code=400, code="VALIDATION_ERROR", message="..
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **duckdb-query** (14172 symbols, 27601 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **duckdb-query** (14531 symbols, 28251 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 

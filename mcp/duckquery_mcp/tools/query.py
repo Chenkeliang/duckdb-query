@@ -56,23 +56,95 @@ async def federated_query(
     return _truncate(data, cfg)
 
 
-async def ask(client: DuckQueryClient, cfg: Config, *, question: str, tables: list | None = None, locale: str = "zh") -> Any:
-    """Natural-language question -> generated DuckDB SQL -> executed result.
+async def _agent_run(client: DuckQueryClient, *, mode: str, agent_input: dict,
+                     context: dict, session_id: str | None = None) -> Any:
+    """统一 Agent 入口:所有 AI 工具都走 POST /api/ai/agent/run(同一 Engine+Profile)。
 
-    Local DuckDB tables only (the nl-to-sql endpoint has no attach support);
-    for attached external DBs use chat to draft SQL, then federated_query."""
-    gen = await client.call("POST", "/api/ai/nl-to-sql",
-                            json_body={"question": question, "tables": tables or [], "locale": locale})
-    sql = gen.get("sql") if isinstance(gen, dict) else None
-    if not sql:
-        return {"error": "no SQL generated", "raw": gen}
-    result = await run_sql(client, cfg, sql=sql)
-    return {"generated_sql": sql, **result}
+    返回 {result, termination_reason, message, run_id, session_id};result 为对应
+    mode 的 output_model(校验通过)或 null(校验失败/回退,见 termination_reason)。"""
+    body: dict = {"mode": mode, "input": agent_input, "context": context}
+    if session_id:
+        body["session_id"] = session_id
+    return await client.call("POST", "/api/ai/agent/run", json_body=body)
+
+
+async def ask_agent(
+    client: DuckQueryClient,
+    cfg: Config,
+    *,
+    question: str,
+    tables: list | None = None,
+    attach_databases: list | None = None,
+    locale: str = "zh",
+    history: list | None = None,
+    session_id: str | None = None,
+) -> Any:
+    """Ask the DuckQuery data agent about your data (mode=data_qa). Before
+    answering it runs BOUNDED READ-ONLY probe queries — inspects schemas, verifies
+    real column values, and dry-runs row-capped SELECTs — over local DuckDB tables
+    and, when you pass attach_databases (same shape as federated_query), the
+    attached MySQL/PostgreSQL/SQLite/DuckDB tables referenced as alias.table.
+
+    Returns {result:{content, sql, evidence}, termination_reason, run_id}. `sql`
+    (if any) is a draft for you to run; the agent never executes writes and its own
+    probe queries are read-only and bounded. Pass `history` as prior turns
+    [{role, content}, ...] (questions and answers only, no tool traces)."""
+    messages = list(history or []) + [{"role": "user", "content": question}]
+    context = {"tables": tables or [], "attach_databases": attach_databases or [], "locale": locale}
+    return await _agent_run(client, mode="data_qa", agent_input={"messages": messages},
+                            context=context, session_id=session_id)
+
+
+async def generate_sql(
+    client: DuckQueryClient,
+    cfg: Config,
+    *,
+    question: str,
+    tables: list | None = None,
+    attach_databases: list | None = None,
+    locale: str = "zh",
+) -> Any:
+    """Natural-language question -> a validated DuckDB SQL DRAFT (mode=generate_sql).
+
+    The SQL is EXPLAIN-checked against the real schema but NOT executed — returns
+    {result:{sql, used_tables, safe}, termination_reason}. `safe` is derived by the
+    backend (true only when `sql` is a single read-only SELECT) — the model does not
+    decide it. Review then run it yourself with run_sql / federated_query. Pass
+    attach_databases (same shape as federated_query) to target attached external DBs
+    as alias.table."""
+    context = {"tables": tables or [], "attach_databases": attach_databases or [], "locale": locale}
+    return await _agent_run(client, mode="generate_sql", agent_input={"question": question},
+                            context=context)
+
+
+async def repair_sql(
+    client: DuckQueryClient,
+    cfg: Config,
+    *,
+    sql: str,
+    error_message: str,
+    tables: list | None = None,
+    attach_databases: list | None = None,
+    locale: str = "zh",
+) -> Any:
+    """Error doctor (mode=repair_sql): given a failing SQL and its error message,
+    suggest a fix. Returns {result:{explanation, fixed_sql, safe}, termination_reason}.
+    `safe` is derived by the backend, not the model: when the proposed fix is not a
+    single read-only SELECT, `fixed_sql` is nulled and `safe` is false.
+
+    Pass the same tables / attach_databases the failing query used so it sees the
+    real schemas instead of guessing column names."""
+    context = {"tables": tables or [], "attach_databases": attach_databases or [], "locale": locale}
+    return await _agent_run(client, mode="repair_sql",
+                            agent_input={"sql": sql, "error": error_message}, context=context)
 
 
 async def explain_sql(client: DuckQueryClient, cfg: Config, *, sql: str, locale: str = "zh") -> Any:
-    """Plain-language explanation of a SQL statement."""
-    return await client.call("POST", "/api/ai/explain-sql", json_body={"sql": sql, "locale": locale})
+    """Plain-language explanation of a SQL statement (mode=explain_sql).
+
+    Returns {result:{explanation}, termination_reason}."""
+    return await _agent_run(client, mode="explain_sql", agent_input={"sql": sql},
+                            context={"locale": locale})
 
 
 async def suggest_chart(
@@ -83,48 +155,12 @@ async def suggest_chart(
     sample: list | None = None,
     locale: str = "zh",
 ) -> Any:
-    """Suggest a chart type for a query result. Pass columns (list of {name, type}) and optional sample rows."""
-    return await client.call("POST", "/api/ai/suggest-chart",
-                             json_body={"columns": columns, "sample": sample or [], "locale": locale})
+    """Suggest a chart spec for a query result (mode=suggest_chart). Pass columns
+    (list of {name, type}) and optional sample rows.
 
-
-async def chat(
-    client: DuckQueryClient,
-    cfg: Config,
-    *,
-    messages: list,
-    tables: list | None = None,
-    attach_databases: list | None = None,
-    locale: str = "zh",
-) -> Any:
-    """Free-form data conversation with the configured LLM. messages is [{role, content}, ...].
-
-    Pass attach_databases (same shape as federated_query) whenever tables reference
-    attached external DBs (alias.table) — the AI then sees their real schemas and
-    engine types instead of bare names."""
-    body: dict = {"messages": messages, "tables": tables or [], "locale": locale}
-    if attach_databases:
-        body["attach_databases"] = attach_databases
-    return await client.call("POST", "/api/ai/chat", json_body=body)
-
-
-async def error_fix(
-    client: DuckQueryClient,
-    cfg: Config,
-    *,
-    sql: str,
-    error_message: str,
-    tables: list | None = None,
-    attach_databases: list | None = None,
-    locale: str = "zh",
-) -> Any:
-    """Error doctor: suggest a fix for a failing query, given the error.
-
-    Pass the same tables / attach_databases the failing query used — the doctor
-    then sees real schemas instead of guessing column names."""
-    body: dict = {"sql": sql, "error": error_message, "locale": locale}
-    if tables:
-        body["tables"] = tables
-    if attach_databases:
-        body["attach_databases"] = attach_databases
-    return await client.call("POST", "/api/ai/error-fix", json_body=body)
+    Returns {result: ChartSpec {type, x, y, agg, xBin, reason} | null,
+    termination_reason}. result is null when no valid chart applies (caller falls
+    back to its own default)."""
+    return await _agent_run(client, mode="suggest_chart",
+                            agent_input={"columns": columns, "sample": sample or []},
+                            context={"locale": locale})

@@ -29,8 +29,8 @@ def test_normalize_kwargs_strips_bare_connection_id():
 
 
 def test_normalize_kwargs_strips_attach_list():
-    """attach_databases 列表(federated_query/chat/error_fix/save_as_table/
-    export_results 共用的形状)在注册闭包层被归一化。"""
+    """attach_databases 列表(federated_query/ask_agent/generate_sql/repair_sql/
+    save_as_table/export_results 共用的形状)在注册闭包层被归一化。"""
     out = _normalize_kwargs({
         "sql": "SELECT 1",
         "attach_databases": [{"alias": "m", "connection_id": "db_SORDER"}],

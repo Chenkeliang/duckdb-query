@@ -2,7 +2,8 @@
 
 替代 litellm——本项目只用"非流式 completion"一个能力，而 litellm 连带
 tokenizers/tiktoken/aiohttp/jsonschema 等依赖在桌面冻结包里占约 54MB。
-四类 provider（openai / openai_compatible / anthropic / ollama）直连覆盖，
+五类 provider（openai / openai_compatible / anthropic / anthropic_compatible /
+ollama）直连覆盖，
 参数面与原 litellm.completion 用法等价：model、messages、api_key、
 base_url、timeout、num_retries。
 """
@@ -55,7 +56,9 @@ def _build_request(
     base_url: Optional[str],
 ) -> Tuple[str, Dict[str, str], Dict[str, Any], Callable[[Dict[str, Any]], str]]:
     """按 provider 类型构造 (url, headers, body, 内容提取器)。"""
-    if provider_type == "anthropic":
+    if provider_type in ("anthropic", "anthropic_compatible"):
+        # anthropic_compatible：走同一套 /v1/messages 协议的第三方网关
+        # （如 DeepSeek 的 https://api.deepseek.com/anthropic），仅 base_url 不同
         base = (base_url or "https://api.anthropic.com").rstrip("/")
         if base.endswith("/v1"):
             base = base[: -len("/v1")]
@@ -92,6 +95,66 @@ def _build_request(
         headers["Authorization"] = f"Bearer {api_key}"
     body = {"model": model, "messages": messages}
     return f"{base}/chat/completions", headers, body, _openai_content
+
+
+async def complete_async(
+    *,
+    provider_type: str,
+    model: str,
+    messages: List[Dict[str, str]],
+    api_key: Optional[str] = None,
+    base_url: Optional[str] = None,
+    timeout: float = 30,
+    num_retries: int = 2,
+) -> str:
+    """complete 的异步版:供 SSE 场景使用,复用同一套请求构造与重试语义。
+
+    为什么不是 to_thread 包同步版:客户端断开后 to_thread 里的同步请求无法真正
+    取消,供应商侧会继续计费;AsyncClient 在任务取消时连接真实关闭。
+    """
+    import asyncio  # pylint: disable=import-outside-toplevel
+    import httpx  # pylint: disable=import-outside-toplevel
+
+    url, headers, body, extract = _build_request(
+        provider_type, model, messages, api_key, base_url
+    )
+    attempts = max(int(num_retries), 0) + 1
+    last_err: Optional[LLMClientError] = None
+    async with httpx.AsyncClient(timeout=timeout) as client:
+        for attempt in range(attempts):
+            if attempt:
+                await asyncio.sleep(min(0.5 * 2 ** (attempt - 1), 4.0))
+            try:
+                resp = await client.post(url, json=body, headers=headers)
+            except httpx.HTTPError as exc:
+                last_err = LLMClientError(f"LLM request failed: {exc}")
+                logger.warning(
+                    "LLM async request error (attempt %d/%d): %s",
+                    attempt + 1, attempts, exc,
+                )
+                continue
+            if resp.status_code in _RETRYABLE_STATUS:
+                last_err = LLMClientError(
+                    f"LLM upstream HTTP {resp.status_code}: {resp.text[:200]}"
+                )
+                logger.warning(
+                    "LLM async retryable status %d (attempt %d/%d)",
+                    resp.status_code, attempt + 1, attempts,
+                )
+                continue
+            if resp.status_code >= 400:
+                raise LLMClientError(
+                    f"LLM upstream HTTP {resp.status_code}: {resp.text[:200]}"
+                )
+            try:
+                data = resp.json()
+            except ValueError as exc:
+                raise LLMClientError(
+                    f"LLM upstream returned non-JSON: {resp.text[:200]}"
+                ) from exc
+            return extract(data)
+    assert last_err is not None
+    raise last_err
 
 
 def complete(

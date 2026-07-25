@@ -38,9 +38,9 @@ def test_resolve_feature_falls_back_to_default():
         "enabled": True,
         "default_provider": "p1",
         "providers": [{"id": "p1", "type": "openai", "models": ["gpt-4o"]}],
-        "features": {"nl_to_sql": {"enabled": True, "provider": None, "model": None}},
+        "features": {"generate_sql": {"enabled": True, "provider": None, "model": None}},
     }
-    resolved = ai_config.resolve_feature(cfg, "nl_to_sql")
+    resolved = ai_config.resolve_feature(cfg, "generate_sql")
     assert resolved["provider"]["id"] == "p1"
     assert resolved["model"] == "gpt-4o"
 
@@ -69,6 +69,6 @@ def test_resolve_feature_falls_back_to_first_enabled_provider_without_default():
         ],
         "features": {},
     }
-    resolved = ai_config.resolve_feature(cfg, "chat")
+    resolved = ai_config.resolve_feature(cfg, "data_qa")
     assert resolved["provider"]["id"] == "p1"
     assert resolved["model"] == "glm-5.2"
