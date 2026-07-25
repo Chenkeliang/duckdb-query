@@ -76,6 +76,6 @@ All five are `read`-tier tools — exposed in every safety mode — and never ex
 - `full` — bypasses the MCP confirmation gates above; backend safeguards still
   apply.
 
-The AI-settings tools (`configure_llm`, `test_llm_provider`) are write-tier —
-hidden in `read-only` — but take no `confirm` parameter and apply directly in
-`normal` mode.
+The AI-settings tools (`configure_llm`, `test_llm_provider`) are write-tier:
+hidden in `read-only`, and in `normal` mode they take the same `confirm=true`
+parameter as every other write tool.

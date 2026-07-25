@@ -17,7 +17,7 @@ cp config/app-config.example.jsonc config/app-config.jsonc
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
 | `debug` | boolean | `false` | Enable verbose debug logging |
-| `cors_origins` | string[] | `["http://localhost:48000"]` | Allowed CORS origins for the frontend |
+| `cors_origins` | string[] | `["http://localhost:48000", "tauri://localhost", "http://tauri.localhost"]` | Allowed CORS origins (the last two are the desktop macOS / Windows webview origins) |
 | `timezone` | string | `"Asia/Shanghai"` | Default timezone for date/time operations |
 
 ---
@@ -88,6 +88,25 @@ For accessing remote files from S3 or Aliyun OSS:
 
 ---
 
+## Docker Images and Mirrors
+
+`quick-start.sh` points the Node / Nginx base images used for the frontend build at the DaoCloud mirror (see `.env` in the repo root), so a blocked Docker Hub does not break the build:
+
+```bash
+NODE_IMAGE=docker.m.daocloud.io/library/node:24-alpine
+NGINX_IMAGE=docker.m.daocloud.io/library/nginx:stable-alpine
+```
+
+When Docker Hub is reachable, switch back to the official images:
+
+```bash
+USE_DOCKER_HUB=1 ./quick-start.sh
+```
+
+You can also edit `NODE_IMAGE` / `NGINX_IMAGE` in `.env` directly. The backend image still pulls `python:3.12-bookworm` from Docker Hub and downloads DuckDB extensions at build time; whether those succeed depends on your network.
+
+The `./data` directory is a bind mount on the host — rebuilding containers does not delete imported tables. Back it up before cleaning.
+
 ## Connection Pool Settings
 
 | Key | Type | Default | Description |
@@ -115,7 +134,7 @@ For accessing remote files from S3 or Aliyun OSS:
 AI features (Text-to-SQL chat, error doctor, AI chart suggestions, data chat) are **disabled by default** and are **not stored in this configuration file** — configure them in-app under **Settings → AI Model**, persisted to `system.db` (see API `docs/API_CONTRACT_FE_BE.md` §9.3).
 
 - **Privacy**: provider `api_key` values are stored **Fernet-encrypted**; the read endpoint returns a masked `****` and never echoes back the plaintext. Generated SQL is always placed into the editor — **never auto-executed**.
-- **Provider types**: `openai` / `anthropic` / `ollama` / `openai_compatible` (custom `base_url`).
+- **Provider types**: `openai` / `anthropic` / `ollama` / `openai_compatible` and `anthropic_compatible` (the latter two take a custom `base_url`; `anthropic_compatible` speaks the `/v1/messages` protocol, e.g. `https://api.deepseek.com/anthropic`).
 - **Per-feature model selection**: `features.{explain | nl_to_sql | chat | suggest_chart | error_fix}` can each specify a provider/model, falling back to `default_provider` when unset.
 - **Timeout / retries**: `timeout_seconds` (default 30), `num_retries` (default 2); exponential backoff on network errors and 429/5xx (deterministic auth/param errors are not retried).
 - Failed calls return error codes `ai_not_configured` / `ai_disabled`, which the frontend uses to guide the user to Settings.

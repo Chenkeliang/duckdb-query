@@ -1,88 +1,96 @@
 <p align="center">
-  <img src="frontend/src/assets/duckq-logo.svg" alt="DuckQuery" height="80">
+  <img src="docs/assets/readme/duckq-logo.svg" alt="DuckQuery" height="80">
 </p>
 
 <h1 align="center">DuckQuery</h1>
 
 <p align="center">
-  <strong>本地优先的 AI 可视化 SQL 工作台</strong><br>
-  一条 SQL 联查本地文件、MySQL / PostgreSQL，以及 SQLite / DuckDB 数据库文件。<br>
-  直接写 SQL，或让 AI 起草后由你确认执行。
+  <strong>本地文件与远程数据库，在同一条 SQL 中查询</strong><br>
+  临时对账、跨源核查、数据探查——无需预先导入建表，也无需为单次分析搭建数仓。<br>
+  <sub>支持直接编写 SQL，或以自然语言提问（NL-to-SQL）——结论与可复用 SQL 一并返回。</sub>
 </p>
 
 <p align="center">
   <a href="https://github.com/Chenkeliang/duckdb-query/releases/latest"><img src="https://img.shields.io/github/v/release/Chenkeliang/duckdb-query?label=Release&color=F97316" alt="最新版本"></a>
-  <a href="https://chenkeliang.github.io/duckdb-query/"><img src="https://img.shields.io/badge/在线_Demo-立即试用-F97316" alt="在线 Demo"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green" alt="MIT License"></a>
+  <a href="https://github.com/Chenkeliang/duckdb-query/stargazers"><img src="https://img.shields.io/github/stars/Chenkeliang/duckdb-query?label=Star&color=F97316" alt="Star 数"></a>
 </p>
 
 <p align="center">
   <a href="https://github.com/Chenkeliang/duckdb-query/releases/latest"><strong>下载桌面版</strong></a>
-  · <a href="https://chenkeliang.github.io/duckdb-query/">在线 Demo</a>
   · <a href="#立即开始">Docker 自托管</a>
   · <a href="README_en.md">English</a>
 </p>
 
 <p align="center">
-  <sub>在线 Demo 仅支持浏览器内 DuckDB-Wasm，不含 AI、数据库连接和 Excel。AI 功能会调用你配置的模型端点。</sub>
-</p>
-
-<p align="center">
-  <a href="#30-秒看懂">30 秒看懂</a> ·
-  <a href="#核心能力">核心能力</a> ·
-  <a href="#为什么选-duckquery">为什么选 DuckQuery</a> ·
-  <a href="#立即开始">立即开始</a> ·
-  <a href="#技术与数据边界">技术与数据边界</a> ·
-  <a href="#mcp-接入">MCP 接入</a>
+  <sub>数据完全本地 · AI 使用你自己的 Key 与模型</sub>
 </p>
 
 <p align="center">
   <img src="docs/assets/readme/hero-cross-source-zh.gif" alt="DuckQuery 查询工作台执行 DuckDB 本地表与 MySQL 表的跨源 JOIN" width="900">
 </p>
 
-## 30 秒看懂
+## 适用场景
 
-1. **接入数据**：上传文件成为 DuckDB 表，或保存 SQLite、MySQL、PostgreSQL、DuckDB 文件连接。
+- **可视化使用 DuckDB**：建表、导入、关联、透视、导出均在界面完成，无需编写脚本或使用命令行。
+- **临时对账与数据核对**：Excel / CSV 与数据库中的业务表直接比对，无需为单次分析导入数仓。
+- **跨源关联分析**：本地 Parquet / SQLite 与远端 MySQL 在同一条 SQL 中关联、聚合，定位缺失、重复与金额差异记录。
+- **数值结果可信**：聚合与统计由 SQL 在 DuckDB 中执行，模型不参与数值计算，规避大模型的算术幻觉。
+- **AI 编程工具接入**：以 MCP 协议向 Claude Code、Codex、Cursor 等客户端开放本机已连接的数据源，无需导出中间文件。
 
-   ![DuckQuery 中的 SQLite 与 MySQL 数据源连接](docs/assets/readme/sources-zh.webp)
+## 30 秒上手
 
-2. **让 AI 起草 SQL**：AI 根据当前表结构生成草稿；你可以先检查、插入编辑器，再手动执行。
+| 步骤 | 说明 |
+|---|---|
+| **1. 接入数据** | 拖入 Excel / CSV 即生成表，或连接 MySQL / PostgreSQL / SQLite / DuckDB |
+| **2. 编写 SQL 或提问** | 直接编写查询；或以自然语言提问（如「上月各城市实付金额」），确认 AI 起草的 SQL 后执行 |
+| **3. 查看与导出结果** | 表格与图表切换、下钻查看明细，导出为 CSV / Excel / JSON / Parquet |
 
-   ![DuckQuery AI 起草 SQL，由用户插入编辑器、执行并切换为销售额图表](docs/assets/readme/workflow-ai-chart-zh.gif)
-
-3. **查看与探索结果**：同一份真实查询结果可在 DataGrid 与图表之间切换，并继续下钻或导出。
+![AI 起草 SQL → 执行 → 切换为图表](docs/assets/readme/workflow-ai-chart-zh.gif)
 
 ## 核心能力
 
-| 能力 | 一句话 | 具体做什么 |
-|---|---|---|
-| **文件入湖** | 拖进来就是表 | • CSV / Excel / Parquet / JSON / JSONL<br>• 粘贴表格、URL 导入<br>• 服务器挂载目录浏览<br>• Excel 多工作表选择 |
-| **数据库与跨源** | 远程库 `ATTACH` 即入查询 | • MySQL / PostgreSQL / SQLite / DuckDB 文件<br>• 与本地表同库查询，一条 SQL 跨源 JOIN<br>• 半连接下推改写，减少远端扫描 |
-| **查询工作流** | 会写 SQL 也行，不会也行 | • CodeMirror 编辑器（补全、格式化）<br>• JOIN 工作台 / 集合运算 / 透视表<br>• 异步任务、查询取消<br>• SQL 收藏与历史 |
-| **数据智能体** | 用中文问，它自己去查 | • 自主查表结构、验证真实取值、试跑只读查询后再回答<br>• **可把已连接的数据库加进问数范围**——只读取库结构，不加载任何数据行<br>• 一条回答可同时用上本地表与远程库<br>• 探查步骤实时可见、随时可停止，每条回答标注查了哪些库 |
-| **其他 AI 辅助** | 卡住时搭把手 | • 报错医生：SQL 执行失败时给出修复<br>• SQL 解释：讲清一段 SQL 在做什么<br>• 图表建议：按结果结构推荐图表<br>• 用你自己配置的模型端点；草稿只插入编辑器，由你确认执行 |
-| **结果与导出** | 表格看不够就画图 | • 虚拟滚动 DataGrid，大结果集流畅浏览<br>• 柱状 / 折线 / 面积 / 饼图 / 环形 / KPI 六类图表<br>• 点击图元生成明细 SQL<br>• 导出 CSV / Excel / JSON / Parquet |
-| **MCP 自动化** | 让 AI 客户端直接操作 | • 24 个工具：查询、发现、数据接入、转换、AI 设置、导出<br>• `read-only` / `normal` / `full` 三种运行模式<br>• 自动发现正在运行的后端 |
-
-## 为什么选 DuckQuery
-
-| 工具类型 | 典型代表 | 擅长 | 本地文件参与查询 |
-|---|---|---|---|
-| 数据库 GUI | DBeaver、TablePlus | 连库、写 SQL、看表结构 | 通常要先导入建表 |
-| BI 平台 | Metabase、Superset | 固化看板、分享报表 | 先配数据源，临时分析常需建仓跑 ETL |
-| **DuckQuery** | — | **临时分析、跨源联查** | **拖进来即成表，远程库 `ATTACH` 即入查询** |
-
-补的就是中间这块：文件与远程库在同一条 SQL 里 JOIN；AI 起草 SQL 由你确认执行，问数则由智能体自己跑只读查询后作答。
+<table>
+<tr>
+  <th width="13%">能力</th>
+  <th width="30%">典型问题</th>
+  <th width="57%">功能说明</th>
+</tr>
+<tr>
+  <td><strong>文件即表</strong></td>
+  <td>单次分析不希望预先建表或搭建 ETL 流程</td>
+  <td>CSV / Excel / Parquet / JSON / JSONL 拖入即建表，并支持粘贴表格、URL 导入与服务器目录读取</td>
+</tr>
+<tr>
+  <td><strong>跨源查询</strong></td>
+  <td>数据库中的业务表需要与本地文件核对</td>
+  <td>MySQL / PostgreSQL / SQLite / DuckDB 连接后即可与本地表在同一条 SQL 中关联查询，大表自动下推优化</td>
+</tr>
+<tr>
+  <td><strong>查询工作流</strong></td>
+  <td>分析过程分散在 Excel、SQL 客户端与 BI 工具之间</td>
+  <td>SQL 编辑器，并提供关联查询、集合运算与透视表的可视化构建；长查询异步执行、可随时取消</td>
+</tr>
+<tr>
+  <td><strong>AI 智能问数</strong></td>
+  <td>需要尽快得到结论，不希望先编写查询</td>
+  <td>自然语言问数：智能体自主查看表结构、核对取值、执行只读查询后给出结论，并附可复用 SQL；同时提供报错修复、语句解释与图表推荐</td>
+</tr>
+<tr>
+  <td><strong>结果与导出</strong></td>
+  <td>查询结果需要可视化呈现并交付他人</td>
+  <td>虚拟滚动表格，柱状 / 折线 / 面积 / 饼图 / 环形 / KPI 图表，导出 CSV / Excel / JSON / Parquet</td>
+</tr>
+<tr>
+  <td><strong>MCP 自动化</strong></td>
+  <td>希望 Claude Code、Codex、Cursor、OpenCode、Pi 等 AI 编程工具直接访问本机数据源</td>
+  <td>以 MCP 协议开放 24 个工具，提供 <code>read-only</code> / <code>normal</code> / <code>full</code> 三种权限模式</td>
+</tr>
+</table>
 
 ## 立即开始
 
-| 形态 | 适合场景 | 说明 |
-|---|---|---|
-| **桌面版** | 本机直接使用 | macOS Apple Silicon / Intel、Windows x64；内置后端并支持应用内更新 |
-| **在线 Demo** | 免安装体验 SQL | 仅 DuckDB-Wasm；不含 AI、数据库连接和 Excel |
-| **Docker** | 自托管前后端 | 需要 Docker 与 Docker Compose；数据保存在宿主机 `./data` |
-
-**桌面版**：从 [GitHub Releases](https://github.com/Chenkeliang/duckdb-query/releases/latest) 按下表下载 **1 个安装包**即可（下载页里的 `.sig`、`.app.tar.gz`、`latest.json` 是应用内自动更新用的，不用下载）：
+**桌面版**：从 [Releases](https://github.com/Chenkeliang/duckdb-query/releases/latest) 按下表选择**一个**安装包下载（`.sig`、`.app.tar.gz`、`latest.json` 用于应用内自动更新，无需下载）。
 
 | 你的电脑 | 标准包（推荐，体积小） | 离线全量包（内网 / 无外网） |
 |---|---|---|
@@ -90,92 +98,35 @@
 | **Mac · Apple 芯片（M1–M4）** | `*_aarch64.dmg` | `*_aarch64-offline.dmg` |
 | **Mac · Intel 处理器** | `*_x64.dmg` | `*_x64-offline.dmg` |
 
-怎么选：联网环境用**标准包**——首次使用 MySQL / PostgreSQL / 远程文件等能力时会自动在线下载对应 DuckDB 扩展（Windows 安装时还需联网获取 WebView2）；内网或无外网环境用 **`-offline` 全量包**——内置全部扩展与 WebView2 离线安装器，安装使用全程无需联网。不确定 Mac 芯片型号：苹果图标 → 「关于本机」，写 Apple M 系列选 `aarch64`，写 Intel 选 `x64`。
+联网环境建议使用标准包（首次连接 MySQL / PostgreSQL 时自动下载对应 DuckDB 扩展）；内网环境使用 `-offline` 包，扩展与 WebView2 已全部内置。暂不提供 Linux 安装包。
 
-当前没有 Linux 安装包；安装包没有 Apple / Microsoft 官方开发者证书签名，首次启动可能触发系统警告。
-
-首次启动被拦截时：Windows 选择「更多信息」→「仍要运行」；macOS 将 App 拖入「应用程序」后，在终端执行 `xattr -cr /Applications/DuckQuery.app`。完整步骤见 [桌面版使用手册](docs/guide/桌面版使用手册.md#2-安装时弹出警告怎么办)。
-
-**在线 Demo**：[在浏览器中打开](https://chenkeliang.github.io/duckdb-query/)，可查询示例数据，或导入 CSV / TSV / Parquet / JSON。
+> [!WARNING]
+> 安装包**未经 Apple / Microsoft 证书签名**，首次启动可能被系统拦截。Windows：选择「更多信息」→「仍要运行」；macOS：执行 `xattr -cr /Applications/DuckQuery.app`。
+> 芯片型号的识别方式与离线包内容见[桌面版使用手册](docs/guide/桌面版使用手册.md)。
 
 **Docker**：
 
 ```bash
 git clone https://github.com/Chenkeliang/duckdb-query.git
 cd duckdb-query
-./quick-start.sh
+./quick-start.sh   # Web UI → http://localhost:48000 ; API 文档 → :48001/docs ; 数据 → ./data
 ```
 
-启动后访问：
+配置项与镜像源见[配置参考](docs/CONFIGURATION_ZH.md)。
 
-- Web UI：<http://localhost:48000>
-- API 文档：<http://localhost:48001/docs>
-- 持久化数据：宿主机 `./data`（bind mount，重建容器不会删除已导入表）
+## MCP
 
-更多说明见 [配置参考](docs/CONFIGURATION_ZH.md) 与 [桌面版使用手册](docs/guide/桌面版使用手册.md)。
-
-### Docker 镜像与数据
-
-`quick-start.sh` 默认只把前端构建使用的 Node / Nginx 基础镜像切到 DaoCloud；可稳定访问 Docker Hub 时，可用 `USE_DOCKER_HUB=1 ./quick-start.sh` 切回官方镜像，也可编辑根目录 `.env` 中的 `NODE_IMAGE` / `NGINX_IMAGE`。后端仍需从 Docker Hub 拉取 `python:3.12-bookworm`，构建时还会下载 DuckDB 扩展；镜像与扩展源能否访问取决于当前网络。
-
-`./data` 是宿主机目录，不随容器重建删除；清理前请先确认并备份需要保留的数据。
-
-## 技术与数据边界
-
-```mermaid
-flowchart LR
-  F[CSV / Excel / Parquet / JSON] --> D[DuckDB]
-  R[MySQL / PostgreSQL / SQLite / DuckDB] -->|ATTACH| D
-  D --> Q[SQL / JOIN / 透视]
-  D --> V[表格 / 图表 / 导出]
-  L[用户配置的模型端点] -. SQL 草稿与建议 .-> Q
-```
-
-导入的文件会成为当前实例中的 DuckDB 表；外部数据库通过 DuckDB `ATTACH` 参与查询。查询结果进入 DataGrid、图表与导出流程。
-
-- **本地存储**：桌面版或自托管实例中的表与连接设置保存在该实例的数据目录。
-- **外部访问**：联邦查询会连接你配置的数据库，URL 导入会访问目标地址，桌面版检查更新时会访问 GitHub Releases。
-- **AI 数据**：AI 功能会把表结构、SQL、错误上下文，以及本地表的有限数据样例（少量真实行与低基数列取值，用于提升生成质量；联邦表不采样）发送到你配置的模型端点。
-- **执行边界**：AI 起草的 SQL 只会作为草稿插入编辑器，须由你确认执行；数据智能体自行执行的仅限**只读、限行、可取消**的探查 SELECT，范围限本地表与你在作用域里加入的连接。带数据的回答必须绑定本轮真正执行过的那条只读 SELECT——SQL 为空、非只读或未曾执行的回答一律被拒绝并如实终止，不会当成结果返回。
-
-## MCP 接入
-
-先启动桌面版或 Docker 后端，再运行独立 MCP server：
+先启动桌面版或 Docker，再执行：
 
 ```bash
 uvx duckquery-mcp
+# 或：claude mcp add duckquery -- uvx duckquery-mcp
 ```
 
-Claude Code：
-
-```bash
-claude mcp add duckquery -- uvx duckquery-mcp
-```
-
-Cursor / Codex 的 `mcp.json`：
-
-```json
-{
-  "mcpServers": {
-    "duckquery": {
-      "command": "uvx",
-      "args": ["duckquery-mcp"],
-      "env": { "DUCKQUERY_MCP_MODE": "normal" }
-    }
-  }
-}
-```
-
-`DUCKQUERY_MCP_MODE`：
-
-- `read-only`：只注册读取类工具；写入型 SQL 和其他变更请求会被阻止，即使传入 `confirm=true`。
-- `normal`（默认）：开放写工具；修改表、保存连接、导入数据、执行写入型 SQL，以及非 GET 通用请求需要 `confirm=true`。
-- `full`：跳过上述 `confirm` 门控，适合由调用方自行承担安全控制的环境。
-
-连接后，MCP 客户端会读取这些工具的实时 schema 与参数说明。MCP 会自动发现正在运行的后端；多个后端同时运行时，可用 `DUCKQUERY_API_BASE=http://127.0.0.1:48001` 指定其一。完整说明见 [mcp/README.md](mcp/README.md)。
+权限模式（`read-only` / `normal` / `full`）、Cursor 配置与多后端指定见 [mcp/README.md](mcp/README.md)。
 
 ---
 
-如果 DuckQuery 对你有用，欢迎点个 ⭐ Star，让更多人发现它。
+如果 DuckQuery 对你有帮助，欢迎点亮 ⭐ Star；使用中遇到问题或有功能需求，欢迎提交 [Issue](https://github.com/Chenkeliang/duckdb-query/issues) 描述你的场景。
 
-[文档索引](docs/README.md) · [API 契约](docs/API_CONTRACT_FE_BE.md) · [Issues](https://github.com/Chenkeliang/duckdb-query/issues) · [参与贡献](CONTRIBUTING.md) · [行为准则（英文）](CODE_OF_CONDUCT.md) · [MIT License](LICENSE)
+[文档索引](docs/README.md) · [API 契约](docs/API_CONTRACT_FE_BE.md) · [Issues](https://github.com/Chenkeliang/duckdb-query/issues) · [参与贡献](CONTRIBUTING.md) · [行为准则](CODE_OF_CONDUCT.md) · [MIT License](LICENSE)

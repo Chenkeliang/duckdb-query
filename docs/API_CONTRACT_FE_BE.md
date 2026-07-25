@@ -256,7 +256,7 @@ BY NAME、LIMIT、预览 vs 执行语义见 [QUERY_BEHAVIOR_ZH.md](QUERY_BEHAVIO
 
 - `attach_databases`：`[{ alias, connection_id }]`；后端据此先 ATTACH 远端库,再取**联邦表**结构(注入 schema 用)。
 - 未配置 / 关闭时返回错误码 `ai_not_configured` / `ai_disabled`,前端据此引导去「AI 模型」设置。
-- `AiSettings`：`{ enabled, default_provider, providers[], features, timeout_seconds, num_retries }`;`features` 键为 Profile 的 `model_feature`(`data_qa`/`generate_sql`/`repair_sql`/`explain_sql`/`suggest_chart`),解析顺序 per-profile 覆盖 → `default_provider` 兜底 → 首个启用供应商。旧功能键(chat/nl_to_sql/error_doctor/explain)升级时一次性迁移到对应 Profile 键。provider 类型 `openai | anthropic | ollama | openai_compatible`。详见 `docs/CONFIGURATION.md` → AI / LLM。
+- `AiSettings`：`{ enabled, default_provider, providers[], features, timeout_seconds, num_retries }`;`features` 键为 Profile 的 `model_feature`(`data_qa`/`generate_sql`/`repair_sql`/`explain_sql`/`suggest_chart`),解析顺序 per-profile 覆盖 → `default_provider` 兜底 → 首个启用供应商。旧功能键(chat/nl_to_sql/error_doctor/explain)升级时一次性迁移到对应 Profile 键。provider 类型 `openai | anthropic | anthropic_compatible | ollama | openai_compatible`(后两者需填 `base_url`;`anthropic_compatible` 走 `/v1/messages` 协议的第三方网关)。详见 `docs/CONFIGURATION.md` → AI / LLM。
 
 ## 10. 已移除的历史端点（勿再使用）
 

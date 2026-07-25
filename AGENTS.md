@@ -390,6 +390,9 @@ return error_json_response(status_code=400, code="VALIDATION_ERROR", message="..
 - [ ] pylint 全项目 10/10（pre-commit 同款命令）；pytest 过
 - [ ] MCP 写类工具接 `confirm_required` 且有门控测试
 
+### 文档
+- [ ] 改 `README.md` 的结构或事实：**同步改 `README_en.md`**（曾出现中文已表格化、英文仍是旧 bullet 的漂移）
+
 ### API / 契约
 - [ ] 改响应字段或端点：已同步 [`docs/API_CONTRACT_FE_BE.md`](docs/API_CONTRACT_FE_BE.md)
 

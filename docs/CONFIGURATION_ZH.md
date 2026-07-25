@@ -17,7 +17,7 @@ cp config/app-config.example.jsonc config/app-config.jsonc
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
 | `debug` | boolean | `false` | 开启详细调试日志 |
-| `cors_origins` | string[] | `["http://localhost:48000"]` | 允许的前端跨域源 |
+| `cors_origins` | string[] | `["http://localhost:48000", "tauri://localhost", "http://tauri.localhost"]` | 允许的前端跨域源（后两项为桌面版 macOS / Windows webview 源）|
 | `timezone` | string | `"Asia/Shanghai"` | 默认时区 |
 
 ---
@@ -87,6 +87,25 @@ volumes:
 > **注意**: 值必须用单引号包裹。
 
 ---
+
+## Docker 镜像与镜像源
+
+`quick-start.sh` 默认把前端构建用的 Node / Nginx 基础镜像指向 DaoCloud 镜像站（见根目录 `.env`），避免直连 Docker Hub 失败：
+
+```bash
+NODE_IMAGE=docker.m.daocloud.io/library/node:24-alpine
+NGINX_IMAGE=docker.m.daocloud.io/library/nginx:stable-alpine
+```
+
+能稳定访问 Docker Hub 时切回官方镜像：
+
+```bash
+USE_DOCKER_HUB=1 ./quick-start.sh
+```
+
+也可直接编辑 `.env` 里的 `NODE_IMAGE` / `NGINX_IMAGE`。后端镜像仍需从 Docker Hub 拉取 `python:3.12-bookworm`，构建时还会下载 DuckDB 扩展——这两项能否访问取决于当前网络。
+
+数据目录 `./data` 是宿主机 bind mount，重建容器不会删除已导入的表；清理前请先备份。
 
 ## 连接池设置
 
