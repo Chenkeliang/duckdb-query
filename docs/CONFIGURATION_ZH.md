@@ -129,6 +129,28 @@ USE_DOCKER_HUB=1 ./quick-start.sh
 
 ---
 
+## AI / LLM
+
+AI 功能（自然语言问数、报错修复、图表推荐、SQL 解释）**默认关闭**，且**不写入本配置文件**——在应用内 **设置 → AI 模型** 中配置，持久化到 `system.db`（接口见 `docs/API_CONTRACT_FE_BE.md` §9.3）。
+
+- **隐私**：供应商的 `api_key` 以 **Fernet 加密**存储；读取接口只返回掩码 `****`，不回显明文。AI 生成的 SQL 一律放进编辑器，**绝不自动执行**。
+- **供应商类型**：`openai` / `anthropic` / `ollama` / `openai_compatible` / `anthropic_compatible`（后两者需填 `base_url`；`anthropic_compatible` 走 `/v1/messages` 协议的第三方网关，例如 `https://api.deepseek.com/anthropic`）。
+- **按功能选模型**：`features.{explain | nl_to_sql | chat | suggest_chart | error_fix}` 可各自指定供应商与模型，未设置时回退到 `default_provider`。
+- **超时与重试**：`timeout_seconds`（默认 30）、`num_retries`（默认 2）；网络错误与 429/5xx 按指数退避重试，鉴权/参数这类确定性错误不重试。
+- 调用失败会返回 `ai_not_configured` / `ai_disabled` 错误码，前端据此引导用户去设置页。
+
+---
+
+## 前端构建标志（Vite，构建期）
+
+| 环境变量 | 作用 |
+|---|---|
+| `VITE_DEMO=true` | 纯浏览器 Demo 构建：查询跑在 **DuckDB-Wasm** 上，数据库连接与 AI 入口被锁在升级提示后。**仅用于 gh-pages 构建，自托管 / Docker 一律不要设置。** |
+| `VITE_API_URL` | 前端调用的 API 基址（留空 = 同源）。 |
+| `VITE_BASE_URL` | 部署子路径（gh-pages 用 `/duckdb-query/`）。 |
+
+---
+
 ## 环境变量覆盖
 
 大部分配置可通过环境变量覆盖：
