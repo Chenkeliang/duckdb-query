@@ -281,7 +281,8 @@
       "sqlExecuted": "the query actually executed",
       "moreActions": "More actions",
       "qaNeedSql": "Available when the editor has SQL",
-      "resize": "Resize"
+      "resize": "Resize",
+      "resizeTop": "Adjust top edge"
     },
     "tableSelector": {
       "selectTable": "Select table",

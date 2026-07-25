@@ -281,7 +281,8 @@
       "sqlExecuted": "本次实际执行的查询",
       "moreActions": "更多动作",
       "qaNeedSql": "编辑器里有 SQL 时可用",
-      "resize": "调整宽度"
+      "resize": "调整宽度",
+      "resizeTop": "调整上边距"
     },
     "tableSelector": {
       "selectTable": "选择表",

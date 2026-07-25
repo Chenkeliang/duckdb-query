@@ -271,6 +271,10 @@ const DRAWER_WIDTH_KEY = 'dq-ai-drawer-width';
 const DRAWER_DEFAULT_W = 480;
 const DRAWER_MIN_W = 380;
 const DRAWER_MAX_W = 860;
+const DRAWER_TOP_KEY = 'dq-ai-drawer-top';
+const DRAWER_MIN_H = 240;
+/** 顶栏兜底高度:macOS 桌面端还有一条 28px 标题栏拖拽条,所以实际以 DOM 实测为准。 */
+const HEADER_FALLBACK = 56;
 
 export function AiChatDrawer({
   open,
@@ -300,6 +304,53 @@ export function AiChatDrawer({
     return saved >= DRAWER_MIN_W && saved <= DRAWER_MAX_W ? saved : DRAWER_DEFAULT_W;
   });
   const dragRef = useRef<{ startX: number; startW: number } | null>(null);
+  // 顶边对齐:桌面端顶栏由「标题栏拖拽条 + Header」两段组成,高度按 DOM 实测,
+  // 不写死(写死 top-14 会压在 Header 下半截上,就是错位的来源)。
+  const [headerBottom, setHeaderBottom] = useState(HEADER_FALLBACK);
+  const [topOffset, setTopOffset] = useState(() => {
+    const saved = Number(localStorage.getItem(DRAWER_TOP_KEY));
+    return Number.isFinite(saved) && saved >= 0 ? saved : 0;
+  });
+  const topDragRef = useRef<{ startY: number; startOffset: number } | null>(null);
+
+  useEffect(() => {
+    if (!open) return undefined;
+    const measure = () => {
+      const el = document.querySelector('.dq-layout-header-inner');
+      setHeaderBottom(el ? Math.round(el.getBoundingClientRect().bottom) : HEADER_FALLBACK);
+    };
+    measure();
+    window.addEventListener('resize', measure);
+    return () => window.removeEventListener('resize', measure);
+  }, [open]);
+
+  const onTopGripDown = (e: React.MouseEvent) => {
+    e.preventDefault();
+    topDragRef.current = { startY: e.clientY, startOffset: topOffset };
+    const onMove = (ev: MouseEvent) => {
+      if (!topDragRef.current) return;
+      const maxOffset = Math.max(
+        0,
+        window.innerHeight - headerBottom - DRAWER_MIN_H,
+      );
+      const next = Math.min(
+        maxOffset,
+        Math.max(0, topDragRef.current.startOffset + (ev.clientY - topDragRef.current.startY)),
+      );
+      setTopOffset(next);
+    };
+    const onUp = () => {
+      topDragRef.current = null;
+      window.removeEventListener('mousemove', onMove);
+      window.removeEventListener('mouseup', onUp);
+      setTopOffset((v) => {
+        localStorage.setItem(DRAWER_TOP_KEY, String(v));
+        return v;
+      });
+    };
+    window.addEventListener('mousemove', onMove);
+    window.addEventListener('mouseup', onUp);
+  };
 
   const onGripDown = (e: React.MouseEvent) => {
     e.preventDefault();
@@ -591,9 +642,19 @@ export function AiChatDrawer({
 
   return (
     <div
-      className="fixed right-0 top-14 bottom-0 z-40 flex max-w-[95vw] flex-col border-l border-border bg-surface shadow-xl"
-      style={{ width }}
+      className="fixed right-0 bottom-0 z-40 flex max-w-[95vw] flex-col border-l border-t border-border bg-surface shadow-xl"
+      style={{ width, top: headerBottom + topOffset }}
     >
+      {/* 顶边拖拽把手:上下拖动改变抽屉起始位置(向下拖露出下方内容) */}
+      <div
+        onMouseDown={onTopGripDown}
+        role="separator"
+        aria-orientation="horizontal"
+        aria-label={t('query.ai.resizeTop', '调整上边距')}
+        className="group absolute left-0 right-0 top-0 z-50 h-1.5 -translate-y-1/2 cursor-row-resize"
+      >
+        <div className="my-auto h-0.5 w-full bg-transparent transition-colors group-hover:bg-primary/60" />
+      </div>
       {/* 左缘拖拽把手:向左拖变宽 */}
       <div
         onMouseDown={onGripDown}
