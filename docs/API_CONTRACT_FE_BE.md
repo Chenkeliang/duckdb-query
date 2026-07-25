@@ -246,7 +246,7 @@ BY NAME、LIMIT、预览 vs 执行语义见 [QUERY_BEHAVIOR_ZH.md](QUERY_BEHAVIO
 | event | data |
 |---|---|
 | `run_started` | `{run_id, session_id\|null, limits:{steps, sql_calls, seconds, llm_calls}}` |
-| `tool_started` | `{run_id, tool_call_id, tool, args_summary}` |
+| `tool_started` | `{run_id, tool_call_id, tool, args_summary}`（`data_qa` 的 `tool` 取值:`search_tables` / `describe_tables` / `inspect_table` / `run_query`;前端按名字展示即可,新增工具不需要前端改动） |
 | `tool_completed` | `{run_id, tool_call_id, tool, ok, ui_summary, truncated, elapsed_ms}` |
 | `answer` | `{run_id, result\|null, termination_reason: completed\|output_invalid\|sql_validation_failed}`（`result` 为该 mode 的 output_model 或 `null`;`data_qa` 的 `result.sql` 仅供插入编辑器） |
 | `error` | `{run_id, termination_reason: protocol_violation\|ungrounded_final\|budget_llm\|budget_time\|cancelled\|provider_error\|output_invalid\|internal_error, message}` |

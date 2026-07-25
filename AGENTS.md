@@ -45,7 +45,7 @@
 | 桌面壳 | Tauri 2.x（`@tauri-apps/api` ^2） | `frontend/src-tauri/` |
 | 后端框架 | FastAPI + Python（CI 3.11，本地 3.13） | |
 | 数据库 | DuckDB 1.5.3（本地）+ MySQL/PostgreSQL/SQLite/DuckDB 文件（联邦 ATTACH） | |
-| AI | OpenAI 兼容 LLM 接入；统一 **Agent Engine + 多 Profile**（`data_qa` / `generate_sql` / `repair_sql` / `explain_sql` / `suggest_chart`，`mode` 判别），端点 `POST /api/ai/agent/{stream,run}` | `api/routers/ai.py` + `core/services/ai_{agent,profiles}.py`，密钥 Fernet 加密 |
+| AI | OpenAI 兼容 LLM 接入；统一 **Agent Engine + 多 Profile**（`data_qa` / `generate_sql` / `repair_sql` / `explain_sql` / `suggest_chart`，`mode` 判别），端点 `POST /api/ai/agent/{stream,run}`。`data_qa` 工具集 `search_tables` / `describe_tables` / `inspect_table` / `run_query`，终止动作 `final`（必须绑定本轮执行过的只读 SELECT，否则 `ungrounded_final`）与 `refuse`（content-only、不过 grounding）；联邦别名经 SQL guard 授权，支持 `alias.schema.table` | `api/routers/ai.py` + `core/services/ai_{agent,profiles,agent_tools,sql_guard}.py`，密钥 Fernet 加密 |
 | MCP | 独立子包 `mcp/duckquery_mcp`（Python ≥3.10） | 见 §9 |
 | 国际化 | react-i18next（zh / en 全量） | |
 | 质量 | 自定义 pylint 插件（W9020-9023）+ 自定义 eslint 插件（见 §5 落差标注） | `lint-rules/` |
