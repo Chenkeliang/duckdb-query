@@ -95,6 +95,8 @@ export function scopeChipLabel(entry: ScopeEntry, tableCount?: number): string {
   if (entry.mode === 'all') {
     return tableCount != null ? `${entry.label} · 全库(${tableCount})` : `${entry.label} · 全库`;
   }
+  // 没钉具体表时不写"0 张表"——那读起来像"没表可查",实际是整个来源都可问
+  if (!entry.tables.length) return entry.label;
   return `${entry.label} · ${entry.tables.length} 张表`;
 }
 

@@ -73,6 +73,8 @@ describe('agentScope', () => {
   it('labels chips by mode', () => {
     expect(scopeChipLabel(connectionEntry(SORDER, 'all'), 128)).toBe('SORDER · 全库(128)');
     expect(scopeChipLabel(connectionEntry(SORDER, 'tables', ['a', 'b']))).toBe('SORDER · 2 张表');
+    // 未钉表时只显示来源名,不显示"0 张表"(那会被读成"没表可查")
+    expect(scopeChipLabel(localEntry([]))).toBe('本地 DuckDB');
   });
 });
 

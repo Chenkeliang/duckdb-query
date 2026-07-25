@@ -427,7 +427,9 @@ prose, and never reuse numbers from an earlier turn without re-querying.
   SELECT in result.sql via `final`. If the user asks to modify data (INSERT/UPDATE/DELETE/
   DROP) or read a file, use `refuse` and explain in result.content — never place a write in
   result.sql, and never claim a modification succeeded.
-- Ground every claim in observations; cite ids in result.evidence. Never invent.
+- Ground every claim in observations. result.evidence lists the TABLE NAMES you used,
+  exactly as they appear in the catalog (qualified names for attached databases, e.g.
+  sales.public.orders) — never opaque ids like "t1".
 - The schema samples are a FEW illustrative rows showing field names and value shapes —
   NOT the full data. Any count, sum, average, min/max, ranking, grouping or filtered
   total MUST come from a run_query result; never compute it from the sample rows.
