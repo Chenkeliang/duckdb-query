@@ -20,6 +20,14 @@ vi.mock('@/api', () => ({
   streamAgent: mocks.streamAgent,
 }));
 
+vi.mock('@/api/dataSourceApi', () => ({
+  listDatabaseConnections: vi.fn().mockResolvedValue({ success: true, connections: [] }),
+}));
+
+vi.mock('@/api/databaseSchemasApi', () => ({
+  listConnectionTablesFlat: vi.fn().mockResolvedValue([]),
+}));
+
 import { AiChatDrawer } from '../AiChatDrawer';
 
 beforeEach(() => {
@@ -143,5 +151,56 @@ describe('AiChatDrawer agent mode', () => {
     fireEvent.keyDown(screen.getByPlaceholderText(/问数据智能体/), { key: 'Enter' });
     await waitFor(() => expect(screen.getByText(/运行未正常结束/)).toBeTruthy());
     expect(screen.queryByText(/some_new_reason|internal detail/)).toBeNull();
+  });
+
+  it('shows the scope bar and sends the scope with the question', async () => {
+    let sent: Record<string, unknown> | null = null;
+    mocks.streamAgent.mockImplementation(async (body, { onEvent }) => {
+      sent = body as Record<string, unknown>;
+      onEvent({ event: 'answer', run_id: 'r1', result: { content: 'ok', sql: null, evidence: [] }, termination_reason: 'completed' });
+    });
+    render(
+      <AiChatDrawer
+        open
+        onClose={() => {}}
+        selectedTables={['orders']}
+        attachDatabases={[{ alias: 'mysql_sorder', connectionId: 'db_sorder' }]}
+        onInsertSQL={vi.fn()}
+        locale="zh"
+      />,
+    );
+    // 作用域常驻条:本地 + 已挂载连接,末尾是「添加数据源」
+    expect(screen.getByText(/本地 DuckDB/)).toBeTruthy();
+    expect(screen.getByText(/mysql_sorder/)).toBeTruthy();
+    expect(screen.getByText('添加数据源')).toBeTruthy();
+
+    fireEvent.change(screen.getByPlaceholderText(/问数据智能体/), { target: { value: '多少笔' } });
+    fireEvent.keyDown(screen.getByPlaceholderText(/问数据智能体/), { key: 'Enter' });
+    await waitFor(() => expect(sent).not.toBeNull());
+    const ctx = (sent as unknown as { context: { tables: string[]; attach_databases: {alias:string; connection_id:string}[] } }).context;
+    expect(ctx.tables).toContain('orders');
+    // 连接必须被授权,否则后端 guard 会拒掉一切远端查询
+    expect(ctx.attach_databases).toEqual([{ alias: 'mysql_sorder', connection_id: 'db_sorder' }]);
+  });
+
+  it('removes a connection from scope and stops sending it', async () => {
+    let sent: Record<string, unknown> | null = null;
+    mocks.streamAgent.mockImplementation(async (body, { onEvent }) => {
+      sent = body as Record<string, unknown>;
+      onEvent({ event: 'answer', run_id: 'r1', result: { content: 'ok', sql: null, evidence: [] }, termination_reason: 'completed' });
+    });
+    render(
+      <AiChatDrawer
+        open onClose={() => {}} selectedTables={[]}
+        attachDatabases={[{ alias: 'mysql_sorder', connectionId: 'db_sorder' }]}
+        locale="zh"
+      />,
+    );
+    fireEvent.click(screen.getByLabelText('移出作用域'));
+    fireEvent.change(screen.getByPlaceholderText(/问数据智能体/), { target: { value: 'hi' } });
+    fireEvent.keyDown(screen.getByPlaceholderText(/问数据智能体/), { key: 'Enter' });
+    await waitFor(() => expect(sent).not.toBeNull());
+    const ctx = (sent as unknown as { context: { attach_databases: unknown[] } }).context;
+    expect(ctx.attach_databases).toEqual([]);  // 所见即所查
   });
 });

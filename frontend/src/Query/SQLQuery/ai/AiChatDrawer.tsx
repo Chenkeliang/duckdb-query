@@ -15,19 +15,33 @@ import {
   Check,
   CircleAlert,
   ChevronRight,
+  Plus,
+  Database,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
 import { showErrorToast } from '@/utils/toastHelpers';
 import {
-  getDuckDBTables,
   streamAgent,
   type AgentEvent,
   type AgentMessage,
   type DataQaResult,
 } from '@/api';
+import { listDatabaseConnections } from '@/api/dataSourceApi';
 import ReactMarkdown from 'react-markdown';
 import remarkGfm from 'remark-gfm';
+import {
+  addCandidateToScope,
+  buildAgentScopeContext,
+  connectionEntry,
+  localEntry,
+  loadScopeCandidates,
+  scopeChipLabel,
+  LOCAL_SOURCE_ID,
+  type ConnectionLite,
+  type ScopeCandidate,
+  type ScopeEntry,
+} from './agentScope';
 
 /** 工具栏「对话」开关按钮，样式与 解释/格式化/收藏 统一。 */
 export function ChatToggleButton({
@@ -236,9 +250,11 @@ export function AiChatDrawer({
   const [messages, setMessages] = useState<DrawerMsg[]>([]);
   const [input, setInput] = useState('');
   const [loading, setLoading] = useState(false);
-  const [mentionTables, setMentionTables] = useState<string[]>([]);
-  const [allTables, setAllTables] = useState<string[] | null>(null);
-  const [scopeOff, setScopeOff] = useState<Record<string, boolean>>({});
+  // 作用域:抽屉自己的一份状态(默认继承编辑器选择),改它不影响左侧表格选择
+  const [scope, setScope] = useState<ScopeEntry[] | null>(null);
+  const [connections, setConnections] = useState<ConnectionLite[]>([]);
+  const [candidates, setCandidates] = useState<ScopeCandidate[] | null>(null);
+  const [scopeOpen, setScopeOpen] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
   const typewriterRef = useRef<ReturnType<typeof setInterval> | null>(null);
@@ -283,18 +299,42 @@ export function AiChatDrawer({
   );
 
   const mentionMatch = MENTION_RE.exec(input);
+
+  // 打开抽屉时用编辑器当前选择播种作用域(之后独立演化,不回写编辑器)
   useEffect(() => {
-    // 首次输入 @ 时才拉表清单(登记表序:最新在前)
-    if (mentionMatch && allTables === null) {
-      getDuckDBTables()
-        .then((tables) => setAllTables(tables.map((x) => x.name)))
-        .catch(() => setAllTables([]));
+    if (!open || scope !== null) return;
+    const seeded: ScopeEntry[] = [localEntry(selectedTables || [])];
+    for (const d of attachDatabases || []) {
+      seeded.push({
+        id: d.connectionId, kind: 'connection', label: d.alias, alias: d.alias,
+        connectionId: d.connectionId, mode: 'all', tables: [],
+      });
     }
-  }, [mentionMatch, allTables]);
+    setScope(seeded);
+  }, [open, scope, selectedTables, attachDatabases]);
+
+  // 连接清单:打开作用域面板或 @ 时才拉(只读结构,不加载数据)
+  const needSources = scopeOpen || !!mentionMatch;
+  useEffect(() => {
+    if (!needSources || connections.length) return;
+    listDatabaseConnections()
+      .then((res) => setConnections(
+        (res?.connections || []).map((c) => ({
+          id: c.id, name: c.name, type: String(c.type),
+        })),
+      ))
+      .catch(() => setConnections([]));
+  }, [needSources, connections.length]);
+
+  useEffect(() => {
+    if (!mentionMatch || candidates !== null) return;
+    loadScopeCandidates(connections).then(setCandidates).catch(() => setCandidates([]));
+  }, [mentionMatch, candidates, connections]);
 
   if (!open) return null;
 
-  const activeAliases = (attachDatabases || []).filter((d) => !scopeOff[d.alias]);
+  const scopeEntries = scope ?? [localEntry(selectedTables || [])];
+  const agentScope = buildAgentScopeContext(scopeEntries);
   const historyForBackend = (list: DrawerMsg[]): AgentMessage[] =>
     list.map((m) => ({ role: m.role, content: m.content }));
 
@@ -384,8 +424,8 @@ export function AiChatDrawer({
           mode: 'data_qa',
           input: { messages: [...history, { role: 'user', content: text }] },
           context: {
-            tables: Array.from(new Set([...selectedTables, ...mentionTables])),
-            attach_databases: activeAliases.map((d) => ({
+            tables: agentScope.tables,
+            attach_databases: agentScope.attachDatabases.map((d) => ({
               alias: d.alias,
               connection_id: d.connectionId,
             })),
@@ -436,20 +476,43 @@ export function AiChatDrawer({
     await sendAgent(text);
   };
 
-  const pickMention = (name: string) => {
-    setMentionTables((prev) => (prev.includes(name) ? prev : [...prev, name]));
+  // 选中候选:加入作用域(远端表会连带授权它所属连接),并清掉输入框里的 @ 片段
+  const pickMention = (cand: ScopeCandidate) => {
+    setScope((prev) => addCandidateToScope(prev ?? scopeEntries, cand, connections));
     setInput((prev) => prev.replace(MENTION_RE, '$1'));
   };
 
+  const pickedRefs = new Set(scopeEntries.flatMap((e) => e.tables));
   const mentionCandidates =
-    mentionMatch && allTables
-      ? allTables
-          .filter((n) => n.toLowerCase().includes(mentionMatch[2].toLowerCase()))
-          .filter((n) => !mentionTables.includes(n))
-          // 下拉容器已是 max-h-48 可滚动;此处放宽上限,避免"@表 表不全"(旧值 8 会隐藏
-          // 绝大多数表)。仍设有界上限防超大工作区渲染过多 DOM,超出可继续输入过滤。
+    mentionMatch && candidates
+      ? candidates
+          .filter((c) => c.ref.toLowerCase().includes(mentionMatch[2].toLowerCase()))
+          .filter((c) => !pickedRefs.has(c.ref))
+          // 下拉容器可滚动;有界上限防超大工作区渲染过多 DOM,超出可继续输入过滤。
           .slice(0, 50)
       : [];
+  // 按来源分组展示:本地表与各数据库的表同列可选
+  const mentionGroups: { label: string; kind: 'local' | 'connection'; items: ScopeCandidate[] }[] = [];
+  for (const c of mentionCandidates) {
+    let g = mentionGroups.find((x) => x.label === c.sourceLabel);
+    if (!g) {
+      g = { label: c.sourceLabel, kind: c.kind, items: [] };
+      mentionGroups.push(g);
+    }
+    g.items.push(c);
+  }
+
+  const toggleSource = (conn: ConnectionLite) => {
+    setScope((prev) => {
+      const cur = prev ?? scopeEntries;
+      return cur.some((e) => e.id === conn.id)
+        ? cur.filter((e) => e.id !== conn.id)
+        : [...cur, connectionEntry(conn, 'all')];
+    });
+  };
+
+  const removeScopeEntry = (id: string) =>
+    setScope((prev) => (prev ?? scopeEntries).filter((e) => e.id !== id));
 
   return (
     <div className="fixed right-0 top-14 bottom-0 z-40 flex w-[min(420px,92vw)] flex-col border-l border-border bg-surface shadow-xl">
@@ -484,6 +547,87 @@ export function AiChatDrawer({
             <X className="h-4 w-4" />
           </Button>
         </div>
+      </div>
+
+      {/* 作用域常驻条:它是"能问什么"的前置条件,所以放在标题下方第一行 */}
+      <div className="relative flex items-center gap-2 border-b border-border bg-surface-elevated px-3 py-1.5">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+          {scopeEntries.map((e) => (
+            <span
+              key={e.id}
+              className="inline-flex items-center gap-1 rounded-full border border-primary/50 bg-primary/10 px-2 py-0.5 text-[11px] text-primary"
+              title={e.mode === 'tables' && e.tables.length ? e.tables.join('\n') : undefined}
+            >
+              {scopeChipLabel(e)}
+              {e.id !== LOCAL_SOURCE_ID && (
+                <button
+                  type="button"
+                  onClick={() => removeScopeEntry(e.id)}
+                  aria-label={t('query.ai.scopeRemove', '移出作用域')}
+                >
+                  <X className="h-3 w-3" />
+                </button>
+              )}
+            </span>
+          ))}
+          <button
+            type="button"
+            onClick={() => setScopeOpen((v) => !v)}
+            className="inline-flex items-center gap-1 rounded-full border border-dashed border-border px-2 py-0.5 text-[11px] text-muted-foreground hover:border-primary/50 hover:text-primary"
+          >
+            <Plus className="h-3 w-3" />
+            {t('query.ai.scopeAdd', '添加数据源')}
+          </button>
+        </div>
+
+        {scopeOpen && (
+          <div className="absolute left-2 right-2 top-full z-30 mt-1 overflow-hidden rounded-md border border-border bg-surface-elevated shadow-lg">
+            <div className="border-b border-border px-3 py-2">
+              <div className="text-xs font-medium">{t('query.ai.scopeTitle', '选择问数范围')}</div>
+              <div className="mt-0.5 text-[11px] leading-relaxed text-muted-foreground">
+                {t(
+                  'query.ai.scopePromise',
+                  '只读取库结构（表名、字段名），不加载数据；取值一律通过带行数上限的只读查询。',
+                )}
+              </div>
+            </div>
+            <div className="max-h-56 overflow-auto p-1.5">
+              {connections.length === 0 && (
+                <div className="px-2 py-3 text-[11px] text-muted-foreground">
+                  {t('query.ai.scopeNoConn', '还没有数据库连接；本地 DuckDB 表始终可问。')}
+                </div>
+              )}
+              {connections.map((c) => {
+                const on = scopeEntries.some((e) => e.id === c.id);
+                return (
+                  <button
+                    key={c.id}
+                    type="button"
+                    onClick={() => toggleSource(c)}
+                    className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-accent ${
+                      on ? 'text-primary' : ''
+                    }`}
+                  >
+                    <Database className="h-3.5 w-3.5 shrink-0" />
+                    <span className="truncate font-medium">{c.name}</span>
+                    <span className="text-[10px] uppercase text-muted-foreground">{c.type}</span>
+                    <span className="ml-auto text-[11px] text-muted-foreground">
+                      {on ? t('query.ai.scopeInScope', '已加入') : t('query.ai.scopeJoin', '加入')}
+                    </span>
+                  </button>
+                );
+              })}
+            </div>
+            <div className="flex items-center gap-2 border-t border-border px-3 py-1.5">
+              <span className="flex-1 text-[11px] text-muted-foreground">
+                {t('query.ai.scopeFoot', '作用域只影响智能体能查什么，不改变左侧表格选择。')}
+              </span>
+              <Button size="sm" onClick={() => setScopeOpen(false)}>
+                {t('common.done', '完成')}
+              </Button>
+            </div>
+          </div>
+        )}
       </div>
 
       {/* 消息区 */}
@@ -617,63 +761,41 @@ export function AiChatDrawer({
             </button>
           </div>
         )}
-        {/* 作用域:所见即所查——取消勾选的连接既不进上下文也不可被探查 */}
-        {!!attachDatabases?.length && (
-          <div className="mb-1.5 flex flex-wrap items-center gap-1.5 text-[10px]">
-            <span className="rounded-full border border-border bg-muted px-2 py-0.5 text-muted-foreground">
-              {t('query.ai.scopeLocal', '本地 DuckDB')}
-            </span>
-            {attachDatabases.map((d) => {
-              const off = !!scopeOff[d.alias];
-              return (
-                <button
-                  key={d.alias}
-                  type="button"
-                  onClick={() => setScopeOff((p) => ({ ...p, [d.alias]: !off }))}
-                  className={`rounded-full border px-2 py-0.5 transition-colors ${
-                    off
-                      ? 'border-border text-muted-foreground/50 line-through'
-                      : 'border-primary/40 bg-primary/10 text-primary'
-                  }`}
-                >
-                  {d.alias}
-                </button>
-              );
-            })}
-          </div>
-        )}
-        {!!mentionTables.length && (
-          <div className="mb-1.5 flex flex-wrap gap-1.5">
-            {mentionTables.map((name) => (
-              <span
-                key={name}
-                className="inline-flex items-center gap-1 rounded-full bg-primary/10 px-2 py-0.5 text-[11px] text-primary"
-              >
-                @{name}
-                <button
-                  type="button"
-                  onClick={() => setMentionTables((p) => p.filter((x) => x !== name))}
-                  aria-label={t('common.remove', '移除')}
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              </span>
-            ))}
-          </div>
-        )}
         <div className="relative">
           {mentionCandidates.length > 0 && (
-            <div className="absolute bottom-full left-0 z-10 mb-1 max-h-48 w-full overflow-auto rounded-md border border-border bg-surface shadow-lg">
-              {mentionCandidates.map((name) => (
-                <button
-                  key={name}
-                  type="button"
-                  onClick={() => pickMention(name)}
-                  className="block w-full truncate px-2 py-1.5 text-left text-xs hover:bg-accent"
-                >
-                  {name}
-                </button>
+            <div className="absolute bottom-full left-0 z-10 mb-1 max-h-56 w-full overflow-auto rounded-md border border-border bg-surface shadow-lg">
+              {mentionGroups.map((g) => (
+                <div key={g.label}>
+                  <div className="flex items-center gap-1.5 bg-surface-elevated px-2 py-1 text-[10px] text-muted-foreground">
+                    <span
+                      className={`h-1.5 w-1.5 rounded-full ${
+                        g.kind === 'local' ? 'bg-primary' : 'bg-info'
+                      }`}
+                    />
+                    {g.label}
+                  </div>
+                  {g.items.map((c) => (
+                    <button
+                      key={c.ref}
+                      type="button"
+                      onClick={() => pickMention(c)}
+                      className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-xs hover:bg-accent"
+                    >
+                      <span className="truncate font-mono text-[11px]">{c.display}</span>
+                      {c.rowCount != null && (
+                        <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">
+                          {c.kind === 'connection'
+                            ? t('query.ai.mentionRowsApprox', '约 {{n}} 行', { n: c.rowCount })
+                            : t('query.ai.mentionRows', '{{n}} 行', { n: c.rowCount })}
+                        </span>
+                      )}
+                    </button>
+                  ))}
+                </div>
               ))}
+              <div className="border-t border-border px-2 py-1 text-[10px] text-muted-foreground">
+                {t('query.ai.mentionFoot', '选中数据库表会自动把该连接加入本轮范围')}
+              </div>
             </div>
           )}
           <div className="flex items-center gap-2">
