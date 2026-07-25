@@ -67,6 +67,18 @@ class TestBuildRequest:
         )
         assert url == "https://gw.example.com/v1/messages"
 
+    def test_anthropic_compatible_uses_messages_protocol(self):
+        """anthropic_compatible 是 UI 层的第三方网关类型,协议面与 anthropic 完全一致。"""
+        url, headers, body, _ = _build_request(
+            "anthropic_compatible", "deepseek-v4-pro", MESSAGES, "sk-ds",
+            "https://api.deepseek.com/anthropic",
+        )
+        assert url == "https://api.deepseek.com/anthropic/v1/messages"
+        assert headers["x-api-key"] == "sk-ds"
+        assert headers["anthropic-version"]
+        assert body["system"] == "you are helpful"
+        assert body["max_tokens"] > 0
+
 
 class TestComplete:
     def test_openai_shape_extracted(self):

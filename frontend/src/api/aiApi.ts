@@ -1,6 +1,11 @@
 import { apiClient, normalizeResponse, handleApiError } from './client';
 
-export type AiProviderType = 'openai' | 'anthropic' | 'ollama' | 'openai_compatible';
+export type AiProviderType =
+  | 'openai'
+  | 'anthropic'
+  | 'anthropic_compatible'
+  | 'ollama'
+  | 'openai_compatible';
 
 export interface AiProvider {
   id: string;               // 稳定主键，default_provider/feature 引用它，不展示给用户编辑

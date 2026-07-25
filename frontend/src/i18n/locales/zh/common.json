@@ -1211,7 +1211,8 @@
       "providerEnable": "启用该供应商",
       "providerName": "供应商名称",
       "providerNamePlaceholder": "供应商名称（自定义名称）",
-      "baseUrlHint": "只填到 /v1 为止，例如 https://api.xxx.com/v1。系统会自动追加 /chat/completions，请勿自行填写该后缀，也不要出现多余的 //。"
+      "baseUrlHint": "只填到 /v1 为止，例如 https://api.xxx.com/v1。系统会自动追加 /chat/completions，请勿自行填写该后缀，也不要出现多余的 //。",
+      "baseUrlHintAnthropic": "填写网关地址即可，末尾带不带 /v1 都行，系统会自动补 /v1/messages。例如 DeepSeek 填 https://api.deepseek.com/anthropic；留空则回退到官方 https://api.anthropic.com。"
     },
     "queryResult": {
       "title": "查询结果",

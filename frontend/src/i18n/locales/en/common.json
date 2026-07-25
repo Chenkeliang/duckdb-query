@@ -1211,7 +1211,8 @@
       "providerEnable": "Enable this provider",
       "providerName": "Provider name",
       "providerNamePlaceholder": "Provider name (custom)",
-      "baseUrlHint": "Only up to /v1, e.g. https://api.xxx.com/v1. The system appends /chat/completions automatically — don't add that suffix or any extra //."
+      "baseUrlHint": "Only up to /v1, e.g. https://api.xxx.com/v1. The system appends /chat/completions automatically — don't add that suffix or any extra //.",
+      "baseUrlHintAnthropic": "Enter the gateway address, with or without a trailing /v1 — /v1/messages is appended automatically. DeepSeek, for example, uses https://api.deepseek.com/anthropic. Leave empty to fall back to the official https://api.anthropic.com."
     },
     "queryResult": {
       "title": "Query results",

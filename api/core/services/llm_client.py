@@ -2,7 +2,8 @@
 
 替代 litellm——本项目只用"非流式 completion"一个能力，而 litellm 连带
 tokenizers/tiktoken/aiohttp/jsonschema 等依赖在桌面冻结包里占约 54MB。
-四类 provider（openai / openai_compatible / anthropic / ollama）直连覆盖，
+五类 provider（openai / openai_compatible / anthropic / anthropic_compatible /
+ollama）直连覆盖，
 参数面与原 litellm.completion 用法等价：model、messages、api_key、
 base_url、timeout、num_retries。
 """
@@ -55,7 +56,9 @@ def _build_request(
     base_url: Optional[str],
 ) -> Tuple[str, Dict[str, str], Dict[str, Any], Callable[[Dict[str, Any]], str]]:
     """按 provider 类型构造 (url, headers, body, 内容提取器)。"""
-    if provider_type == "anthropic":
+    if provider_type in ("anthropic", "anthropic_compatible"):
+        # anthropic_compatible：走同一套 /v1/messages 协议的第三方网关
+        # （如 DeepSeek 的 https://api.deepseek.com/anthropic），仅 base_url 不同
         base = (base_url or "https://api.anthropic.com").rstrip("/")
         if base.endswith("/v1"):
             base = base[: -len("/v1")]

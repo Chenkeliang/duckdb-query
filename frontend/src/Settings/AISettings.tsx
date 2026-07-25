@@ -45,6 +45,7 @@ const PROVIDER_TYPES: { value: AiProviderType; label: string }[] = [
   { value: 'anthropic', label: 'Anthropic' },
   { value: 'ollama', label: 'Ollama (本地)' },
   { value: 'openai_compatible', label: 'OpenAI 兼容' },
+  { value: 'anthropic_compatible', label: 'Anthropic 兼容' },
 ];
 
 export function AISettings() {
@@ -309,14 +310,20 @@ export function AISettings() {
                   placeholder="gpt-4o-mini, gpt-4o"
                 />
               </div>
-              {(p.type === 'ollama' || p.type === 'openai_compatible') && (
+              {(p.type === 'ollama' ||
+                p.type === 'openai_compatible' ||
+                p.type === 'anthropic_compatible') && (
                 <div className="space-y-1">
                   <Label className="text-xs">{t('settings.ai.baseUrl', '接口地址')}</Label>
                   <Input
                     value={p.base_url ?? ''}
                     onChange={(e) => updateProvider(p.id, { base_url: e.target.value || null })}
                     placeholder={
-                      p.type === 'ollama' ? 'http://localhost:11434' : 'https://api.example.com/v1'
+                      p.type === 'ollama'
+                        ? 'http://localhost:11434'
+                        : p.type === 'anthropic_compatible'
+                          ? 'https://api.deepseek.com/anthropic'
+                          : 'https://api.example.com/v1'
                     }
                   />
                   {p.type === 'openai_compatible' && (
@@ -324,6 +331,14 @@ export function AISettings() {
                       {t(
                         'settings.ai.baseUrlHint',
                         '只填到 /v1 为止，例如 https://api.xxx.com/v1。系统会自动追加 /chat/completions，请勿自行填写该后缀，也不要出现多余的 //。',
+                      )}
+                    </p>
+                  )}
+                  {p.type === 'anthropic_compatible' && (
+                    <p className="text-xs text-muted-foreground leading-relaxed">
+                      {t(
+                        'settings.ai.baseUrlHintAnthropic',
+                        '填写网关地址即可，末尾带不带 /v1 都行，系统会自动补 /v1/messages。例如 DeepSeek 填 https://api.deepseek.com/anthropic；留空则回退到官方 https://api.anthropic.com。',
                       )}
                     </p>
                   )}
