@@ -54,13 +54,16 @@
 
 ## Core Capabilities
 
-- **Files and ingestion**: CSV, Excel, Parquet, JSON, and JSONL; paste tabular data, import URLs, browse server-mounted directories, and select multiple Excel sheets.
-- **Databases and federation**: connect MySQL, PostgreSQL, SQLite, and DuckDB files, then query them alongside local tables through DuckDB `ATTACH`.
-- **Complete query workflow**: CodeMirror SQL editor, JOIN workbench, set operations, pivot tables, async tasks, query cancellation, bookmarks, and history.
-- **Optional AI assistance**: a data agent (inspects schemas, verifies real values, dry-runs read-only row-capped queries before answering — every step visible and stoppable), plus data chat, error doctor, SQL explanation, and chart suggestions; uses the model provider and endpoint you configure. AI-drafted SQL is only inserted into the editor for you to run; the agent's probe queries are read-only, row-capped and cancellable.
-- **Ask your databases directly**: add a connected MySQL / PostgreSQL / SQLite / DuckDB to the question scope and ask in plain language — one answer can draw on local tables and remote ones together. Adding a connection reads **only its structure (table and column names); no data rows are loaded**, and values arrive solely through row-capped read-only queries. A scope bar sits at the top of the drawer, and every answer states which databases it actually queried.
-- **Results and export**: virtualized DataGrid; bar, line, area, pie, donut, and KPI charts; click a chart element to generate detail SQL. The grid exports CSV / Excel / JSON, and query results can also be exported as Parquet.
-- **MCP automation**: 24 tools for querying, discovery, ingestion, transforms, AI settings, and export, with `read-only`, `normal`, and `full` modes.
+| Capability | In one line | Details |
+|---|---|---|
+| **File ingestion** | CSV · Excel · Parquet · JSON · JSONL | Drop a file and it becomes a table; also paste tabular data, import URLs, browse server-mounted directories, and pick Excel sheets |
+| **Databases and federation** | MySQL · PostgreSQL · SQLite · DuckDB | Query them alongside local tables through DuckDB `ATTACH` — one SQL statement can join across sources |
+| **Query workflow** | Write SQL, or don't | CodeMirror editor, JOIN workbench, set operations, pivot tables, async tasks, cancellation, bookmarks, history |
+| **Data agent** | Ask your data in plain language | Inspects schemas, verifies real values and dry-runs read-only row-capped queries before answering; every step visible and stoppable |
+| **Ask your databases** | Local and remote in one answer | Add a connection to the scope and ask; **only structure is read, no data rows are loaded**, values come from row-capped read-only queries, and each answer names the databases it used |
+| **Other AI assistance** | Error doctor · SQL explanation · Chart suggestions | Uses the model provider and endpoint you configure; AI-drafted SQL is only inserted into the editor for you to run |
+| **Results and export** | DataGrid + 6 chart types | Virtualized grid; bar, line, area, pie, donut, KPI; click a chart element for detail SQL; export CSV / Excel / JSON / Parquet |
+| **MCP automation** | 24 tools | Querying, discovery, ingestion, transforms, AI settings, export; `read-only` / `normal` / `full` modes |
 
 ## Why DuckQuery
 
