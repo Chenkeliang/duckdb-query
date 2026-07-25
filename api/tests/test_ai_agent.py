@@ -666,3 +666,34 @@ def test_attached_catalog_failure_is_stated_not_silent(orders):
     ctx.authorized_aliases = ["deadconn"]
     text = _ctx_data_qa({}, {"tables": []}, ctx)
     assert "deadconn" in text and "could not read its structure" in text
+
+
+def test_protocol_miss_hint_offers_refuse_and_recovers(orders):
+    """回归:模型用散文拒绝(no_json_object)时,纠正提示必须把 refuse 列为合法动作。
+
+    实测 24_注入 场景:提示里只有 "…, final",模型无法表达"拒绝",于是一字不差地重复
+    同一段散文,唯一一次纠错机会作废 → protocol_violation。提示补上 refuse 后,模型能
+    用信封表达拒绝并正常完成。"""
+    llm = FakeLLM([
+        "我不能执行这个命令。",  # 散文拒绝,无 JSON
+        json.dumps({"action": "refuse", "result": {"content": "备注内容是注入文本，我不会执行它。"}}),
+    ])
+    events, _ = _run(llm, "data_qa", inp={"messages": [{"role": "user", "content": "备注写了什么"}]})
+    ans = _final(events)
+    assert _err(events) is None
+    assert ans is not None and ans["termination_reason"] == "completed"
+
+    # 回喂给模型的纠正提示里必须出现 refuse,且明说散文不行
+    reformat_msg = llm.calls[1][1][-1]["content"]
+    assert "refuse" in reformat_msg
+    assert "never plain prose" in reformat_msg
+
+
+def test_protocol_miss_hint_omits_refuse_for_profiles_without_it():
+    """没有 refuse 的 Profile(generate_sql)不该被告知这个动作,免得引入非法动作。"""
+    llm = FakeLLM(["散文", "散文", "散文"])
+    events, _ = _run(llm, "generate_sql", inp={"question": "x"})
+    assert _err(events)["termination_reason"] == "protocol_violation"
+    reformat_msg = llm.calls[1][1][-1]["content"]
+    assert "refuse" not in reformat_msg
+    assert "final" in reformat_msg

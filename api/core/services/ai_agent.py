@@ -291,10 +291,17 @@ async def run_agent(
                     yield _error(ctx, termination, "model failed to follow the action protocol")
                     break
                 pending_reformat = True
-                valid = ", ".join([*profile.allowed_tools, "final"])
+                # 合法动作必须包含该 Profile 的**全部终止动作**(不能写死 final):
+                # 实测 24_注入 场景里模型想"拒绝",但清单里没有 refuse,于是它一字不差地
+                # 重复散文拒绝,一次纠错机会白白浪费掉。
+                valid = ", ".join([*profile.allowed_tools, *profile.terminal_actions])
+                hint = f"reply with exactly one JSON object and nothing else; valid actions: {valid}"
+                if "refuse" in profile.terminal_actions:
+                    hint += ('. A refusal or a caveat is ALSO an action — send '
+                             '{"action":"refuse","result":{"content":"..."}}, never plain prose')
                 conversation.append({"role": "assistant", "content": raw or ""})
                 conversation.append({"role": "user", "content": _obs(
-                    {"error": "invalid_action", "hint": f"reply one JSON object; valid actions: {valid}"},
+                    {"error": "invalid_action", "hint": hint},
                     steps_left=profile.max_steps - steps,
                     sql_left=profile.max_sql_calls - ctx.sql_calls_used,
                     seconds_left=_seconds_left())})
