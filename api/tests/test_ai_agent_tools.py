@@ -314,3 +314,42 @@ def test_attached_tables_cache_is_process_local_only():
     """缓存必须只在进程内存里(不落盘):清空后无任何持久化残留可用。"""
     ai_agent_tools.invalidate_attached_tables()
     assert ai_agent_tools._ATTACHED_CACHE == {}
+
+
+# ---- 范围外表名建议(拒答后的「加入该表」按钮数据源) ----
+
+def _ctx_with_scope(local_tables):
+    from core.services.ai_sql_guard import ScopeLimits
+    ctx = AgentRunCtx(run_id="r", authorized_aliases=[], attach_configs=[])
+    ctx.scope_limits = ScopeLimits(local_tables=local_tables)
+    return ctx
+
+
+def test_out_of_scope_candidates_picks_real_but_unauthorized_table(tmp_path):
+    """答复里点名的表:库里真有、又不在范围内 → 才给建议。"""
+    from core.database.duckdb_engine import with_duckdb_connection
+    from core.services.ai_agent_tools import out_of_scope_candidates
+
+    with with_duckdb_connection() as con:
+        con.execute("CREATE TABLE IF NOT EXISTS scope_hint_orders(id INTEGER)")
+        con.execute("CREATE TABLE IF NOT EXISTS scope_hint_refunds(id INTEGER)")
+    try:
+        ctx = _ctx_with_scope(["scope_hint_refunds"])  # 只授权 refunds
+        got = out_of_scope_candidates(ctx, "scope_hint_orders 不在当前范围内，请先加入。")
+        assert got == ["scope_hint_orders"]
+        # 已在范围内的不会被当成"缺失"
+        assert out_of_scope_candidates(ctx, "scope_hint_refunds 有 4 条") == []
+        # 编造的表名不进建议(只认真实存在的)
+        assert out_of_scope_candidates(ctx, "nonexistent_table_xyz 不在范围内") == []
+    finally:
+        with with_duckdb_connection() as con:
+            con.execute("DROP TABLE IF EXISTS scope_hint_orders")
+            con.execute("DROP TABLE IF EXISTS scope_hint_refunds")
+
+
+def test_out_of_scope_candidates_silent_without_limits():
+    """未收窄范围时无所谓越界,不给建议。"""
+    from core.services.ai_agent_tools import out_of_scope_candidates
+
+    ctx = AgentRunCtx(run_id="r", authorized_aliases=[], attach_configs=[])
+    assert out_of_scope_candidates(ctx, "任何表名") == []

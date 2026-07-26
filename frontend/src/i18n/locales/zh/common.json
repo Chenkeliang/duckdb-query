@@ -301,7 +301,8 @@
       "scopeNoMatch": "没有匹配的表",
       "scopeMore": "还有 {{n}} 张，继续输入以缩小范围",
       "mentionMore": "还有 {{n}} 张，继续输入以缩小范围",
-      "scopeRemoveOne": "移出作用域：{{name}}"
+      "scopeRemoveOne": "移出作用域：{{name}}",
+      "scopeAddTable": "加入「{{name}}」并重问"
     },
     "tableSelector": {
       "selectTable": "选择表",
