@@ -108,11 +108,14 @@ def build_catalog_text(
             """
         ).fetchall()
     names = [r[0] for r in rows if not r[0].lower().startswith("system_")]
+    sizes = {r[0]: int(r[1] or 0) for r in rows}
+    # 必须用**完整**物理清单同步登记表:sync() 会删除清单外的登记行,传裁剪过的
+    # 清单会把范围外那几十张表的行删掉,下次列表再把它们当新表重登记 → 拿到新
+    # 序号跳到列表顶部,用户看到的就是"表顺序又变了"(2026-07-26 实测)。
+    registry = table_registry.sync(names)
     if local_tables is not None:
         picked = {str(t).lower() for t in local_tables}
         names = [n for n in names if n.lower() in picked]
-    sizes = {r[0]: int(r[1] or 0) for r in rows}
-    registry = table_registry.sync(names)
     names.sort(key=lambda n: (registry.get(n) or {}).get("sort_seq") or 0, reverse=True)
     shown = names[:_CATALOG_CAP]
     lines = []
