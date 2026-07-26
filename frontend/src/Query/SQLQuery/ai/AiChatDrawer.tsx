@@ -3,7 +3,7 @@ import { useTranslation } from 'react-i18next';
 import {
   Send,
   X,
-  Trash2,
+  MessageSquarePlus,
   Loader2,
   Sparkles,
   CornerDownLeft,
@@ -677,13 +677,15 @@ export function AiChatDrawer({
               variant="ghost"
               size="sm"
               onClick={() => {
+                // 新对话 = 中断进行中的回答 + 清空上下文(多轮追问的信封随消息一起归零)
+                abortRef.current?.abort();
                 clearTypewriter();
                 setMessages([]);
               }}
-              title={t('common.clear', '清空')}
-              aria-label={t('common.clear', '清空')}
+              title={t('query.ai.newChat', '新对话')}
+              aria-label={t('query.ai.newChat', '新对话')}
             >
-              <Trash2 className="h-4 w-4" />
+              <MessageSquarePlus className="h-4 w-4" />
             </Button>
           )}
           <Button

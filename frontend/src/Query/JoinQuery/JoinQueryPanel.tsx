@@ -93,7 +93,8 @@ import { SaveQueryDialog } from '../Bookmarks/SaveQueryDialog';
 import { AsyncTaskDialog } from '../AsyncTasks/AsyncTaskDialog';
 import { TimeBoundChip } from './TimeBoundChip';
 import { useAiStatus } from '@/hooks/useAiStatus';
-import { AiChatDrawer, ChatToggleButton } from '@/Query/SQLQuery/ai/AiChatDrawer';
+import { ChatToggleButton } from '@/Query/SQLQuery/ai/AiChatDrawer';
+import { agentChatBus, useAgentChatBus } from '@/Query/SQLQuery/ai/agentChatBus';
 import {
   buildTimeBoundSuggestions,
   defaultTimeBoundValue,
@@ -1139,11 +1140,10 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
   joinRestoreRequest,
   onClearJoinRestoreRequest,
 }) => {
-  const { t, i18n } = useTranslation('common');
+  const { t } = useTranslation('common');
   const { maxQueryRows } = useAppConfig();
   const chatStatus = useAiStatus('data_qa');
-  const [chatOpen, setChatOpen] = React.useState(false);
-  const aiLocale: 'zh' | 'en' = i18n.language?.startsWith('zh') ? 'zh' : 'en';
+  const { open: chatOpen } = useAgentChatBus();
   const [isExecuting, setIsExecuting] = React.useState(false);
   const [localIsCancelling, setLocalIsCancelling] = React.useState(false);
   const [isSaveDialogOpen, setIsSaveDialogOpen] = React.useState(false);
@@ -1177,11 +1177,6 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
       return 0;
     });
   }, [rawTables, tableOrder]);
-
-  const chatTableNames = React.useMemo(
-    () => activeTables.map((tbl) => getTableName(tbl)),
-    [activeTables]
-  );
 
   // 分析表来源
   const sourceAnalysis = React.useMemo(() => {
@@ -1904,6 +1899,11 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
   }, [onCancel]);
 
   const sql = React.useMemo(() => generateSQL(), [generateSQL]);
+
+  // 全局对话抽屉在 JOIN Tab 激活时以本面板生成的 SQL 作为「当前 SQL」
+  React.useEffect(() => {
+    agentChatBus.setSql('join', sql ?? '');
+  }, [sql]);
   // 无系统 LIMIT 的基础 SQL:异步/导出必须用它才是真全量(复审 P1)
   const baseSql = React.useMemo(() => generateSQL(false), [generateSQL]);
 
@@ -2039,7 +2039,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
             </Button>
 
             {chatStatus.configured && (
-              <ChatToggleButton active={chatOpen} onClick={() => setChatOpen((v) => !v)} />
+              <ChatToggleButton active={chatOpen} onClick={() => agentChatBus.toggle()} />
             )}
           </div>
 
@@ -2272,16 +2272,6 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
         }}
       />
 
-      {chatStatus.configured && (
-        <AiChatDrawer
-          open={chatOpen}
-          onClose={() => setChatOpen(false)}
-          selectedTables={chatTableNames}
-          attachDatabases={attachDatabases}
-          currentSql={sql ?? undefined}
-          locale={aiLocale}
-        />
-      )}
     </div>
   );
 };

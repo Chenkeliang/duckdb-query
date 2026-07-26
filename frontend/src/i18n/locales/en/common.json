@@ -244,6 +244,7 @@
       "qaOptimizeLead": "Optimize this SQL and explain what you changed and why:",
       "chat": "Chat",
       "insertToEditor": "Insert into editor",
+      "newChat": "New chat",
       "agentSteps": "Exploration",
       "agentStepsRunning": "Exploring the data…",
       "agentStepsDone": "Used {{count}} tools",
