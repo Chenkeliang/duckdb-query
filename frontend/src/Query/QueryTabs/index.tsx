@@ -24,6 +24,11 @@ import { extractJoinWorkspaceFromSql } from "@/Query/JoinQuery/joinWorkspaceSnap
 import type { GlobalHistoryItem } from "../hooks/useGlobalHistory";
 import { useDatabaseConnections } from "@/hooks/useDatabaseConnections";
 import { detectFederatedPreviewSource } from "./detectFederatedPreviewSource";
+import { AiChatDrawer } from "../SQLQuery/ai/AiChatDrawer";
+import { agentChatBus, useAgentChatBus, type WorkbenchTabId } from "../SQLQuery/ai/agentChatBus";
+import { useAiStatus } from "@/hooks/useAiStatus";
+import { useFederatedQueryDetection } from "@/hooks/useFederatedQueryDetection";
+import { getTableName } from "@/utils/tableUtils";
 
 /**
  * 查询模式 Tab 组件
@@ -99,7 +104,28 @@ export const QueryTabs = React.forwardRef<QueryTabsHandle, QueryTabsProps>(({
   onOpenAiSettings,
 }, ref) => {
   const joinPersistenceRef = React.useRef<JoinWorkspacePersistence | null>(null);
-  const { t } = useTranslation('common');
+  const { t, i18n } = useTranslation('common');
+
+  // ===== 全局数据智能体对话:单例挂载,四个查询 Tab 共用同一份对话上下文 =====
+  // (此前每个面板各挂一个抽屉,KeepAlive 下就是四份互不相通的对话;
+  //  单例挂在面板之外,切 Tab 不打断流式回答,「插入编辑器」也永远可用)
+  const chatStatus = useAiStatus('data_qa');
+  const chatBus = useAgentChatBus();
+  const aiLocale: 'zh' | 'en' = i18n.language?.startsWith('zh') ? 'zh' : 'en';
+  const activeSql = chatBus.sqlByTab[activeTab as WorkbenchTabId];
+  const { attachDatabases: chatAttachDatabases } = useFederatedQueryDetection({
+    sql: activeSql ?? '',
+    selectedTables,
+    debounceMs: 300,
+    enabled: chatStatus.configured,
+  });
+  const handleAgentInsertSql = React.useCallback(
+    (sql: string) => {
+      agentChatBus.insertSql(sql);
+      if (activeTab !== 'sql') onTabChange('sql');
+    },
+    [activeTab, onTabChange],
+  );
 
   // 全局功能状态
   const [historyOpen, setHistoryOpen] = React.useState(false);
@@ -380,6 +406,19 @@ export const QueryTabs = React.forwardRef<QueryTabsHandle, QueryTabsProps>(({
 
         </div>
       </Tabs>
+
+      {/* 全局数据智能体抽屉:单例,对话与滚动位置跨 Tab 保留 */}
+      {chatStatus.configured && (
+        <AiChatDrawer
+          open={chatBus.open}
+          onClose={() => agentChatBus.setOpen(false)}
+          selectedTables={(selectedTables || []).map((tbl) => getTableName(tbl))}
+          attachDatabases={chatAttachDatabases}
+          onInsertSQL={handleAgentInsertSql}
+          currentSql={activeSql}
+          locale={aiLocale}
+        />
+      )}
     </>
   );
 });

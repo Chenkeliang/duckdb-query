@@ -244,6 +244,7 @@
       "qaOptimizeLead": "请帮我优化这段 SQL，并说明优化点和原因：",
       "chat": "对话",
       "insertToEditor": "插入编辑器",
+      "newChat": "新对话",
       "agentSteps": "探查过程",
       "agentStepsRunning": "正在探查数据…",
       "agentStepsDone": "使用了 {{count}} 个工具",

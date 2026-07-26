@@ -44,7 +44,8 @@ import {
 } from "./buildPivotQueryPayload";
 import { PivotFilters, pivotFiltersToApi, type PivotFilterRow } from "./PivotFilters";
 import { useAiStatus } from "@/hooks/useAiStatus";
-import { AiChatDrawer, ChatToggleButton } from "@/Query/SQLQuery/ai/AiChatDrawer";
+import { ChatToggleButton } from "@/Query/SQLQuery/ai/AiChatDrawer";
+import { agentChatBus, useAgentChatBus } from "@/Query/SQLQuery/ai/agentChatBus";
 
 interface PivotPanelProps {
     selectedTables: SelectedTable[];
@@ -55,17 +56,11 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
     selectedTables,
     onExecute,
 }) => {
-    const { t, i18n } = useTranslation("common");
+    const { t } = useTranslation("common");
     const { maxQueryRows, pivotMaxColumns } = useAppConfig();
 
     const chatStatus = useAiStatus("data_qa");
-    const [chatOpen, setChatOpen] = React.useState(false);
-    const aiLocale: "zh" | "en" = i18n.language?.startsWith("zh") ? "zh" : "en";
-    const chatTableNames = React.useMemo(
-        () => selectedTables.map((tbl) => getTableName(tbl)),
-        [selectedTables]
-    );
-
+    const { open: chatOpen } = useAgentChatBus();
     const selectedTable = selectedTables.length > 0 ? selectedTables[0] : null;
     const tableName = selectedTable ? getTableName(selectedTable) : "";
 
@@ -313,6 +308,11 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
         setCopied(false);
     }, [sql]);
 
+    // 全局对话抽屉在透视 Tab 激活时以本面板生成的 SQL 作为「当前 SQL」
+    React.useEffect(() => {
+        agentChatBus.setSql('pivot', sql ?? '');
+    }, [sql]);
+
     const handleCopySql = React.useCallback(async () => {
         if (!sql) return;
         await navigator.clipboard.writeText(sql);
@@ -395,7 +395,7 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
                         </Button>
 
                         {chatStatus.configured && (
-                            <ChatToggleButton active={chatOpen} onClick={() => setChatOpen((v) => !v)} />
+                            <ChatToggleButton active={chatOpen} onClick={() => agentChatBus.toggle()} />
                         )}
                     </div>
                 </div>
@@ -505,16 +505,6 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
                 onSuccess={() => setAsyncDialogOpen(false)}
             />
 
-            {chatStatus.configured && (
-                <AiChatDrawer
-                    open={chatOpen}
-                    onClose={() => setChatOpen(false)}
-                    selectedTables={chatTableNames}
-                    attachDatabases={pivotPayload?.attachDatabases ?? []}
-                    currentSql={sql ?? undefined}
-                    locale={aiLocale}
-                />
-            )}
         </div>
     );
 };

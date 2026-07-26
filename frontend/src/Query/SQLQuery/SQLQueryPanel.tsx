@@ -34,7 +34,8 @@ import {
 import { tokenizeSQL } from '@/utils/sqlTokenizer';
 import { formatSQLDataGrip } from '@/utils/sqlFormatter';
 import { useAiStatus } from '@/hooks/useAiStatus';
-import { AiChatDrawer, ChatToggleButton } from './ai/AiChatDrawer';
+import { ChatToggleButton } from './ai/AiChatDrawer';
+import { agentChatBus, useAgentChatBus } from './ai/agentChatBus';
 
 export interface SQLQueryPanelProps {
   /** 初始 SQL */
@@ -90,7 +91,7 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
   previewNonce,
   onOpenAiSettings,
 }) => {
-  const { t, i18n } = useTranslation('common');
+  const { t } = useTranslation('common');
   // const [historyOpen, setHistoryOpen] = useState(false); // Removed
   const [lastSelectedTableKey, setLastSelectedTableKey] = useState<string | null>(null);
   const [isExecuting, setIsExecuting] = useState(false);
@@ -130,9 +131,8 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
 
   // ===== AI:统一对话(解释/优化/问数据 收敛到对话,三态门控) =====
   const chatStatus = useAiStatus('data_qa');
-  const aiLocale: 'zh' | 'en' = i18n.language?.startsWith('zh') ? 'zh' : 'en';
   const openAiSettings = onOpenAiSettings ?? (() => {});
-  const [chatOpen, setChatOpen] = useState(false);
+  const { open: chatOpen } = useAgentChatBus();
 
   // 联邦查询检测 - 自动分析 SQL 中的外部表引用
   const {
@@ -352,6 +352,16 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
     setSQL(nextSql);
   }, [setSQL]);
 
+  // 全局对话抽屉的「插入编辑器」经总线回填到本编辑器;编辑器内容同步给
+  // 抽屉的「解释/优化当前 SQL」快捷动作
+  useEffect(() => {
+    agentChatBus.registerInserter(handleSQLChange);
+    return () => agentChatBus.registerInserter(null);
+  }, [handleSQLChange]);
+  useEffect(() => {
+    agentChatBus.setSql('sql', sql);
+  }, [sql]);
+
   const businessSql = systemLimitedSql?.displaySql === sql.trim()
     ? systemLimitedSql.baseSql
     : sql;
@@ -531,25 +541,13 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
             <ChatToggleButton
               active={chatOpen}
               onClick={() =>
-                chatStatus.configured ? setChatOpen((v) => !v) : openAiSettings()
+                chatStatus.configured ? agentChatBus.toggle() : openAiSettings()
               }
             />
           ) : undefined
         }
       />
 
-      {/* 数据助手对话(右侧抽屉);解释/优化收敛为对话内的快捷动作 */}
-      {chatStatus.configured && (
-        <AiChatDrawer
-          open={chatOpen}
-          onClose={() => setChatOpen(false)}
-          selectedTables={(selectedTables || []).map((tbl) => getTableName(tbl))}
-          attachDatabases={attachDatabases}
-          onInsertSQL={handleSQLChange}
-          currentSql={sql}
-          locale={aiLocale}
-        />
-      )}
 
       {/* 编辑器 */}
       <div className="flex-1 min-h-0 p-3">

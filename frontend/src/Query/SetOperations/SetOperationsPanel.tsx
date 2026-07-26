@@ -34,7 +34,8 @@ import {
   TooltipTrigger,
 } from '@/components/ui/tooltip';
 import { useAiStatus } from '@/hooks/useAiStatus';
-import { AiChatDrawer, ChatToggleButton } from '@/Query/SQLQuery/ai/AiChatDrawer';
+import { ChatToggleButton } from '@/Query/SQLQuery/ai/AiChatDrawer';
+import { agentChatBus, useAgentChatBus } from '@/Query/SQLQuery/ai/agentChatBus';
 
 /**
  * 集合操作面板 - 按照 Demo 设计重构
@@ -258,11 +259,10 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
   onExecute,
   onRemoveTable,
 }) => {
-  const { t, i18n } = useTranslation('common');
+  const { t } = useTranslation('common');
   const { maxQueryRows } = useAppConfig();
   const chatStatus = useAiStatus('data_qa');
-  const [chatOpen, setChatOpen] = React.useState(false);
-  const aiLocale: 'zh' | 'en' = i18n.language?.startsWith('zh') ? 'zh' : 'en';
+  const { open: chatOpen } = useAgentChatBus();
   const [isExecuting, setIsExecuting] = React.useState(false);
   const [isSaveDialogOpen, setIsSaveDialogOpen] = React.useState(false);
   const [asyncDialogOpen, setAsyncDialogOpen] = React.useState(false);
@@ -270,11 +270,6 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
   // 内部状态：如果没有外部传入 selectedTables，使用内部状态
   const [internalTables, setInternalTables] = React.useState<SelectedTable[]>([]);
   const activeTables = selectedTables.length > 0 ? selectedTables : internalTables;
-  const chatTableNames = React.useMemo(
-    () => activeTables.map((tbl) => getTableName(tbl)),
-    [activeTables]
-  );
-
   // 操作类型
   const [operationType, setOperationType] = React.useState<SetOperationType>('UNION');
 
@@ -561,6 +556,11 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
   };
 
   const sql = sqlForExecute;
+
+  // 全局对话抽屉在集合 Tab 激活时以本面板生成的 SQL 作为「当前 SQL」
+  React.useEffect(() => {
+    agentChatBus.setSql('set', sql ?? '');
+  }, [sql]);
   const CurrentSourceIcon = sourceAnalysis.currentSource
     ? getDatabaseTypeIcon(sourceAnalysis.currentSource.type)
     : null;
@@ -627,7 +627,7 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
             </Button>
 
             {chatStatus.configured && (
-              <ChatToggleButton active={chatOpen} onClick={() => setChatOpen((v) => !v)} />
+              <ChatToggleButton active={chatOpen} onClick={() => agentChatBus.toggle()} />
             )}
         </div>
 
@@ -831,16 +831,6 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
         }}
       />
 
-      {chatStatus.configured && (
-        <AiChatDrawer
-          open={chatOpen}
-          onClose={() => setChatOpen(false)}
-          selectedTables={chatTableNames}
-          attachDatabases={attachDatabases}
-          currentSql={sql ?? undefined}
-          locale={aiLocale}
-        />
-      )}
     </div>
   );
 };
