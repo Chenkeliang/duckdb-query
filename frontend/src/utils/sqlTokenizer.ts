@@ -345,17 +345,22 @@ export class SQLTokenizer {
   }
 
   /**
-   * 判断是否是标识符起始字符
+   * 判断是否是标识符起始字符。
+   *
+   * DuckDB 的不带引号标识符允许任意 Unicode 字母(中文表名 `商品表` 在本产品里
+   * 极常见——Excel 导入的表名基本都是中文)。此前只认 [a-zA-Z_],分词到中文就
+   * 断开:`duckdb_demo.商品表` 被读成裸表 `duckdb_demo`,联邦检测因此认不出前缀,
+   * 那个库不会被 ATTACH,执行时报 "schema does not exist"(2026-07-26 实测)。
    */
   private isIdentifierStart(char: string): boolean {
-    return /[a-zA-Z_]/.test(char);
+    return /[\p{L}_]/u.test(char);
   }
 
   /**
-   * 判断是否是标识符字符
+   * 判断是否是标识符字符(首字符之后允许数字与记号)
    */
   private isIdentifierChar(char: string): boolean {
-    return /[a-zA-Z0-9_]/.test(char);
+    return /[\p{L}\p{N}\p{M}_$]/u.test(char);
   }
 
   /**

@@ -141,3 +141,29 @@ def test_scope_all_maps_to_no_limits():
     """全放开时不构造 ScopeLimits——避免给闸多一层无谓判定。"""
     assert ai_router._scope_limits(ai_router.AgentScope()) is None
     assert ai_router._scope_limits(None) is None
+
+
+# ---- connection_id 归一化:两条 ATTACH 路径必须给出同一结果 ----
+# (2026-07-26 实测:/api/duckdb/federated-query 自带 db_ 前缀归一化,
+#  透视/集合走的 resolve_attach_configs 没有,同一个 db_XXX 一个能认一个 not found)
+
+def test_resolve_attach_configs_normalizes_db_prefix():
+    from unittest.mock import MagicMock, patch
+
+    from core.database.federated_attach import resolve_attach_configs
+
+    conn = MagicMock()
+    conn.params = {"host": "h", "database": "d"}
+    conn.type = "mysql"
+
+    seen: list[str] = []
+
+    def fake_get(cid):
+        seen.append(cid)
+        return conn if cid == "SORDER" else None  # 存储态是去前缀的形式
+
+    with patch("core.database.federated_attach.db_manager.get_connection", side_effect=fake_get):
+        got = resolve_attach_configs([{"alias": "m", "connection_id": "db_SORDER"}])
+
+    assert seen == ["SORDER"], f"未归一化: {seen}"
+    assert len(got) == 1 and got[0][0] == "m"

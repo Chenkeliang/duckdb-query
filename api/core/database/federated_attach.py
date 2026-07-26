@@ -12,6 +12,7 @@ from typing import Any, Dict, Iterator, List, Optional, Tuple
 import duckdb
 import pymysql
 
+from core.common.connection_alias import normalize_connection_id
 from core.common.sql_identifiers import escape_string_literal
 from core.database.database_manager import db_manager
 from core.database.duckdb_engine import (
@@ -68,7 +69,10 @@ def resolve_attach_configs(
         if not connection_id or not alias:
             continue
 
-        connection = db_manager.get_connection(str(connection_id))
+        # 前端/数据源接口给出的 id 带 `db_` 前缀,连接配置里存的是去前缀的形式。
+        # 联邦路由此前自带一份归一化、本函数没有,同一个 db_XXX 在两条路上一个能认
+        # 一个报 not found(2026-07-26 实测)。统一在这里归一,消除分叉。
+        connection = db_manager.get_connection(normalize_connection_id(str(connection_id)))
         if not connection:
             raise ResourceNotFoundError("Database connection", str(connection_id))
 
