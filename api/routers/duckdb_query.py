@@ -43,12 +43,11 @@ from core.database.federated_attach import (
     attach_databases_on_connection,
     detach_databases_on_connection,
     mysql_remote_cancellation_scope,
+    resolve_attach_configs,
 )
 from core.database.duckdb_pool import interruptible_connection
-from core.common.connection_alias import normalize_connection_id
 from core.database.connection_registry import connection_registry
 from core.database.federated_optimizer import optimize_federated_sql
-from core.security.encryption import password_encryptor
 from core.services.resource_manager import save_upload_file
 from core.services.table_metadata_service import get_table_metadata
 from core.common.exceptions import (
@@ -822,29 +821,10 @@ def execute_federated_query(
         _strip_sql_literals_upper(request.sql), request.save_as_table
     )
 
-    # 预先准备 ATTACH 配置（在连接外验证，避免占用连接时间）
-    attach_configs = []
-    if request.attach_databases:
-        for attach_db in request.attach_databases:
-            connection = db_manager.get_connection(
-                normalize_connection_id(attach_db.connection_id)
-            )
-            if not connection:
-                raise ResourceNotFoundError(
-                    "Database connection", attach_db.connection_id
-                )
-
-            db_config = connection.params.copy()
-            password = db_config.get("password", "")
-            if password and password_encryptor.is_encrypted(password):
-                db_config["password"] = password_encryptor.decrypt_password(password)
-
-            db_config["type"] = (
-                connection.type.value
-                if hasattr(connection.type, "value")
-                else str(connection.type)
-            )
-            attach_configs.append((attach_db.alias, db_config))
+    # 预先准备 ATTACH 配置（在连接外验证，避免占用连接时间）。
+    # 与透视/集合共用 resolve_attach_configs：此处曾另写一份(多了 db_ 前缀归一化),
+    # 两份实现对同一个 connection_id 给出不同结果,统一后归一化在公共函数里做。
+    attach_configs = resolve_attach_configs(request.attach_databases)
 
     # 处理 SQL 查询（MySQL 风格双引号字符串 → DuckDB 单引号）
     sql_query = normalize_mysql_double_quoted_strings_for_duckdb(
