@@ -266,8 +266,28 @@ def _attached_catalog_text(run_ctx: AgentRunCtx) -> str:
 
 
 def _ctx_data_qa(inp: Dict[str, Any], context: Dict[str, Any], run_ctx: AgentRunCtx) -> str:
-    catalog = ai_context.build_catalog_text(run_ctx.authorized_aliases)
+    limits = run_ctx.scope_limits
+    local_scope = None if limits is None else limits.local_tables
+    catalog = ai_context.build_catalog_text(
+        run_ctx.authorized_aliases,
+        None if local_scope is None else sorted(local_scope),
+    )
+    if local_scope is not None and not local_scope and not run_ctx.authorized_aliases:
+        # 用户把所有数据源都移出了范围:不注入目录,也别假装能查数据——
+        # 这一轮就是普通对话,run_query 侧同样会拒掉一切表
+        return (
+            "[Scope] The user removed every data source from this conversation's scope. "
+            "You have NO tables to query this turn: do not call run_query, and answer as "
+            "a plain assistant would. If the question needs data, say so and ask the user "
+            "to add a data source back to the scope (use the refuse action)."
+        )
     parts = [f"[Catalog (newest first)]\n{catalog}"]
+    if local_scope is not None and local_scope:
+        parts.append(
+            "[Scope] The user restricted this turn to the tables listed above. Tables "
+            "outside it are REFUSED by the query guard — never try them; if the question "
+            "needs one, use the refuse action and name the table so the user can add it."
+        )
     tables = context.get("tables") or []
     if tables:
         detail = ai_context.build_schema_text(tables, context.get("attach_databases"))

@@ -36,13 +36,19 @@ import {
   connectionEntry,
   localEntry,
   loadScopeCandidates,
+  loadSourceTables,
+  quotaBySource,
+  removeTableFromScope,
   scopeChipLabel,
+  setSourceMode,
   sqlSourcesFrom,
+  toggleTableInScope,
   LOCAL_SOURCE_ID,
   type ConnectionLite,
   type ScopeCandidate,
   type ScopeEntry,
 } from './agentScope';
+import { ScopeSourceRow } from './ScopeSourceRow';
 
 /** 工具栏「对话」开关按钮，样式与 解释/格式化/收藏 统一。 */
 export function ChatToggleButton({
@@ -294,6 +300,11 @@ export function AiChatDrawer({
   const [connections, setConnections] = useState<ConnectionLite[]>([]);
   const [candidates, setCandidates] = useState<ScopeCandidate[] | null>(null);
   const [scopeOpen, setScopeOpen] = useState(false);
+  // 范围编辑器:按来源缓存表清单(展开时才拉),三态区分"没拉过/拉失败/空清单"
+  const [sourceTables, setSourceTables] = useState<
+    Record<string, { items: ScopeCandidate[] | null; loading: boolean; failed: boolean }>
+  >({});
+  const [expandedSource, setExpandedSource] = useState<string | null>(null);
   const [actionsOpen, setActionsOpen] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
   const abortRef = useRef<AbortController | null>(null);
@@ -458,6 +469,32 @@ export function AiChatDrawer({
     loadScopeCandidates(connections).then(setCandidates).catch(() => setCandidates([]));
   }, [mentionMatch, candidates, connections]);
 
+  // 展开某个来源才去拉它的表清单:不预拉所有连接,免得一开面板就连一圈库
+  useEffect(() => {
+    if (!expandedSource) return;
+    const cur = sourceTables[expandedSource];
+    if (cur && (cur.items !== null || cur.loading)) return;
+    const entry = (scope ?? []).find((e) => e.id === expandedSource);
+    if (!entry) return;
+    setSourceTables((prev) => ({
+      ...prev,
+      [expandedSource]: { items: null, loading: true, failed: false },
+    }));
+    loadSourceTables(entry, connections)
+      .then((items) =>
+        setSourceTables((prev) => ({
+          ...prev,
+          [expandedSource]: { items, loading: false, failed: false },
+        })),
+      )
+      .catch(() =>
+        setSourceTables((prev) => ({
+          ...prev,
+          [expandedSource]: { items: null, loading: false, failed: true },
+        })),
+      );
+  }, [expandedSource, sourceTables, scope, connections]);
+
   if (!open) return null;
 
   const scopeEntries = scope ?? [localEntry(selectedTables || [])];
@@ -562,6 +599,8 @@ export function AiChatDrawer({
               alias: d.alias,
               connection_id: d.connectionId,
             })),
+            // 范围即边界:后端据此裁目录、闸拒越界表(选了就只查这些)
+            scope: agentScope.scope,
             current_sql: currentSql,
             locale,
           },
@@ -612,19 +651,27 @@ export function AiChatDrawer({
   // 选中候选:加入作用域(远端表会连带授权它所属连接),并清掉输入框里的 @ 片段
   const pickMention = (cand: ScopeCandidate) => {
     scopeCustomizedRef.current = true;
-    setScope((prev) => addCandidateToScope(prev ?? scopeEntries, cand, connections));
+    setScope((prev) => {
+      const cur = prev ?? scopeEntries;
+      // 再点一次已选中的表 = 从范围里移出(所见即所选,不必整源重来)
+      if (cur.some((e) => e.tables.includes(cand.ref))) {
+        return removeTableFromScope(cur, cand.sourceId, cand.ref);
+      }
+      return addCandidateToScope(cur, cand, connections);
+    });
     setInput((prev) => prev.replace(MENTION_RE, '$1'));
   };
 
   const pickedRefs = new Set(scopeEntries.flatMap((e) => e.tables));
-  const mentionCandidates =
+  // 已选的表**仍然列出**(打勾,再点=移出):此前被过滤掉,@ 加错了只能整源移除重来。
+  // 上限改为按来源配额——统一 slice(50) 会被表多的来源吃光名额,远端分组根本渲染不出来。
+  const mentionQuota = quotaBySource(
     mentionMatch && candidates
-      ? candidates
-          .filter((c) => c.ref.toLowerCase().includes(mentionMatch[2].toLowerCase()))
-          .filter((c) => !pickedRefs.has(c.ref))
-          // 下拉容器可滚动;有界上限防超大工作区渲染过多 DOM,超出可继续输入过滤。
-          .slice(0, 50)
-      : [];
+      ? candidates.filter((c) => c.ref.toLowerCase().includes(mentionMatch[2].toLowerCase()))
+      : [],
+    8,
+  );
+  const mentionCandidates = mentionQuota.items;
   // 按来源分组展示:本地表与各数据库的表同列可选
   const mentionGroups: { label: string; kind: 'local' | 'connection'; items: ScopeCandidate[] }[] = [];
   for (const c of mentionCandidates) {
@@ -649,6 +696,34 @@ export function AiChatDrawer({
   const removeScopeEntry = (id: string) => {
     scopeCustomizedRef.current = true;
     setScope((prev) => (prev ?? scopeEntries).filter((e) => e.id !== id));
+  };
+
+  // ---- 范围编辑器的写操作:一律标记为"用户已定制",从此不再被左侧勾选覆盖 ----
+  const customize = (fn: (cur: ScopeEntry[]) => ScopeEntry[]) => {
+    scopeCustomizedRef.current = true;
+    setScope((prev) => fn(prev ?? scopeEntries));
+  };
+  const handleSetMode = (id: string, mode: 'all' | 'tables') =>
+    customize((cur) => setSourceMode(cur, id, mode));
+  const handleToggleTable = (id: string, ref: string) =>
+    customize((cur) => toggleTableInScope(cur, id, ref));
+  const handlePickAll = (id: string, refs: string[]) =>
+    customize((cur) =>
+      cur.map((e) =>
+        e.id === id
+          ? { ...e, mode: 'tables' as const, tables: Array.from(new Set([...e.tables, ...refs])) }
+          : e,
+      ),
+    );
+  const handleClearTables = (id: string) =>
+    customize((cur) =>
+      cur.map((e) => (e.id === id ? { ...e, mode: 'tables' as const, tables: [] } : e)),
+    );
+  const reloadSource = (id: string) =>
+    setSourceTables((prev) => ({ ...prev, [id]: { items: null, loading: false, failed: false } }));
+  const openSourceEditor = (id: string) => {
+    setScopeOpen(true);
+    setExpandedSource((cur) => (cur === id ? cur : id));
   };
 
   const knownAliases = scopeEntries.map((e) => e.alias).filter(Boolean) as string[];
@@ -720,22 +795,37 @@ export function AiChatDrawer({
       {/* 作用域常驻条:它是"能问什么"的前置条件,所以放在标题下方第一行 */}
       <div className="relative flex items-center gap-2 border-b border-border bg-surface-elevated px-3 py-1.5">
         <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+          {scopeEntries.length === 0 && (
+            <span className="text-[11px] text-muted-foreground">
+              {t('query.ai.scopeEmpty', '未选任何数据源 · 仅普通对话')}
+            </span>
+          )}
           {scopeEntries.map((e) => (
             <span
               key={e.id}
-              className="inline-flex items-center gap-1 rounded-full border border-primary/50 bg-primary/10 px-2 py-0.5 text-[11px] text-primary"
+              className="inline-flex items-center gap-1 rounded-full border border-primary/50 bg-primary/10 py-0.5 pl-2 pr-1 text-[11px] text-primary"
               title={e.mode === 'tables' && e.tables.length ? e.tables.join('\n') : undefined}
             >
-              {scopeChipLabel(e)}
-              {e.id !== LOCAL_SOURCE_ID && (
-                <button
-                  type="button"
-                  onClick={() => removeScopeEntry(e.id)}
-                  aria-label={t('query.ai.scopeRemove', '移出作用域')}
-                >
-                  <X className="h-3 w-3" />
-                </button>
-              )}
+              {/* chip 本身就是入口:点一下直接编辑这个源的表清单 */}
+              <button
+                type="button"
+                onClick={() => openSourceEditor(e.id)}
+                className="inline-flex items-center gap-1"
+                aria-label={t('query.ai.scopeEdit', '编辑该数据源的范围')}
+              >
+                {scopeChipLabel(e)}
+                <ChevronRight className="h-3 w-3 rotate-90 opacity-70" />
+              </button>
+              <button
+                type="button"
+                onClick={() => removeScopeEntry(e.id)}
+                aria-label={t('query.ai.scopeRemoveOne', '移出作用域：{{name}}', {
+                  name: e.label,
+                })}
+                className="opacity-70 hover:opacity-100"
+              >
+                <X className="h-3 w-3" />
+              </button>
             </span>
           ))}
           <button
@@ -759,32 +849,67 @@ export function AiChatDrawer({
                 )}
               </div>
             </div>
-            <div className="max-h-56 overflow-auto p-1.5">
-              {connections.length === 0 && (
-                <div className="px-2 py-3 text-[11px] text-muted-foreground">
-                  {t('query.ai.scopeNoConn', '还没有数据库连接；本地 DuckDB 表始终可问。')}
-                </div>
-              )}
-              {connections.map((c) => {
-                const on = scopeEntries.some((e) => e.id === c.id);
+            <div className="max-h-72 overflow-auto">
+              {scopeEntries.map((e) => {
+                const st = sourceTables[e.id] || { items: null, loading: false, failed: false };
                 return (
+                  <ScopeSourceRow
+                    key={e.id}
+                    entry={e}
+                    tables={st.items}
+                    loading={st.loading}
+                    failed={st.failed}
+                    expanded={expandedSource === e.id}
+                    onToggleExpand={() =>
+                      setExpandedSource((cur) => (cur === e.id ? null : e.id))
+                    }
+                    onReload={() => reloadSource(e.id)}
+                    onSetMode={(mode) => handleSetMode(e.id, mode)}
+                    onToggleTable={(ref) => handleToggleTable(e.id, ref)}
+                    onPickAll={(refs) => handlePickAll(e.id, refs)}
+                    onClear={() => handleClearTables(e.id)}
+                  />
+                );
+              })}
+              {/* 尚未加入本轮范围的连接 */}
+              {connections
+                .filter((c) => !scopeEntries.some((e) => e.id === c.id))
+                .map((c) => (
                   <button
                     key={c.id}
                     type="button"
                     onClick={() => toggleSource(c)}
-                    className={`flex w-full items-center gap-2 rounded px-2 py-1.5 text-left text-xs hover:bg-accent ${
-                      on ? 'text-primary' : ''
-                    }`}
+                    className="flex w-full items-center gap-2 border-b border-border px-2 py-1.5 text-left text-xs last:border-b-0 hover:bg-accent"
                   >
-                    <Database className="h-3.5 w-3.5 shrink-0" />
-                    <span className="truncate font-medium">{c.name}</span>
+                    <Database className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                    <span className="truncate font-medium text-muted-foreground">{c.name}</span>
                     <span className="text-[10px] uppercase text-muted-foreground">{c.type}</span>
-                    <span className="ml-auto text-[11px] text-muted-foreground">
-                      {on ? t('query.ai.scopeInScope', '已加入') : t('query.ai.scopeJoin', '加入')}
+                    <span className="ml-auto text-[11px] text-primary">
+                      {t('query.ai.scopeJoin', '加入')}
                     </span>
                   </button>
-                );
-              })}
+                ))}
+              {!scopeEntries.length && !connections.length && (
+                <div className="px-3 py-3 text-[11px] text-muted-foreground">
+                  {t('query.ai.scopeNoConn', '还没有数据库连接；本地 DuckDB 表始终可问。')}
+                </div>
+              )}
+              {/* 本地被移出后能加回来 */}
+              {!scopeEntries.some((e) => e.id === LOCAL_SOURCE_ID) && (
+                <button
+                  type="button"
+                  onClick={() =>
+                    customize((cur) => [localEntry(selectedTables || []), ...cur])
+                  }
+                  className="flex w-full items-center gap-2 border-b border-border px-2 py-1.5 text-left text-xs last:border-b-0 hover:bg-accent"
+                >
+                  <Database className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
+                  <span className="truncate font-medium text-muted-foreground">本地 DuckDB</span>
+                  <span className="ml-auto text-[11px] text-primary">
+                    {t('query.ai.scopeJoin', '加入')}
+                  </span>
+                </button>
+              )}
             </div>
             <div className="flex items-center gap-2 border-t border-border px-3 py-1.5">
               <span className="flex-1 text-[11px] text-muted-foreground">
@@ -970,23 +1095,43 @@ export function AiChatDrawer({
                     />
                     {g.label}
                   </div>
-                  {g.items.map((c) => (
-                    <button
-                      key={c.ref}
-                      type="button"
-                      onClick={() => pickMention(c)}
-                      className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-xs hover:bg-accent"
-                    >
-                      <span className="truncate font-mono text-[11px]">{c.display}</span>
-                      {c.rowCount != null && (
-                        <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">
-                          {c.kind === 'connection'
-                            ? t('query.ai.mentionRowsApprox', '约 {{n}} 行', { n: c.rowCount })
-                            : t('query.ai.mentionRows', '{{n}} 行', { n: c.rowCount })}
+                  {g.items.map((c) => {
+                    const on = pickedRefs.has(c.ref);
+                    return (
+                      <button
+                        key={c.ref}
+                        type="button"
+                        onClick={() => pickMention(c)}
+                        className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-xs hover:bg-accent"
+                      >
+                        <span
+                          className={`grid h-3 w-3 shrink-0 place-items-center rounded-sm border text-[8px] text-primary-foreground ${
+                            on ? 'border-primary bg-primary' : 'border-border'
+                          }`}
+                          aria-hidden
+                        >
+                          {on ? '✓' : ''}
                         </span>
-                      )}
-                    </button>
-                  ))}
+                        <span className="truncate font-mono text-[11px]">{c.display}</span>
+                        {/* 行数为 0/缺失不显示:远端拿不到统计元数据时会给 0,
+                            渲染成"约 0 行"会被读成"这些表都是空的" */}
+                        {!!c.rowCount && (
+                          <span className="ml-auto shrink-0 text-[10px] text-muted-foreground">
+                            {c.kind === 'connection'
+                              ? t('query.ai.mentionRowsApprox', '约 {{n}} 行', { n: c.rowCount })
+                              : t('query.ai.mentionRows', '{{n}} 行', { n: c.rowCount })}
+                          </span>
+                        )}
+                      </button>
+                    );
+                  })}
+                  {!!mentionQuota.overflow[g.items[0].sourceId] && (
+                    <div className="px-2 py-1 text-[10px] text-muted-foreground">
+                      {t('query.ai.mentionMore', '还有 {{n}} 张，继续输入以缩小范围', {
+                        n: mentionQuota.overflow[g.items[0].sourceId],
+                      })}
+                    </div>
+                  )}
                 </div>
               ))}
               <div className="border-t border-border px-2 py-1 text-[10px] text-muted-foreground">

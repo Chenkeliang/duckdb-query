@@ -63,6 +63,9 @@ class AgentRunCtx:
     unavailable_aliases: List[Tuple[str, str]] = field(default_factory=list)
     #   本次授权但解析/连接失败、已被排除的别名 [(alias, reason)];逐别名降级(见 ai.py _prepare_agent),
     #   由 profile 上下文显式列给 Agent,避免静默把联邦查询范围缩成本地
+    scope_limits: Optional["ai_sql_guard.ScopeLimits"] = None
+    #   用户在对话里选定的问数范围:None = 未逐表限制(整库可问,与收紧前一致);
+    #   本地空集 = 本地不在范围内。目录注入与 run_query 闸共用这一份事实
 
 
 @dataclass
@@ -449,7 +452,7 @@ async def run_query_async(ctx: AgentRunCtx, args: RunQueryArgs, max_sql_calls: i
             ui_summary="non-SELECT rejected",
             ok=False,
         )
-    allowed, reason = ai_sql_guard.check_sql(sql, ctx.authorized_aliases)
+    allowed, reason = ai_sql_guard.check_sql(sql, ctx.authorized_aliases, ctx.scope_limits)
     if not allowed:
         ctx.sql_rejected += 1
         return ToolResult(

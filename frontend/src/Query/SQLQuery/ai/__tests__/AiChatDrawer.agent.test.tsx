@@ -11,7 +11,13 @@ const mocks = vi.hoisted(() => ({
 
 vi.mock('react-i18next', () => ({
   useTranslation: () => ({
-    t: (_key: string, fallback?: string) => fallback ?? _key,
+    // 带上插值:组件里不少 aria-label/文案是 {{n}}/{{name}} 形态,
+    // 只回退原串会让选择器匹配到未替换的占位符
+    t: (_key: string, fallback?: string, opts?: Record<string, unknown>) =>
+      Object.entries(opts ?? {}).reduce(
+        (acc, [k, v]) => acc.replace(new RegExp(`{{${k}}}`, 'g'), String(v)),
+        fallback ?? _key,
+      ),
   }),
 }));
 
@@ -196,7 +202,7 @@ describe('AiChatDrawer agent mode', () => {
         locale="zh"
       />,
     );
-    fireEvent.click(screen.getByLabelText('移出作用域'));
+    fireEvent.click(screen.getByLabelText('移出作用域：mysql_sorder'));
     fireEvent.change(screen.getByPlaceholderText(/问数据智能体/), { target: { value: 'hi' } });
     fireEvent.keyDown(screen.getByPlaceholderText(/问数据智能体/), { key: 'Enter' });
     await waitFor(() => expect(sent).not.toBeNull());
@@ -240,7 +246,7 @@ describe('AiChatDrawer agent mode', () => {
         locale="zh"
       />,
     );
-    fireEvent.click(screen.getByLabelText('移出作用域')); // 手动定制
+    fireEvent.click(screen.getByLabelText('移出作用域：mysql_sorder')); // 手动定制
     // 定制后选择变化不再覆盖用户的作用域
     view.rerender(
       <AiChatDrawer

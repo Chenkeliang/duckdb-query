@@ -20,7 +20,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Sequence, Tuple
+from typing import Mapping, Optional, Sequence, Tuple
 
 import sqlglot
 from sqlglot import exp
@@ -42,7 +42,58 @@ _DENIED_FUNCTIONS = {"getenv"}
 _SAFE_TABLE_FUNCTIONS = {"range", "generate_series", "unnest"}
 
 
-def _denied_reason_for_table(table: exp.Table, allowed: set, cte_names: set) -> str | None:
+class ScopeLimits:
+    """用户在对话里选定的问数范围(None = 该来源整体放行,不逐表限制)。
+
+    只有用户**明确勾了表**时才收紧:一张没勾 = 整个来源可问(与改动前行为一致)。
+    空集与 None 语义不同——空集表示"该来源不在范围内",一张表都不放行。
+    """
+
+    __slots__ = ("local_tables", "alias_tables")
+
+    def __init__(
+        self,
+        local_tables: Sequence[str] | None = None,
+        alias_tables: Mapping[str, Sequence[str]] | None = None,
+    ) -> None:
+        self.local_tables = None if local_tables is None else {
+            str(t).lower() for t in local_tables
+        }
+        self.alias_tables = None if alias_tables is None else {
+            str(a).lower(): {str(t).lower() for t in ts} for a, ts in alias_tables.items()
+        }
+
+    def local_allowed(self, name: str) -> bool:
+        return self.local_tables is None or name.lower() in self.local_tables
+
+    def alias_allowed(self, alias: str, name: str) -> bool:
+        if self.alias_tables is None:
+            return True
+        allowed = self.alias_tables.get(alias.lower())
+        return allowed is None or name.lower() in allowed
+
+
+def _scope_reason(table: exp.Table, name: str, qualifier: str, limits: ScopeLimits) -> str | None:
+    """范围外的表:拒绝并点名,让模型走 refuse 请用户把表加进范围,而不是偷查。"""
+    del table
+    if qualifier and qualifier not in _LOCAL_QUALIFIERS:
+        if not limits.alias_allowed(qualifier, name):
+            return (
+                f"table is outside the scope the user selected: {qualifier}.{name}"
+                " — ask the user to add it to the scope instead of querying it"
+            )
+        return None
+    if not limits.local_allowed(name):
+        return (
+            f"table is outside the scope the user selected: {name}"
+            " — ask the user to add it to the scope instead of querying it"
+        )
+    return None
+
+
+def _denied_reason_for_table(
+    table: exp.Table, allowed: set, cte_names: set, limits: ScopeLimits
+) -> str | None:
     this = table.this
     if this is None or not isinstance(this, exp.Identifier):
         func_name = ""
@@ -73,12 +124,21 @@ def _denied_reason_for_table(table: exp.Table, allowed: set, cte_names: set) -> 
     elif db and db not in allowed:
         # 两段名:限定符要么是本地目录/模式,要么是授权别名
         return f"unauthorized database qualifier: {db}"
-    return None
+    # 授权通过后再看用户选定的范围:别名取三段名的首段,否则取两段名的限定符
+    return _scope_reason(table, name, catalog or db, limits)
 
 
-def check_sql(sql: str, authorized_aliases: Sequence[str]) -> Tuple[bool, str]:
-    """返回 (allowed, reason)。任何不确定形态一律拒绝(fail-closed)。"""
+def check_sql(
+    sql: str,
+    authorized_aliases: Sequence[str],
+    limits: Optional[ScopeLimits] = None,
+) -> Tuple[bool, str]:
+    """返回 (allowed, reason)。任何不确定形态一律拒绝(fail-closed)。
+
+    limits 为用户选定的问数范围(默认 None = 不逐表限制,与改动前一致)。
+    """
     allowed = _LOCAL_QUALIFIERS | {str(a).lower() for a in authorized_aliases}
+    limits = limits or ScopeLimits()
     try:
         statements = sqlglot.parse(sql, read="duckdb")
     except Exception as exc:  # noqa: BLE001  解析失败 = 不可审计 = 拒绝
@@ -96,7 +156,7 @@ def check_sql(sql: str, authorized_aliases: Sequence[str]) -> Tuple[bool, str]:
     cte_names = {str(cte.alias) for cte in tree.find_all(exp.CTE) if cte.alias}
 
     for table in tree.find_all(exp.Table):
-        reason = _denied_reason_for_table(table, allowed, cte_names)
+        reason = _denied_reason_for_table(table, allowed, cte_names, limits)
         if reason:
             return False, reason
 
