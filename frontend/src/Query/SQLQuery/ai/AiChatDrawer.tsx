@@ -417,9 +417,16 @@ export function AiChatDrawer({
 
   const mentionMatch = MENTION_RE.exec(input);
 
-  // 打开抽屉时用编辑器当前选择播种作用域(之后独立演化,不回写编辑器)
+  // 作用域跟随编辑器实时选择,直到用户在面板/@ 里手动定制过(此后独立演化,
+  // 不回写编辑器)。全局单例抽屉与选表状态各自长活,"只播种一次"会让 scope
+  // 永远停在首次打开时的选择上——用户换选了表,回答却还对着旧集合。
+  const scopeCustomizedRef = useRef(false);
+  const seedKey = JSON.stringify([
+    selectedTables || [],
+    (attachDatabases || []).map((d) => [d.alias, d.connectionId]),
+  ]);
   useEffect(() => {
-    if (!open || scope !== null) return;
+    if (!open || scopeCustomizedRef.current) return;
     const seeded: ScopeEntry[] = [localEntry(selectedTables || [])];
     for (const d of attachDatabases || []) {
       seeded.push({
@@ -428,7 +435,10 @@ export function AiChatDrawer({
       });
     }
     setScope(seeded);
-  }, [open, scope, selectedTables, attachDatabases]);
+    // seedKey 已涵盖 selectedTables/attachDatabases 的内容变化;直接依赖数组
+    // 会因引用每轮变化而空转
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [open, seedKey]);
 
   // 连接清单:打开作用域面板或 @ 时才拉(只读结构,不加载数据)
   const needSources = scopeOpen || !!mentionMatch;
@@ -601,6 +611,7 @@ export function AiChatDrawer({
 
   // 选中候选:加入作用域(远端表会连带授权它所属连接),并清掉输入框里的 @ 片段
   const pickMention = (cand: ScopeCandidate) => {
+    scopeCustomizedRef.current = true;
     setScope((prev) => addCandidateToScope(prev ?? scopeEntries, cand, connections));
     setInput((prev) => prev.replace(MENTION_RE, '$1'));
   };
@@ -626,6 +637,7 @@ export function AiChatDrawer({
   }
 
   const toggleSource = (conn: ConnectionLite) => {
+    scopeCustomizedRef.current = true;
     setScope((prev) => {
       const cur = prev ?? scopeEntries;
       return cur.some((e) => e.id === conn.id)
@@ -634,8 +646,10 @@ export function AiChatDrawer({
     });
   };
 
-  const removeScopeEntry = (id: string) =>
+  const removeScopeEntry = (id: string) => {
+    scopeCustomizedRef.current = true;
     setScope((prev) => (prev ?? scopeEntries).filter((e) => e.id !== id));
+  };
 
   const knownAliases = scopeEntries.map((e) => e.alias).filter(Boolean) as string[];
   const sqlSources = (sql: string) => sqlSourcesFrom(sql, knownAliases);
@@ -677,10 +691,13 @@ export function AiChatDrawer({
               variant="ghost"
               size="sm"
               onClick={() => {
-                // 新对话 = 中断进行中的回答 + 清空上下文(多轮追问的信封随消息一起归零)
+                // 新对话 = 中断进行中的回答 + 清空上下文(多轮追问的信封随消息一起
+                // 归零),作用域回到跟随编辑器选择的模式
                 abortRef.current?.abort();
                 clearTypewriter();
                 setMessages([]);
+                scopeCustomizedRef.current = false;
+                setScope(null);
               }}
               title={t('query.ai.newChat', '新对话')}
               aria-label={t('query.ai.newChat', '新对话')}

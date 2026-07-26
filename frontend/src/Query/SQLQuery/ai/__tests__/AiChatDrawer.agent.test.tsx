@@ -203,4 +203,57 @@ describe('AiChatDrawer agent mode', () => {
     const ctx = (sent as unknown as { context: { attach_databases: unknown[] } }).context;
     expect(ctx.attach_databases).toEqual([]);  // 所见即所查
   });
+
+  // ---- 作用域跟随实时选择(全局单例抽屉的回归:2026-07-26 用户实测选中 2 张表、
+  //      回答却对着首开时的旧集合) ----
+
+  it('follows editor selection changes until the user customizes the scope', async () => {
+    let sent: Record<string, unknown> | null = null;
+    mocks.streamAgent.mockImplementation(async (body, { onEvent }) => {
+      sent = body as Record<string, unknown>;
+      onEvent({ event: 'answer', run_id: 'r1', result: { content: 'ok', sql: null, evidence: [] }, termination_reason: 'completed' });
+    });
+    const view = render(
+      <AiChatDrawer open onClose={() => {}} selectedTables={['orders']} locale="zh" />,
+    );
+    // 用户换选了表:作用域必须跟着走,而不是停在首开时的 ['orders']
+    view.rerender(
+      <AiChatDrawer open onClose={() => {}} selectedTables={['refunds', 'users']} locale="zh" />,
+    );
+    fireEvent.change(screen.getByPlaceholderText(/问数据智能体/), { target: { value: '这两张表是干嘛的' } });
+    fireEvent.keyDown(screen.getByPlaceholderText(/问数据智能体/), { key: 'Enter' });
+    await waitFor(() => expect(sent).not.toBeNull());
+    const ctx = (sent as unknown as { context: { tables: string[] } }).context;
+    expect(ctx.tables).toEqual(['refunds', 'users']);
+  });
+
+  it('stops following selection after the user removes a source (customized scope)', async () => {
+    let sent: Record<string, unknown> | null = null;
+    mocks.streamAgent.mockImplementation(async (body, { onEvent }) => {
+      sent = body as Record<string, unknown>;
+      onEvent({ event: 'answer', run_id: 'r1', result: { content: 'ok', sql: null, evidence: [] }, termination_reason: 'completed' });
+    });
+    const view = render(
+      <AiChatDrawer
+        open onClose={() => {}} selectedTables={[]}
+        attachDatabases={[{ alias: 'mysql_sorder', connectionId: 'db_sorder' }]}
+        locale="zh"
+      />,
+    );
+    fireEvent.click(screen.getByLabelText('移出作用域')); // 手动定制
+    // 定制后选择变化不再覆盖用户的作用域
+    view.rerender(
+      <AiChatDrawer
+        open onClose={() => {}} selectedTables={['orders']}
+        attachDatabases={[{ alias: 'mysql_sorder', connectionId: 'db_sorder' }]}
+        locale="zh"
+      />,
+    );
+    fireEvent.change(screen.getByPlaceholderText(/问数据智能体/), { target: { value: 'hi' } });
+    fireEvent.keyDown(screen.getByPlaceholderText(/问数据智能体/), { key: 'Enter' });
+    await waitFor(() => expect(sent).not.toBeNull());
+    const ctx = (sent as unknown as { context: { tables: string[]; attach_databases: unknown[] } }).context;
+    expect(ctx.attach_databases).toEqual([]); // 移除的连接不复活
+    expect(ctx.tables).toEqual([]);           // 也不吸入后来的选表
+  });
 });
