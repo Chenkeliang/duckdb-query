@@ -1018,7 +1018,7 @@ checksum = "f678cf4a922c215c63e0de95eb1ff08a958a81d47e485cf9da1e27bf6305cfa5"
 
 [[package]]
 name = "duckquery"
-version = "1.3.1"
+version = "1.3.2"
 dependencies = [
  "log",
  "open",
