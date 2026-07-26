@@ -19,6 +19,7 @@ from core.services import (
     ai_agent_tools,
     ai_profiles,
     ai_config,
+    ai_sql_guard,
     table_registry,
 )
 from core.services.ai_agent_tools import AgentRunCtx
@@ -97,11 +98,23 @@ def _ai_error_response(exc: Exception):
     return error_json_response(400, code, str(exc))
 
 
+class AgentScope(BaseModel):
+    """用户在对话里选定的问数范围(缺省 = 不限制,与旧客户端逐字兼容)。
+
+    选了就是边界:目录注入与 run_query 闸同吃这一份,越界的表由闸拒绝并点名,
+    模型据此走 refuse 请用户加表,而不是偷偷查别的表。
+    """
+    local_mode: str = "all"          # all=整个 DuckDB | tables=仅 local_tables | none=本地不在范围
+    local_tables: list[str] = []
+    alias_tables: Dict[str, list[str]] = {}  # 别名 → 选中表名;未列出的别名 = 该库整库
+
+
 class AgentContext(BaseModel):
     tables: list[str] = []
     attach_databases: list[AttachDatabase] = []
     current_sql: str = ""
     locale: str = "zh"
+    scope: AgentScope | None = None
 
 
 class AgentRequest(BaseModel):
@@ -123,6 +136,22 @@ def _sse(event: Dict[str, Any]) -> str:
     name = event["event"]
     data = {k: v for k, v in event.items() if k != "event"}
     return f"event: {name}\ndata: {json.dumps(data, ensure_ascii=False)}\n\n"
+
+
+def _scope_limits(scope: AgentScope | None) -> ai_sql_guard.ScopeLimits | None:
+    """把请求里的范围翻成闸的 ScopeLimits;None/全放开一律回 None(不逐表限制)。"""
+    if scope is None:
+        return None
+    if scope.local_mode == "none":
+        local: list[str] | None = []
+    elif scope.local_mode == "tables":
+        local = list(scope.local_tables)
+    else:
+        local = None
+    aliases = {a: list(ts) for a, ts in (scope.alias_tables or {}).items()}
+    if local is None and not aliases:
+        return None
+    return ai_sql_guard.ScopeLimits(local, aliases or None)
 
 
 def _prepare_agent(req: AgentRequest):
@@ -173,6 +202,7 @@ def _prepare_agent(req: AgentRequest):
         provider=(resolved["provider"] or {}).get("id", ""),
         model=resolved["model"] or "",
         session_id=req.session_id,
+        scope_limits=_scope_limits(req.context.scope),
     )
     context_dict = {
         "tables": req.context.tables,

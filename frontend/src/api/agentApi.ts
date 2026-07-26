@@ -23,9 +23,18 @@ export type AgentMode =
   | 'explain_sql'
   | 'suggest_chart';
 
+/** 用户选定的问数范围;缺省 = 不限制。后端据此裁目录并让 SQL 闸拒掉越界表。 */
+export interface AgentScopePayload {
+  local_mode: 'all' | 'tables' | 'none';
+  local_tables: string[];
+  /** 别名 → 选中表名(不含别名前缀);未列出的别名 = 该库整库 */
+  alias_tables: Record<string, string[]>;
+}
+
 export interface AgentContext {
   tables?: string[];
   attach_databases?: { alias: string; connection_id: string }[];
+  scope?: AgentScopePayload;
   current_sql?: string;
   locale?: 'zh' | 'en';
 }

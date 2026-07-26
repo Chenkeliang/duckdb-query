@@ -87,10 +87,17 @@ def build_schema_text(
     return text
 
 
-def build_catalog_text(authorized_aliases: Optional[List[str]] = None) -> str:
+def build_catalog_text(
+    authorized_aliases: Optional[List[str]] = None,
+    local_tables: Optional[List[str]] = None,
+) -> str:
     """紧凑目录:本地表(登记表序,最新在前)名字/行数/创建时间 + 授权别名。
 
     只给名字级信息(渐进披露),列结构由 inspect_table 按需取。
+
+    local_tables 为用户选定的本地范围:None = 不限制(列全部);给了集合就只列这些
+    (空集 = 本地不在范围内,一张不列)。目录必须与 run_query 的闸同源——否则模型
+    看得见却查不动,只会白白撞墙再解释。
     """
     with with_duckdb_connection() as con:
         rows = con.execute(
@@ -101,6 +108,9 @@ def build_catalog_text(authorized_aliases: Optional[List[str]] = None) -> str:
             """
         ).fetchall()
     names = [r[0] for r in rows if not r[0].lower().startswith("system_")]
+    if local_tables is not None:
+        picked = {str(t).lower() for t in local_tables}
+        names = [n for n in names if n.lower() in picked]
     sizes = {r[0]: int(r[1] or 0) for r in rows}
     registry = table_registry.sync(names)
     names.sort(key=lambda n: (registry.get(n) or {}).get("sort_seq") or 0, reverse=True)

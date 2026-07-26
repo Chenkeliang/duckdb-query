@@ -8,7 +8,7 @@
 import duckdb
 import pytest
 
-from core.services.ai_sql_guard import check_sql
+from core.services.ai_sql_guard import ScopeLimits, check_sql
 
 ALIASES = ["sorder", "demo_duck"]
 
@@ -120,3 +120,59 @@ def test_unparseable_sql_fail_closed():
     allowed, reason = check_sql("SELECT ((( FROM", [])
     assert allowed is False
     assert "reject" in reason or "statement" in reason
+
+
+# ---- 用户选定的问数范围(ScopeLimits):选了就是边界,不是提示 ----
+
+def test_no_limits_keeps_everything_allowed():
+    """默认(一张没勾)= 整库可问,与收紧前逐字一致。"""
+    assert check_sql("SELECT * FROM guard_orders", ALIASES, None)[0] is True
+    assert check_sql("SELECT * FROM sorder.iget_order", ALIASES, ScopeLimits())[0] is True
+
+
+def test_local_scope_rejects_table_outside_selection():
+    limits = ScopeLimits(local_tables=["guard_orders"])
+    assert check_sql("SELECT * FROM guard_orders", ALIASES, limits)[0] is True
+    allowed, reason = check_sql("SELECT * FROM other_table", ALIASES, limits)
+    assert allowed is False
+    assert "outside the scope" in reason and "other_table" in reason
+
+
+def test_local_scope_is_case_insensitive_and_covers_qualified_names():
+    limits = ScopeLimits(local_tables=["Guard_Orders"])
+    assert check_sql("SELECT * FROM guard_orders", ALIASES, limits)[0] is True
+    assert check_sql("SELECT * FROM main.guard_orders", ALIASES, limits)[0] is True
+    assert check_sql("SELECT * FROM main.other_table", ALIASES, limits)[0] is False
+
+
+def test_empty_local_scope_rejects_every_local_table():
+    """本地被移出范围 = 一张都不放行(纯对话)。空集 != None。"""
+    limits = ScopeLimits(local_tables=[])
+    assert check_sql("SELECT * FROM guard_orders", ALIASES, limits)[0] is False
+    assert check_sql("SELECT 1 AS v", ALIASES, limits)[0] is True  # 不碰表照常可跑
+
+
+def test_alias_scope_narrows_a_connection_to_picked_tables():
+    limits = ScopeLimits(alias_tables={"sorder": ["iget_order"]})
+    assert check_sql("SELECT * FROM sorder.iget_order", ALIASES, limits)[0] is True
+    allowed, reason = check_sql("SELECT * FROM sorder.crm_order", ALIASES, limits)
+    assert allowed is False
+    assert "outside the scope" in reason
+
+
+def test_alias_scope_absent_alias_stays_whole_database():
+    """只收窄 sorder;未列出的 demo_duck 仍是整库(全库模式与选表模式共存)。"""
+    limits = ScopeLimits(alias_tables={"sorder": ["iget_order"]})
+    assert check_sql("SELECT * FROM demo_duck.anything", ALIASES, limits)[0] is True
+
+
+def test_scope_applies_inside_cte_and_join():
+    limits = ScopeLimits(local_tables=["guard_orders"])
+    sql = "WITH x AS (SELECT * FROM other_table) SELECT * FROM guard_orders g JOIN x ON 1=1"
+    assert check_sql(sql, ALIASES, limits)[0] is False
+
+
+def test_cte_name_is_not_mistaken_for_an_out_of_scope_table():
+    limits = ScopeLimits(local_tables=["guard_orders"])
+    sql = "WITH tmp AS (SELECT * FROM guard_orders) SELECT count(*) AS n FROM tmp"
+    assert check_sql(sql, ALIASES, limits)[0] is True

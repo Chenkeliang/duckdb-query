@@ -111,3 +111,33 @@ def test_prepare_agent_federation_degrades_per_alias(monkeypatch):
     _agen, ctx = ai_router._prepare_agent(req)
     assert ctx.authorized_aliases == ["good"]              # 好连接照常授权
     assert [a for a, _ in ctx.unavailable_aliases] == ["bad"]  # 坏连接被排除且明示
+
+
+# ---- 问数范围:请求里的 scope 必须真的落到 guard 的 ScopeLimits 上 ----
+# (2026-07-26:此前 scope 只影响"详细结构"上下文,目录仍列全部表、闸对本地表
+#  无条件放行——用户选了 2 张表,模型照样跑去查第 3 张。)
+
+@pytest.mark.parametrize("scope_kwargs,sql,expected", [
+    (None, "SELECT * FROM whatever", True),                        # 无 scope = 旧行为
+    ({"local_mode": "all"}, "SELECT * FROM whatever", True),        # 一张没勾 = 整库
+    ({"local_mode": "tables", "local_tables": ["a"]}, "SELECT * FROM a", True),
+    ({"local_mode": "tables", "local_tables": ["a"]}, "SELECT * FROM b", False),
+    ({"local_mode": "none"}, "SELECT * FROM a", False),             # 移空 = 纯对话
+    ({"local_mode": "none"}, "SELECT 1 AS v", True),                # 不碰表照常
+    ({"alias_tables": {"sorder": ["iget_order"]}}, "SELECT * FROM sorder.iget_order", True),
+    ({"alias_tables": {"sorder": ["iget_order"]}}, "SELECT * FROM sorder.crm_order", False),
+    ({"alias_tables": {"sorder": ["iget_order"]}}, "SELECT * FROM demo.other", True),  # 未列出的别名仍整库
+])
+def test_request_scope_reaches_the_sql_guard(scope_kwargs, sql, expected):
+    from core.services.ai_sql_guard import check_sql
+
+    scope = None if scope_kwargs is None else ai_router.AgentScope(**scope_kwargs)
+    limits = ai_router._scope_limits(scope)
+    allowed, reason = check_sql(sql, ["sorder", "demo"], limits)
+    assert allowed is expected, reason
+
+
+def test_scope_all_maps_to_no_limits():
+    """全放开时不构造 ScopeLimits——避免给闸多一层无谓判定。"""
+    assert ai_router._scope_limits(ai_router.AgentScope()) is None
+    assert ai_router._scope_limits(None) is None
