@@ -1,6 +1,6 @@
 [package]
 name = "duckquery"
-version = "1.3.2"
+version = "1.3.3"
 description = "DuckQuery — AI visual SQL workbench for files and databases"
 authors = ["Chenkeliang"]
 license = "MIT"
