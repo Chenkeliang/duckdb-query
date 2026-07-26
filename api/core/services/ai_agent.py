@@ -74,10 +74,21 @@ def _error(ctx: AgentRunCtx, termination: str, message: str) -> Dict[str, Any]:
 
 
 def _answer(ctx: AgentRunCtx, result: Dict[str, Any], termination: str) -> Dict[str, Any]:
-    return {
+    event = {
         "event": "answer", "run_id": ctx.run_id,
         "result": result, "termination_reason": termination,
     }
+    # 拒答里点名的表若确实存在、只是不在本轮范围内,附带给前端 → 一键「加入该表」重问。
+    # 放在事件层而非 result 里:result 受 Profile 的 output_model 严格校验,这是 UI 提示。
+    content = (result or {}).get("content") if isinstance(result, dict) else None
+    if content:
+        try:
+            suggestions = ai_agent_tools.out_of_scope_candidates(ctx, str(content))
+        except Exception:  # noqa: BLE001  提示是锦上添花,绝不能带翻回答
+            suggestions = []
+        if suggestions:
+            event["scope_suggestions"] = suggestions
+    return event
 
 
 def _apply_output_policy(profile: AgentProfile, ctx: AgentRunCtx, inp: Dict[str, Any],

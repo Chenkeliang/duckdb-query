@@ -194,6 +194,51 @@ def _scan_attached_tables(alias: str, db_config: dict) -> List[str]:
     return out
 
 
+def out_of_scope_candidates(ctx: "AgentRunCtx", text: str, cap: int = 3) -> List[str]:
+    """从答复文本里挑出「用户库里确实存在、但本轮不在范围内」的表名。
+
+    用途:拒答时前端给一个「加入该表」按钮,一键把它加进作用域重问,而不是让
+    用户自己回面板里找。只认**真实存在**的表名(本地目录 ∪ 已授权别名的表清单),
+    模型随口编的名字不会变成按钮。
+    """
+    limits = ctx.scope_limits
+    if limits is None or not text:
+        return []  # 未收窄范围 = 无所谓"范围外"
+
+    body = text.lower()
+    found: List[str] = []
+
+    def consider(name: str, in_scope: bool) -> None:
+        if in_scope or not name or len(name) < 2:
+            return
+        if name.lower() in body and name not in found:
+            found.append(name)
+
+    try:
+        with with_duckdb_connection() as con:
+            rows = con.execute(
+                "SELECT table_name FROM duckdb_tables() WHERE NOT internal "
+                "AND database_name = current_database() AND schema_name = 'main'"
+            ).fetchall()
+        for (tname,) in rows:
+            if str(tname).lower().startswith("system_"):
+                continue
+            consider(str(tname), limits.local_allowed(str(tname)))
+    except Exception:  # noqa: BLE001  目录读不到就少给建议,不影响回答本身
+        pass
+
+    for alias, db_config in ctx.attach_configs or []:
+        try:
+            names, _age = attached_tables_cached(alias, db_config)
+        except Exception:  # noqa: BLE001
+            continue
+        for qualified in names:
+            short = qualified.split(".")[-1]
+            consider(short, limits.alias_allowed(alias, short))
+
+    return found[:cap]
+
+
 def attached_tables_cached(alias: str, db_config: dict,
                            ttl: float = _ATTACHED_TTL_S) -> Tuple[List[str], float]:
     """返回 (限定名列表, 缓存年龄秒)。命中 TTL 内的缓存则不再连远端。"""

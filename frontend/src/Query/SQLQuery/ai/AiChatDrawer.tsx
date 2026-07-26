@@ -107,6 +107,10 @@ interface DrawerMsg {
   failed?: boolean;
   /** 本轮实际作用域快照:回答隔天再看也说得清数据来自哪个库 */
   scope?: { label: string; kind: 'local' | 'connection' }[];
+  /** 拒答里点名的范围外表:渲染成「加入该表并重问」按钮 */
+  missingTables?: string[];
+  /** 触发本轮的问题,供「加入并重问」原样重发 */
+  question?: string;
 }
 
 /** 本轮作用域小卡:把"这次查了哪些库"变成可审计的事实。 */
@@ -525,15 +529,21 @@ export function AiChatDrawer({
     return map[reason] || t('query.ai.termUnknown', '运行未正常结束，请重试');
   };
 
-  const sendAgent = async (text: string) => {
+  const sendAgent = async (text: string, scopeOverride?: ScopeEntry[]) => {
     clearTypewriter(); // 新一轮发送:停掉上一条可能仍在打字的定时器,避免写错消息
+    // setScope 是异步的:「加入该表并重问」必须带上刚算出的作用域,否则这一轮
+    // 仍按旧范围提问,结果又被拒(回归用例守着这条)
+    const activeScope = scopeOverride ?? scopeEntries;
+    const activeAgentScope = scopeOverride
+      ? buildAgentScopeContext(scopeOverride)
+      : agentScope;
     const userMsg: DrawerMsg = { role: 'user', content: text };
     const pending: DrawerMsg = {
       role: 'assistant',
       content: '',
       steps: [],
       // 快照发问那一刻的作用域(之后用户改作用域也不影响这条回答的可追溯性)
-      scope: scopeEntries.map((e) => ({ label: scopeChipLabel(e), kind: e.kind })),
+      scope: activeScope.map((e) => ({ label: scopeChipLabel(e), kind: e.kind })),
     };
     const history = historyForBackend(messages);
     const pendingIndex = messages.length + 1; // userMsg 在 messages.length,pending 紧随其后
@@ -577,6 +587,8 @@ export function AiChatDrawer({
           content: '',
           sql: r.sql ?? null,
           evidence: r.evidence ?? [],
+          missingTables: ev.scope_suggestions || [],
+          question: text,
         }));
         startTypewriter(pendingIndex, r.content ?? '');
       } else if (ev.event === 'error') {
@@ -594,13 +606,13 @@ export function AiChatDrawer({
           mode: 'data_qa',
           input: { messages: [...history, { role: 'user', content: text }] },
           context: {
-            tables: agentScope.tables,
-            attach_databases: agentScope.attachDatabases.map((d) => ({
+            tables: activeAgentScope.tables,
+            attach_databases: activeAgentScope.attachDatabases.map((d) => ({
               alias: d.alias,
               connection_id: d.connectionId,
             })),
             // 范围即边界:后端据此裁目录、闸拒越界表(选了就只查这些)
-            scope: agentScope.scope,
+            scope: activeAgentScope.scope,
             current_sql: currentSql,
             locale,
           },
@@ -721,6 +733,30 @@ export function AiChatDrawer({
     );
   const reloadSource = (id: string) =>
     setSourceTables((prev) => ({ ...prev, [id]: { items: null, loading: false, failed: false } }));
+  /** 把范围外的表加进作用域,并把原问题原样重问一次(拒答 → 一键可解) */
+  const addTableAndRetry = (table: string, question?: string) => {
+    const cands = candidates || [];
+    const hit = cands.find((c) => c.display === table || c.ref === table);
+    scopeCustomizedRef.current = true;
+    const cur = scope ?? scopeEntries;
+    let next: ScopeEntry[];
+    if (hit) {
+      next = addCandidateToScope(cur, hit, connections);
+    } else {
+      // 候选清单还没加载过(没开过面板/没打过 @):按本地裸表名并入
+      const local = cur.find((e) => e.id === LOCAL_SOURCE_ID);
+      next = local
+        ? cur.map((e) =>
+            e.id === LOCAL_SOURCE_ID
+              ? { ...e, mode: 'tables' as const, tables: Array.from(new Set([...e.tables, table])) }
+              : e,
+          )
+        : [localEntry([table], 'tables'), ...cur];
+    }
+    setScope(next);
+    if (question) void sendAgent(question, next);
+  };
+
   const openSourceEditor = (id: string) => {
     setScopeOpen(true);
     setExpandedSource((cur) => (cur === id ? cur : id));
@@ -983,6 +1019,23 @@ export function AiChatDrawer({
                       !m.steps?.length && (
                         <Loader2 className="h-4 w-4 animate-spin text-muted-foreground" />
                       )
+                    )}
+                    {/* 拒答里点名的范围外表:一键加进作用域并原样重问,
+                        省得用户自己回面板里找那张表 */}
+                    {!!m.missingTables?.length && !loading && (
+                      <div className="mt-1.5 flex flex-wrap items-center gap-1.5">
+                        {m.missingTables.map((tbl) => (
+                          <button
+                            key={tbl}
+                            type="button"
+                            onClick={() => addTableAndRetry(tbl, m.question)}
+                            className="inline-flex items-center gap-1 rounded-full border border-primary/50 bg-primary/10 px-2 py-0.5 text-[11px] text-primary hover:bg-primary/20"
+                          >
+                            <Plus className="h-3 w-3" />
+                            {t('query.ai.scopeAddTable', '加入「{{name}}」并重问', { name: tbl })}
+                          </button>
+                        ))}
+                      </div>
                     )}
                     {m.sql && (
                       <div className="my-1 rounded border border-border bg-background">

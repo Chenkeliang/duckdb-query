@@ -262,4 +262,45 @@ describe('AiChatDrawer agent mode', () => {
     expect(ctx.attach_databases).toEqual([]); // 移除的连接不复活
     expect(ctx.tables).toEqual([]);           // 也不吸入后来的选表
   });
+
+  // ---- 拒答里点名的范围外表 → 一键「加入并重问」(2026-07-26 用户提的) ----
+
+  it('renders a quick-add button for an out-of-scope table and re-asks after adding', async () => {
+    const sent: Record<string, unknown>[] = [];
+    mocks.streamAgent.mockImplementation(async (body, { onEvent }) => {
+      sent.push(body as Record<string, unknown>);
+      onEvent({
+        event: 'answer', run_id: 'r1',
+        result: { content: '晃然抖音赠品_Sheet1 不在当前范围内', sql: null, evidence: [] },
+        termination_reason: 'completed',
+        scope_suggestions: ['晃然抖音赠品_Sheet1'],
+      });
+    });
+    render(<AiChatDrawer open onClose={() => {}} selectedTables={['orders']} locale="zh" />);
+    fireEvent.change(screen.getByPlaceholderText(/问数据智能体/), { target: { value: '两张表关联' } });
+    fireEvent.keyDown(screen.getByPlaceholderText(/问数据智能体/), { key: 'Enter' });
+
+    const btn = await screen.findByText(/加入「晃然抖音赠品_Sheet1」并重问/);
+    fireEvent.click(btn);
+
+    // 原问题被原样重发,且这一次该表已在范围内
+    await waitFor(() => expect(sent).toHaveLength(2));
+    const ctx = (sent[1] as { context: { tables: string[] } }).context;
+    expect(ctx.tables).toContain('晃然抖音赠品_Sheet1');
+  });
+
+  it('shows no quick-add button when the backend suggests nothing', async () => {
+    mocks.streamAgent.mockImplementation(async (_body, { onEvent }) => {
+      onEvent({
+        event: 'answer', run_id: 'r1',
+        result: { content: '一切正常', sql: null, evidence: [] },
+        termination_reason: 'completed',
+      });
+    });
+    render(<AiChatDrawer open onClose={() => {}} selectedTables={['orders']} locale="zh" />);
+    fireEvent.change(screen.getByPlaceholderText(/问数据智能体/), { target: { value: 'hi' } });
+    fireEvent.keyDown(screen.getByPlaceholderText(/问数据智能体/), { key: 'Enter' });
+    await screen.findByText('一切正常');
+    expect(screen.queryByText(/并重问/)).not.toBeInTheDocument();
+  });
 });

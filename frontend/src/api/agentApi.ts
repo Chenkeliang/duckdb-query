@@ -73,7 +73,14 @@ export type AgentEvent =
       truncated: boolean;
       elapsed_ms: number;
     }
-  | { event: 'answer'; run_id: string; result: Record<string, unknown> | null; termination_reason: string }
+  | {
+      event: 'answer';
+      run_id: string;
+      result: Record<string, unknown> | null;
+      termination_reason: string;
+      /** 答复里点名、但不在本轮范围内的真实表名 → UI 给「加入该表」入口 */
+      scope_suggestions?: string[];
+    }
   | { event: 'error'; run_id: string; termination_reason: string; message: string }
   | {
       event: 'done';

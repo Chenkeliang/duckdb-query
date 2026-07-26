@@ -301,7 +301,8 @@
       "scopeNoMatch": "No matching table",
       "scopeMore": "{{n}} more — keep typing to narrow",
       "mentionMore": "{{n}} more — keep typing to narrow",
-      "scopeRemoveOne": "Remove {{name}} from scope"
+      "scopeRemoveOne": "Remove {{name}} from scope",
+      "scopeAddTable": "Add “{{name}}” and ask again"
     },
     "tableSelector": {
       "selectTable": "Select table",
