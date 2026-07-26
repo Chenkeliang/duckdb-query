@@ -666,3 +666,45 @@ describe('extractSqlAttachedAliases with IF NOT EXISTS', () => {
     expect(aliases.has('alarm')).toBe(true);
   });
 });
+
+// ---- 非 ASCII 标识符(2026-07-26 实测:中文表名让联邦检测整段失灵) ----
+
+describe('CJK 与非 ASCII 标识符', () => {
+  const CONNS = [
+    { id: 'db_SORDER', name: 'SORDER', type: 'mysql' },
+    { id: 'db_DEMO-DUCKDB', name: 'DEMO-DUCKDB', type: 'duckdb' },
+  ] as never as DatabaseConnection[];
+
+  it('限定名里的中文表名不再被吞掉', () => {
+    const refs = parseSQLTableReferences('SELECT * FROM duckdb_demo_duckdb.商品表 LIMIT 3');
+    expect(refs).toHaveLength(1);
+    expect(refs[0].prefix).toBe('duckdb_demo_duckdb');
+    expect(refs[0].tableName).toBe('商品表');
+  });
+
+  it('跨源 JOIN:两个库都能被识别并 ATTACH(此前只 attach 了 MySQL 那个)', () => {
+    const sql =
+      'SELECT * FROM mysql_sorder.store_order.bschool_order '
+      + 'CROSS JOIN duckdb_demo_duckdb.商品表 LIMIT 3';
+    const refs = parseSQLTableReferences(sql);
+    const { attachDatabases, unrecognizedPrefixes } = buildAttachDatabasesFromParsedRefs(refs, CONNS);
+    expect(attachDatabases.map((d) => d.connectionId).sort()).toEqual(['db_DEMO-DUCKDB', 'db_SORDER']);
+    expect(unrecognizedPrefixes).toEqual([]);
+  });
+
+  it('裸中文表名(本地表)照常解析', () => {
+    const refs = parseSQLTableReferences('SELECT * FROM 订单表 WHERE 金额 > 100');
+    expect(refs.map((r) => r.tableName)).toEqual(['订单表']);
+    expect(refs[0].prefix).toBeNull();
+  });
+
+  it('中文表名带别名与 JOIN', () => {
+    const refs = parseSQLTableReferences('SELECT * FROM 订单表 o JOIN 商品表 p ON o.pid = p.id');
+    expect(refs.map((r) => r.tableName).sort()).toEqual(['商品表', '订单表']);
+  });
+
+  it('数字仍不能作为标识符起始(避免把 3 LIMIT 之类读成表名)', () => {
+    const refs = parseSQLTableReferences('SELECT * FROM t LIMIT 3');
+    expect(refs.map((r) => r.tableName)).toEqual(['t']);
+  });
+});
