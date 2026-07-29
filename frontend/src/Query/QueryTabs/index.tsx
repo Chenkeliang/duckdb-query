@@ -60,7 +60,7 @@ const queryModes: QueryMode[] = [
 interface QueryTabsProps {
   activeTab: string;
   onTabChange: (tab: string) => void;
-  selectedTables: SelectedTable[];
+  selectedTablesByTab: Record<string, SelectedTable[]>;
   onExecute: (
     sql: string,
     source?: TableSource,
@@ -91,7 +91,7 @@ export interface QueryTabsHandle {
 export const QueryTabs = React.forwardRef<QueryTabsHandle, QueryTabsProps>(({
   activeTab,
   onTabChange,
-  selectedTables,
+  selectedTablesByTab,
   onExecute,
   onDisplayPreview,
   onRemoveTable,
@@ -105,6 +105,7 @@ export const QueryTabs = React.forwardRef<QueryTabsHandle, QueryTabsProps>(({
 }, ref) => {
   const joinPersistenceRef = React.useRef<JoinWorkspacePersistence | null>(null);
   const { t, i18n } = useTranslation('common');
+  const selectedTables = selectedTablesByTab[activeTab] || [];
 
   // ===== 全局数据智能体对话:单例挂载,四个查询 Tab 共用同一份对话上下文 =====
   // (此前每个面板各挂一个抽屉,KeepAlive 下就是四份互不相通的对话;
@@ -362,7 +363,7 @@ export const QueryTabs = React.forwardRef<QueryTabsHandle, QueryTabsProps>(({
         <div className="flex-1 min-h-0 overflow-hidden">
           <KeepAliveTabContent value="sql" activeTab={activeTab} className="h-full m-0 p-0 overflow-auto">
             <SQLQueryPanel
-              selectedTables={selectedTables}
+              selectedTables={selectedTablesByTab.sql || []}
               onExecute={onExecute}
               onCancel={onCancel}
               isCancelling={isCancelling}
@@ -376,7 +377,7 @@ export const QueryTabs = React.forwardRef<QueryTabsHandle, QueryTabsProps>(({
 
           <KeepAliveTabContent value="join" activeTab={activeTab} className="h-full m-0 p-0 overflow-auto">
             <JoinQueryPanel
-              selectedTables={selectedTables}
+              selectedTables={selectedTablesByTab.join || []}
               onExecute={handleJoinExecute}
               onDisplayPreview={onDisplayPreview}
               onRecordHistory={recordJoinHistory}
@@ -391,7 +392,7 @@ export const QueryTabs = React.forwardRef<QueryTabsHandle, QueryTabsProps>(({
 
           <KeepAliveTabContent value="set" activeTab={activeTab} className="h-full m-0 p-0 overflow-auto">
             <SetOperationsPanel
-              selectedTables={selectedTables}
+              selectedTables={selectedTablesByTab.set || []}
               onExecute={handleSetExecute}
               onRemoveTable={onRemoveTable}
             />
@@ -399,7 +400,7 @@ export const QueryTabs = React.forwardRef<QueryTabsHandle, QueryTabsProps>(({
 
           <KeepAliveTabContent value="pivot" activeTab={activeTab} className="h-full m-0 p-0 overflow-auto">
             <PivotPanel
-              selectedTables={selectedTables}
+              selectedTables={selectedTablesByTab.pivot || []}
               onExecute={handlePivotExecute}
             />
           </KeepAliveTabContent>

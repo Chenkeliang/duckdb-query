@@ -1,7 +1,7 @@
 """行数范围(全量/限制)产品语义端到端验收(复审终版)。
 
-语义:max_query_rows 是"用户未写最外层 LIMIT 时的默认值",不是硬上限。
-- 异步/导出 未勾选(默认):不加系统 LIMIT,尊重用户自带 LIMIT(全量≠删用户 LIMIT);
+语义:勾选项是异步/导出/保存的最终行数选择,max_query_rows 不是硬上限。
+- 未勾选(默认):移除查询页面最外层 LIMIT,子查询 LIMIT 保留;
 - 勾选:最外层缺 LIMIT 时补默认;用户写了 5000/12000 都用用户值;
 - retry 保留原任务选择;异步下载/export-to-path 直接导任务结果表,不再碰 LIMIT;
 - 生成式 SQL(JOIN/SET/Pivot)内部不加系统行数 LIMIT,只允许最外层。
@@ -20,7 +20,68 @@ from main import app
 client = TestClient(app)
 
 
+# ---------- 保存到 DuckDB:对话框选择覆盖查询页面最外层 LIMIT ----------
+
+def test_save_to_duckdb_unchecked_removes_page_outer_limit():
+    """Regression 2026-07-28: an unchecked save persisted only the 10000-row
+    query preview instead of all 10727 rows. Exercise the real CTAS path.
+    """
+    table_name = "qa_persistence_full_rows_20260728"
+    try:
+        with patch(
+            "routers.join_query.file_datasource_manager.save_file_datasource"
+        ):
+            response = client.post(
+                "/api/save_query_to_duckdb",
+                json={
+                    "sql": "SELECT * FROM range(10727) LIMIT 10000",
+                    "table_alias": table_name,
+                    "datasource": {"id": "duckdb_internal", "type": "duckdb"},
+                    "apply_row_limit": False,
+                },
+            )
+
+        assert response.status_code == 200, response.text
+        assert response.json()["data"]["row_count"] == 10727
+        with with_duckdb_connection() as con:
+            assert con.execute(f'SELECT COUNT(*) FROM "{table_name}"').fetchone()[0] == 10727
+    finally:
+        with with_duckdb_connection() as con:
+            con.execute(f'DROP TABLE IF EXISTS "{table_name}"')
+
+
 # ---------- 验收 #4/#5/#6/#7(提交链路):apply_row_limit 显式透传,不猜测 ----------
+
+def test_async_unchecked_removes_page_outer_limit():
+    """Regression 2026-07-29: unchecked async execution must not persist only
+    the query page's 10000-row preview. Exercise the real background CTAS.
+    """
+    table_name = "qa_async_full_rows_20260729"
+    try:
+        with with_duckdb_connection() as con:
+            con.execute(f'DROP TABLE IF EXISTS "{table_name}"')
+
+        with patch(
+            "routers.async_tasks.file_datasource_manager.save_file_datasource"
+        ):
+            response = client.post(
+                "/api/async-tasks",
+                json={
+                    "sql": "SELECT * FROM range(10727) LIMIT 10000",
+                    "custom_table_name": table_name,
+                    "apply_row_limit": False,
+                },
+            )
+
+        assert response.status_code == 200, response.text
+        with with_duckdb_connection() as con:
+            row_count = con.execute(
+                f'SELECT COUNT(*) FROM "{table_name}"'
+            ).fetchone()[0]
+        assert row_count == 10727
+    finally:
+        with with_duckdb_connection() as con:
+            con.execute(f'DROP TABLE IF EXISTS "{table_name}"')
 
 def test_async_submit_threads_apply_row_limit_positional():
     """POST /api/async-tasks 的 apply_row_limit 按位置实参透传给后台执行函数。
@@ -89,9 +150,8 @@ class TestServerExportRowLimit:
         # 未勾选(默认):全量 2000 行
         assert self._export(f'SELECT * FROM "{self.TABLE}"') == 2000
 
-    def test_full_respects_user_limit(self):
-        # 全量 ≠ 删用户 LIMIT:用户写 100 导 100
-        assert self._export(f'SELECT * FROM "{self.TABLE}" LIMIT 100') == 100
+    def test_full_ignores_page_outer_limit(self):
+        assert self._export(f'SELECT * FROM "{self.TABLE}" LIMIT 100') == 2000
 
     def test_limited_applies_default_when_missing(self):
         with patch("core.common.config_manager.config_manager") as mgr:
@@ -123,9 +183,9 @@ class TestServerExportRowLimit:
         [
             ('SELECT * FROM "qa_export_rows"; -- note', 2000),
             ('SELECT * FROM "qa_export_rows"; /* note */', 2000),
-            ('SELECT * FROM "qa_export_rows" LIMIT 5; -- note', 5),
+            ('SELECT * FROM "qa_export_rows" LIMIT 5; -- note', 2000),
             ('SELECT * FROM "qa_export_rows" -- note', 2000),
-            ('SELECT * FROM "qa_export_rows" LIMIT 5 -- note', 5),
+            ('SELECT * FROM "qa_export_rows" LIMIT 5 -- note', 2000),
         ],
     )
     def test_full_export_accepts_trailing_comments(self, sql, expected_rows):

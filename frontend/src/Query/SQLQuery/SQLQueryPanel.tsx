@@ -348,9 +348,44 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
   }, [maxQueryRows, systemLimitedSql]);
 
   const handleSQLChange = useCallback((nextSql: string) => {
-    setSystemLimitedSql(null);
+    if (systemLimitedSql) {
+      const tokens = tokenizeSQL(nextSql);
+      let depth = 0;
+      let limitIndex = -1;
+
+      tokens.forEach((token, index) => {
+        if (token.type === 'lparen') {
+          depth += 1;
+        } else if (token.type === 'rparen') {
+          depth = Math.max(0, depth - 1);
+        } else if (
+          depth === 0 &&
+          token.type === 'keyword' &&
+          token.value.toUpperCase() === 'LIMIT'
+        ) {
+          limitIndex = index;
+        }
+      });
+
+      const limitToken = tokens[limitIndex];
+      const valueToken = tokens[limitIndex + 1];
+      const hasUnchangedSystemLimit =
+        limitToken?.type === 'keyword' &&
+        valueToken?.type === 'number' &&
+        valueToken.raw === String(maxQueryRows) &&
+        tokens.slice(limitIndex + 2).every((token) => token.type === 'semicolon');
+
+      if (hasUnchangedSystemLimit) {
+        const baseSql = `${nextSql.slice(0, limitToken.position).trimEnd()}${
+          nextSql.slice(valueToken.position + valueToken.raw.length)
+        }`.trim();
+        setSystemLimitedSql({ displaySql: nextSql.trim(), baseSql });
+      } else {
+        setSystemLimitedSql(null);
+      }
+    }
     setSQL(nextSql);
-  }, [setSQL]);
+  }, [maxQueryRows, setSQL, systemLimitedSql]);
 
   // 全局对话抽屉的「插入编辑器」经总线回填到本编辑器;编辑器内容同步给
   // 抽屉的「解释/优化当前 SQL」快捷动作

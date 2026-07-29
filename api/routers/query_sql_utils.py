@@ -13,18 +13,16 @@ _sqlglot_logger = logging.getLogger("sqlglot")
 
 
 def apply_row_limit_choice(sql: str, apply_limit: bool) -> str:
-    """按用户【显式选择】决定异步/导出/保存的行数范围,不从 SQL 文本猜测来源。
+    """按用户【最终选择】统一决定异步/导出/保存的行数范围。
 
-    - apply_limit=False(全量):逐字执行——"全量"的准确含义是【不应用系统自动 LIMIT】,
-      不是删除用户写的 LIMIT;用户自带的 LIMIT 原样生效;
+    - apply_limit=False(全量):移除查询页面最外层 LIMIT,子查询 LIMIT 保留;
     - apply_limit=True(限制):最外层缺 LIMIT 时补默认 max_query_rows;用户已写(5000/12000)
       则用用户值——默认值是"未写时的兜底",不是硬上限,绝不把 12000 压成 10000。
       判定走 has_top_level_limit(AST),不用正则/replace/数值猜测。
 
-    旧的 remove_auto_added_limit 仅凭 "LIMIT 值 == max_query_rows" 就判为系统追加并删除,会误删
-    用户手写的等值 LIMIT(复审 P1)。行数范围是用户意图,由请求显式携带。"""
+    不再按 LIMIT 数值猜测来源:是否保留最外层 LIMIT 只由当前勾选项决定。"""
     if not apply_limit:
-        return sql.strip()
+        return _remove_top_level_limit(sql)
     from core.common.config_manager import config_manager
 
     try:
@@ -32,6 +30,25 @@ def apply_row_limit_choice(sql: str, apply_limit: bool) -> str:
     except Exception:  # pylint: disable=broad-except
         max_rows = 10000
     return ensure_query_has_limit(sql.strip(), max_rows)
+
+
+def _remove_top_level_limit(sql: str) -> str:
+    """Remove only the outer LIMIT from a DuckDB query."""
+    stripped = _strip_trailing_semicolon_segment(sql.strip())
+    prev_level = _sqlglot_logger.level
+    _sqlglot_logger.setLevel(logging.ERROR)
+    try:
+        tree = sqlglot.parse_one(stripped, read="duckdb")
+    except Exception:  # pylint: disable=broad-except
+        return sql.strip()
+    finally:
+        _sqlglot_logger.setLevel(prev_level)
+
+    if tree is None or tree.args.get("limit") is None:
+        return sql.strip()
+
+    tree.set("limit", None)
+    return tree.sql(dialect="duckdb")
 
 
 def get_join_type_sql(join_type: str) -> str:

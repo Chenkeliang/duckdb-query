@@ -182,6 +182,30 @@ describe('SQLQueryPanel page limit semantics', () => {
     expect(onExecute.mock.calls[1][2]).toEqual({ baseSql: 'SELECT * FROM orders' });
   });
 
+  /** Regression 2026-07-28: editing filters after a preview made the system LIMIT permanent. */
+  it('retains system LIMIT provenance while editing the business SQL', async () => {
+    const onExecute = createExecuteMock();
+    renderPanel({ initialSQL: 'SELECT * FROM orders', onExecute });
+
+    fireEvent.click(screen.getByRole('button', { name: 'execute' }));
+    await waitFor(() => expect(onExecute).toHaveBeenCalledTimes(1));
+
+    fireEvent.change(screen.getByRole('textbox', { name: 'sql-editor' }), {
+      target: {
+        value: "SELECT * FROM orders WHERE status = 'paid' LIMIT 10000",
+      },
+    });
+    fireEvent.click(screen.getByRole('button', { name: 'execute' }));
+
+    await waitFor(() => expect(onExecute).toHaveBeenCalledTimes(2));
+    expect(onExecute.mock.calls[1][0]).toBe(
+      "SELECT * FROM orders WHERE status = 'paid' LIMIT 10000"
+    );
+    expect(onExecute.mock.calls[1][2]).toEqual({
+      baseSql: "SELECT * FROM orders WHERE status = 'paid'",
+    });
+  });
+
   it('keeps selected-table LIMIT visible and sends the unbounded baseSql', async () => {
     const onExecute = createExecuteMock();
     renderPanel({

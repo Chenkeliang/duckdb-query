@@ -27,8 +27,10 @@ export interface ListTasksResponse {
     message?: string;
 }
 
+export type AsyncDownloadFormat = 'csv' | 'parquet' | 'json' | 'xlsx';
+
 export interface DownloadOptions {
-    format: 'csv' | 'parquet';
+    format: AsyncDownloadFormat;
 }
 
 export interface TaskSubmitResult {
@@ -168,7 +170,7 @@ export function getAsyncDownloadUrl(
 }
 
 export interface AsyncExportToPathOptions {
-    format: 'csv' | 'parquet';
+    format: AsyncDownloadFormat;
     /** 原生存盘对话框选定的绝对路径 */
     targetPath: string;
 }

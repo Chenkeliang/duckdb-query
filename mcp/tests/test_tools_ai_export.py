@@ -34,3 +34,22 @@ async def test_export_results_passes_attach_databases(cfg):
     sent = json.loads(route.calls.last.request.content)
     assert sent["attach_databases"] == [{"alias": "m", "connection_id": "SORDER"}]
     assert sent["format"] == "csv"
+    assert sent["apply_row_limit"] is True
+
+
+@respx.mock
+async def test_export_results_can_use_full_result_limit_semantics(cfg):
+    import json
+
+    from duckquery_mcp.tools.export import export_results
+
+    base = "http://127.0.0.1:48001"
+    respx.get(f"{base}/health").mock(return_value=httpx.Response(200, json={"status": "healthy"}))
+    route = respx.post(f"{base}/api/query-results/export").mock(
+        return_value=httpx.Response(200, json={"success": True, "data": {"file_id": "f1"}}))
+    await export_results(
+        DuckQueryClient(cfg), cfg, sql="SELECT 1 LIMIT 10", format="csv",
+        apply_row_limit=False, confirm=True,
+    )
+    sent = json.loads(route.calls.last.request.content)
+    assert sent["apply_row_limit"] is False

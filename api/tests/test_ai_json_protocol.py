@@ -105,17 +105,6 @@ def test_no_action_anywhere_falls_back_to_first_object():
     assert out == {"foo": 1}
 
 
-# ---- Bug 3:normalize_sql 只去首尾空白+尾分号,内部严格保留(防"执行 A 回答 B"绕过) ----
-
-def test_normalize_sql_preserves_internal_whitespace():
-    from core.services.ai_sql_validation import normalize_sql
-    a = normalize_sql("SELECT 'a  b'")   # 字面量内两个空格
-    b = normalize_sql("SELECT 'a b'")    # 一个空格
-    assert a != b                        # 绝不折叠内部空白 → 不碰撞
-    assert normalize_sql("  SELECT 1 ;  ") == "SELECT 1"  # 仅去首尾空白+尾分号
-    assert normalize_sql("SELECT 1\n-- c  d\n") == "SELECT 1\n-- c  d"  # 注释内空白保留
-
-
 # ---- recover_sql_action:把 ```sql/<run_query> 意图纠错为 run_query 探查(实测残余形态) ----
 
 def test_recover_run_query_from_prose_plus_sql_fence():

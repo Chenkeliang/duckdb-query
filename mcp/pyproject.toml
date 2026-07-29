@@ -1,6 +1,6 @@
 [project]
 name = "duckquery-mcp"
-version = "0.3.0"
+version = "0.3.1"
 description = "MCP server for a locally-running DuckQuery backend"
 readme = "README.md"
 license = { text = "MIT" }
@@ -12,7 +12,7 @@ classifiers = [
     "Operating System :: OS Independent",
 ]
 requires-python = ">=3.10"
-dependencies = ["mcp>=1.2.0", "httpx>=0.27"]
+dependencies = ["mcp>=1.2.0,<2.0", "httpx>=0.27"]
 
 [project.urls]
 Homepage = "https://github.com/Chenkeliang/duckdb-query"

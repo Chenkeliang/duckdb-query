@@ -38,6 +38,8 @@ import {
     removeNodeById,
     addConditionToTree,
     countConditions,
+    cloneTreeWithoutOnConditions,
+    separateConditionsByPlacement,
 } from './filterUtils';
 
 export interface FilterBarProps {
@@ -84,17 +86,39 @@ export const FilterBar: React.FC<FilterBarProps> = ({
 
     // 切换到 SQL 模式
     const switchToSqlMode = () => {
-        const sql = generateFilterSQL(filterTree);
+        // SQL 编辑器只承载 WHERE 表达式；ON 条件仍由表单维护。
+        const sql = generateFilterSQL(cloneTreeWithoutOnConditions(filterTree));
         // 如果是空括号，显示为空
         setSqlContent(sql === '()' ? '' : sql);
         setParseWarnings([]);
         setMode('sql');
     };
 
+    const applyWhereNode = (whereNode: FilterNode) => {
+        const whereGroup: FilterGroup = whereNode.type === 'group'
+            ? whereNode
+            : {
+                ...createEmptyGroup(),
+                children: [whereNode],
+            };
+        const { onConditions } = separateConditionsByPlacement(filterTree);
+
+        if (onConditions.length === 0) {
+            onFilterChange(whereGroup);
+            return;
+        }
+
+        onFilterChange({
+            ...whereGroup,
+            logic: 'AND',
+            children: [...onConditions, ...whereGroup.children],
+        });
+    };
+
     // 切换到表单模式（由 SQL 解析为条件树）
     const switchToVisualMode = () => {
         if (!sqlContent.trim()) {
-            onFilterChange(createEmptyGroup());
+            applyWhereNode(createEmptyGroup());
             setMode('visual');
             return;
         }
@@ -107,16 +131,7 @@ export const FilterBar: React.FC<FilterBarProps> = ({
             setParseWarnings([]);
         }
 
-        // 确保根节点是 Group
-        if (result.node.type === 'group') {
-            onFilterChange(result.node);
-        } else {
-            // 将单个节点包装在 Group 中
-            onFilterChange({
-                ...createEmptyGroup(),
-                children: [result.node],
-            });
-        }
+        applyWhereNode(result.node);
 
         setMode('visual');
     };

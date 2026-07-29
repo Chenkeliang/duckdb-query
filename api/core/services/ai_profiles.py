@@ -24,7 +24,7 @@ from core.database.federated_attach import (
 )
 from core.services import ai_agent_tools, ai_context, ai_sql_guard
 from core.services.ai_agent_tools import AgentRunCtx
-from core.services.ai_sql_validation import is_select_only, normalize_sql
+from core.services.ai_sql_validation import is_select_only
 
 
 # ============ 输入模型(mode 判别的严格契约,注册表校验,不硬编码进 Engine) ============
@@ -69,8 +69,10 @@ class SuggestChartInput(BaseModel):
 
 class DataQaResult(BaseModel):
     content: str = ""
+    query_id: Optional[str] = None
     sql: Optional[str] = None
     evidence: List[str] = Field(default_factory=list)
+    missing_tables: List[str] = Field(default_factory=list)
 
 
 class GenerateSqlResult(BaseModel):
@@ -173,49 +175,41 @@ def _suggest_final_validator(result: Dict[str, Any], _ctx: AgentRunCtx,
     return True, "ok"
 
 
-# ============ grounding 门控(data_qa:final 若带 SQL,必须本次真跑过) ============
+# ============ grounding 门控(data_qa:final 必须绑定真实业务表查询) ============
 
 def _data_qa_final_validator(result: Dict[str, Any], ctx: AgentRunCtx,
                              _inp: Dict[str, Any]) -> Tuple[bool, str]:
-    """确定性 grounding:data answer 的 final 必须**强绑定本次真跑过的只读 SELECT**。
-    sql 为空 / 非只读 / 未命中本次执行集,一律拒绝(回喂纠错),绝不 completed。
+    """确定性 grounding:data answer 必须绑定本次成功读取业务表的工具调用。
 
     这挡住比 protocol_violation 更危险的**静默错误**:用 schema 样例行直接算总额/排名
-    并 final、"执行 A 回答 B"、以及"写库被 finalize 抹成 null 却报成功"。安全拒绝 /
-    确实无需查询的答复走独立的 `refuse` 动作(content-only、不过此门),不再借 sql=null
-    从 final 溜过。
+    并 final、伪造 SQL/evidence,以及用 SELECT 1 形式满足查询门槛。
     """
-    sql = (result.get("sql") or "").strip()
-    if not sql:
+    query_id = str(result.get("query_id") or "").strip()
+    if not query_id:
         return False, (
-            "A data answer via final MUST carry the read-only SELECT you actually ran this "
-            'turn. If you are refusing a write/file/unauthorized request, or the reply '
-            'genuinely needs no query, use {"action":"refuse","result":{"content":"..."}} '
-            "instead of final with an empty sql."
+            "A data answer via final MUST reference the query_id from a successful "
+            "run_query observation in this run."
         )
-    if not is_select_only(sql):
+    executed = ctx.executed_queries.get(query_id)
+    if executed is None:
         return False, (
-            "result.sql must be a single read-only SELECT that you ran via run_query this "
-            "turn. Writes are impossible here — to reject a modification request declare it "
-            'with {"action":"refuse","result":{"content":"..."}}, do not put the write in '
-            "result.sql."
+            f"query_id {query_id!r} does not identify a successful run_query in this run."
         )
-    if normalize_sql(sql) in ctx.executed_sql:
-        return True, "ok"
-    return False, (
-        "result.sql was never run via run_query in this turn's run. Counts, sums, "
-        "averages, rankings and filtered totals MUST come from an executed query — never "
-        "from the schema sample rows. Run this exact SQL with run_query first, then "
-        "finalize with the SQL you actually ran."
-    )
+    if not executed.tables:
+        return False, (
+            "The referenced query reads no business table and cannot ground a data answer. "
+            "Use answer for an explanation that needs no data, or run a query against at "
+            "least one table before final."
+        )
+    return True, "ok"
 
 
 # ============ finalize(补 safe / 抹非只读草稿) ============
 
-def _finalize_data_qa(result: Dict[str, Any], _ctx: AgentRunCtx) -> Dict[str, Any]:
-    sql = result.get("sql")
-    if sql and not is_select_only(str(sql)):
-        result["sql"] = None
+def _finalize_data_qa(result: Dict[str, Any], ctx: AgentRunCtx) -> Dict[str, Any]:
+    executed = ctx.executed_queries[result.pop("query_id")]
+    result["sql"] = executed.sql
+    result["evidence"] = list(executed.tables)
     return result
 
 
@@ -394,7 +388,7 @@ class AgentProfile:
     finalize: Optional[Callable[[dict, AgentRunCtx], dict]] = None
     allow_session: bool = False
     # 终止动作集:Engine 据此(a)不把它们当工具/纠错目标,(b)recovery 排除它们。
-    # 默认只有 final;data_qa 额外允许 refuse(安全拒绝 / 无需查询,content-only,不过 grounding)。
+    # 默认只有 final;data_qa 额外允许 answer(无需查数)与 refuse(安全/范围拒绝)。
     terminal_actions: Tuple[str, ...] = ("final",)
 
     def validate_input(self, inp: dict) -> dict:
@@ -412,12 +406,15 @@ Reply with STRICT JSON only — exactly one object, one action per turn:
   {{"action":"describe_tables","args":{{"tables":["t","sales.public.orders"]}}}}
   {{"action":"inspect_table","args":{{"table":"t"}}}}
   {{"action":"run_query","args":{{"sql":"SELECT ..."}}}}
-  {{"action":"final","result":{{"content":"...","sql":"SELECT ...","evidence":["t1"]}}}}
-  {{"action":"refuse","result":{{"content":"..."}}}}
-Use `final` ONLY to answer WITH data: its result.sql MUST be the exact read-only SELECT
-you already ran via run_query this turn — never null, never a query you did not execute.
-Use `refuse` to decline a write/file/unauthorized request, or when the reply genuinely
-needs no query — content only, no sql. A data answer never rides on refuse.
+  {{"action":"final","result":{{"content":"...","query_id":"t1"}}}}
+  {{"action":"answer","result":{{"content":"..."}}}}
+  {{"action":"refuse","result":{{"content":"...","missing_tables":["exact_catalog_name"]}}}}
+Use `final` ONLY to answer WITH data and bind result.query_id to the successful run_query
+observation that supports the answer. The runtime supplies sql and evidence; never invent them.
+Use `answer` for explanations or ordinary replies that genuinely need no data query.
+Use `refuse` only to decline a write/file/unauthorized request or a missing scope.
+Set result.missing_tables only when refusing because required tables are outside the
+selected scope. Use their exact catalog names; otherwise return an empty list.
 After each action you receive an observation and remaining budgets.
 Budgets: {max_steps} replies, {max_sql} queries, {max_seconds}s total.
 Emit EXACTLY ONE action object per turn — never narrate your plan without an action,
@@ -441,15 +438,16 @@ prose, and never reuse numbers from an earlier turn without re-querying.
   it reads metadata only and costs no query budget. inspect_table is for a single local
   table when you also want sample values.
 - Never guess literal WHERE values — verify via inspect_table or a DISTINCT query.
+- Never infer a table's purpose, columns, or contents from its name. Use describe_tables;
+  if the table is outside scope, say that you cannot inspect it and list its exact catalog
+  name in refuse.result.missing_tables instead of guessing.
 - Only local tables and the listed attached aliases are queryable; files, URLs and
   system tables are rejected by the runtime.
-- Writes are impossible. To answer with data, run a read-only SELECT and return that exact
-  SELECT in result.sql via `final`. If the user asks to modify data (INSERT/UPDATE/DELETE/
-  DROP) or read a file, use `refuse` and explain in result.content — never place a write in
-  result.sql, and never claim a modification succeeded.
-- Ground every claim in observations. result.evidence lists the TABLE NAMES you used,
-  exactly as they appear in the catalog (qualified names for attached databases, e.g.
-  sales.public.orders) — never opaque ids like "t1".
+- Writes are impossible. If the user asks to modify data (INSERT/UPDATE/DELETE/DROP) or
+  read a file, use `refuse` and explain in result.content; never claim it succeeded.
+- A data `final` must reference a successful run_query that reads at least one real table.
+  Constant or metadata-only probes such as SELECT 1 and SELECT CURRENT_DATE are not data
+  evidence. Never run a dummy query merely to satisfy grounding.
 - The schema samples are a FEW illustrative rows showing field names and value shapes —
   NOT the full data. Any count, sum, average, min/max, ranking, grouping or filtered
   total MUST come from a run_query result; never compute it from the sample rows.
@@ -458,9 +456,8 @@ prose, and never reuse numbers from an earlier turn without re-querying.
   and do not restate figures from earlier turns — re-query instead.
 - Row counts shown in the catalog blocks are ESTIMATES for orientation only; never report
   them as an answer. Any "how many" question needs a run_query COUNT.
-- result.sql on a `final` MUST be the exact query you already ran via run_query this run —
-  do not finalize with a query you did not execute, and do not leave it null. Even a
-  descriptive question needs one grounding query before final.
+- Explanations and descriptive questions that do not need table data should use `answer`
+  without running a query. Never use `answer` for counts, totals, rankings, or filtered facts.
 - Prose in {lang}. result.sql is inserted into the editor, never auto-executed.
 
 # Workspace context
@@ -530,7 +527,7 @@ PROFILES: Dict[str, AgentProfile] = {
         build_context=_ctx_data_qa, build_user_message=_um_data_qa,
         max_steps=6, max_sql_calls=3, finalize=_finalize_data_qa, allow_session=True,
         final_validator=_data_qa_final_validator, validation_failed_reason="ungrounded_final",
-        terminal_actions=("final", "refuse"),
+        terminal_actions=("final", "answer", "refuse"),
     ),
     "generate_sql": AgentProfile(
         mode="generate_sql", model_feature="generate_sql", system_prompt=_GENERATE_PROMPT,

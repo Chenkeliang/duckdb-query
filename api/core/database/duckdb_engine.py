@@ -59,13 +59,21 @@ _FEDERATED_CONNECTION_LOST_MARKERS = (
     "server has gone away",
     "lost connection",
     "broken pipe",
+    "got packets out of order",
 )
 
 
 def _is_federated_connection_lost(err: Exception) -> bool:
     """是否为 MySQL 联邦连接断开错误（可通过清缓存重连自愈）。"""
-    msg = str(err).lower()
-    return any(marker in msg for marker in _FEDERATED_CONNECTION_LOST_MARKERS)
+    current = err
+    seen = set()
+    while current is not None and id(current) not in seen:
+        seen.add(id(current))
+        msg = str(current).lower()
+        if any(marker in msg for marker in _FEDERATED_CONNECTION_LOST_MARKERS):
+            return True
+        current = current.__cause__ or current.__context__
+    return False
 
 
 def _is_read_only_query(query: str) -> bool:
@@ -579,6 +587,8 @@ def _execute_with_federated_heal(connection, sql, original_query):
             connection.execute("CALL mysql_clear_cache()")
         except Exception as clear_err:  # pylint: disable=broad-except
             logger.warning("mysql_clear_cache failed: %s", clear_err)
+            if "current transaction is aborted" in str(clear_err).lower():
+                raise err from None
         return connection.execute(sql)
 
 

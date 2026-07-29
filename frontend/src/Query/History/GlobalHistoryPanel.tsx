@@ -82,7 +82,7 @@ export const GlobalHistoryPanel: React.FC<GlobalHistoryPanelProps> = ({
                         <Clock className="h-5 w-5" />
                         {t('query.history.title', '全平台查询历史')}
                     </SheetTitle>
-                    <SheetDescription>
+                    <SheetDescription className="sr-only">
                         {t('query.history.description', '所有查询模式的历史记录')}
                     </SheetDescription>
 

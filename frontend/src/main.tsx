@@ -167,7 +167,7 @@ function suggestFixes(state: BackendState | null, timedOut: boolean): string[] {
         fixes.push('程序组件加载失败：多为安全软件误删或隔离所致，检查杀软隔离区后重新安装');
     }
     if (/WAL|IO Error|database.*(corrupt|invalid)/i.test(text)) {
-        fixes.push('数据文件异常（上次可能未正常退出）：点击重试通常可自动恢复；反复出现请附日志反馈');
+        fixes.push('数据文件恢复失败：为保护数据，DuckQuery 已停止启动并保留恢复文件（WAL）；请勿删除或移动数据目录，请打开日志位置并反馈日志文件');
     }
     if (/denied|permission|拒绝访问/i.test(text)) {
         fixes.push('目录无写入权限：检查数据目录是否可写（杀软的"文档保护"类功能也可能拦截）');

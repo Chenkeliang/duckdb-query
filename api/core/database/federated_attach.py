@@ -4,6 +4,7 @@ from __future__ import annotations
 
 import logging
 import re
+import threading
 import uuid
 from contextlib import contextmanager
 from functools import partial
@@ -16,6 +17,8 @@ from core.common.connection_alias import normalize_connection_id
 from core.common.sql_identifiers import escape_string_literal
 from core.database.database_manager import db_manager
 from core.database.duckdb_engine import (
+    _is_federated_connection_lost,
+    _is_read_only_query,
     build_attach_sql,
     fetch_query_records,
     with_duckdb_connection,
@@ -26,6 +29,7 @@ from core.common.exceptions import DatabaseConnectionError, ResourceNotFoundErro
 from core.security.encryption import password_encryptor
 
 logger = logging.getLogger(__name__)
+_MYSQL_PERSIST_LOCK = threading.RLock()
 
 # DuckDB 的 mysql/postgres 扩展在 ATTACH 失败时会把整条连接串原样回显进错误信息，
 # 其中 password=明文 是空格分隔的一段 token。password 值本身不含空格（build_attach_sql
@@ -45,6 +49,46 @@ def redact_connection_secrets(text: Any) -> str:
 def _is_database_already_attached_error(error: Exception) -> bool:
     """DuckDB 连接池复用时，残留 ATTACH 会触发 Binder already exists。"""
     return "already exists" in str(error).lower()
+
+
+def configure_mysql_fresh_connections(
+    conn: Any, attach_configs: List[Tuple[str, Dict[str, Any]]]
+) -> None:
+    """Disable MySQL connection reuse for request-scoped federated operations."""
+    if not any(
+        str(config.get("type", "")).lower() == "mysql"
+        for _alias, config in attach_configs
+    ):
+        return
+    conn.execute("SET mysql_pool_acquire_mode = 'force'")
+    conn.execute("SET mysql_pool_size = 0")
+
+
+@contextmanager
+def single_threaded_mysql_persistence(
+    attach_configs: List[Tuple[str, Dict[str, Any]]],
+) -> Iterator[None]:
+    """Temporarily serialize MySQL scans for a federated query or CTAS."""
+    if not any(
+        str(config.get("type", "")).lower() == "mysql"
+        for _alias, config in attach_configs
+    ):
+        yield
+        return
+
+    with _MYSQL_PERSIST_LOCK:
+        with with_duckdb_connection() as settings_conn:
+            row = settings_conn.execute("SELECT current_setting('threads')").fetchone()
+            previous_threads = int(row[0]) if row else 1
+            settings_conn.execute("SET GLOBAL threads=1")
+        try:
+            yield
+        finally:
+            try:
+                with with_duckdb_connection() as settings_conn:
+                    settings_conn.execute(f"SET GLOBAL threads={previous_threads}")
+            except Exception as restore_error:  # pylint: disable=broad-exception-caught
+                logger.error("Failed to restore DuckDB threads: %s", restore_error)
 
 
 # 标识符转义统一走 core.common.sql_identifiers(消灭历史 8 份副本)
@@ -301,8 +345,27 @@ def execute_sql_and_persist(
         attached: List[str] = []
         try:
             if attach_configs:
+                configure_mysql_fresh_connections(conn, attach_configs)
                 attached = attach_databases_on_connection(conn, attach_configs)
-            conn.execute(f'CREATE OR REPLACE TABLE {quoted_staging} AS ({cleaned_sql})')
+            staging_sql = (
+                f'CREATE OR REPLACE TABLE {quoted_staging} AS ({cleaned_sql})'
+            )
+            try:
+                conn.execute(staging_sql)
+            except Exception as staging_error:
+                if not (
+                    attach_configs
+                    and _is_read_only_query(cleaned_sql)
+                    and _is_federated_connection_lost(staging_error)
+                ):
+                    raise
+                logger.warning(
+                    "Federated MySQL connection lost while persisting (%s); "
+                    "clearing cache and retrying once",
+                    staging_error,
+                )
+                conn.execute("CALL mysql_clear_cache()")
+                conn.execute(staging_sql)
             try:
                 snapshot = build_table_metadata_snapshot(conn, staging_name)
             except Exception:
@@ -327,12 +390,13 @@ def execute_sql_and_persist(
             if attached:
                 detach_databases_on_connection(conn, attached)
 
-    if query_id:
-        with interruptible_connection(query_id, cleaned_sql) as conn:
-            return _run(conn)
+    with single_threaded_mysql_persistence(attach_configs):
+        if query_id:
+            with interruptible_connection(query_id, cleaned_sql) as conn:
+                return _run(conn)
 
-    with with_duckdb_connection() as conn:
-        return _run(conn)
+        with with_duckdb_connection() as conn:
+            return _run(conn)
 
 
 def federated_source_sql_alias(table_ref: str, attach_aliases: set[str]) -> str:

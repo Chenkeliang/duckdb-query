@@ -2,7 +2,7 @@ import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { generateSetOperation, validateSetOperation, toAttachDatabasesPayload } from '@/api';
-import { Layers, Play, X, Database, Table, Trash2, AlertTriangle, Star, Timer } from 'lucide-react';
+import { Layers, Play, X, Database, Table, Trash2, AlertTriangle, Star, Timer, CircleHelp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { EmptyState as UiEmptyState } from '@/components/EmptyState';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -64,11 +64,41 @@ interface SetOperationsPanelProps {
   onRemoveTable?: (table: SelectedTable) => void;
 }
 
-const SET_OPERATIONS: { value: SetOperationType; label: string; tooltip?: string; supportsByName?: boolean }[] = [
-  { value: 'UNION', label: 'UNION', tooltip: '合并去重', supportsByName: true },
-  { value: 'UNION ALL', label: 'UNION ALL', tooltip: '合并不去重', supportsByName: true },
-  { value: 'INTERSECT', label: 'INTERSECT', tooltip: '取交集' },
-  { value: 'EXCEPT', label: 'EXCEPT', tooltip: '取差集' },
+const SET_OPERATIONS: {
+  value: SetOperationType;
+  labelKey: string;
+  labelFallback: string;
+  tooltipKey: string;
+  tooltipFallback: string;
+}[] = [
+  {
+    value: 'UNION',
+    labelKey: 'query.set.operationUnion',
+    labelFallback: '合并去重',
+    tooltipKey: 'query.set.operationUnionHint',
+    tooltipFallback: '合并并去除重复行',
+  },
+  {
+    value: 'UNION ALL',
+    labelKey: 'query.set.operationUnionAll',
+    labelFallback: '合并并保留重复',
+    tooltipKey: 'query.set.operationUnionAllHint',
+    tooltipFallback: '合并并保留重复行',
+  },
+  {
+    value: 'INTERSECT',
+    labelKey: 'query.set.operationIntersect',
+    labelFallback: '交集',
+    tooltipKey: 'query.set.operationIntersectHint',
+    tooltipFallback: '仅保留各表共有的行',
+  },
+  {
+    value: 'EXCEPT',
+    labelKey: 'query.set.operationExcept',
+    labelFallback: '差集',
+    tooltipKey: 'query.set.operationExceptHint',
+    tooltipFallback: '仅保留第一张表中未出现在其他表的行',
+  },
 ];
 
 // 表卡片组件
@@ -228,8 +258,15 @@ interface SetConnectorProps {
 }
 
 const SetConnector: React.FC<SetConnectorProps> = ({ operationType, byName }) => {
+  const { t } = useTranslation('common');
   const showByName = byName && (operationType === 'UNION' || operationType === 'UNION ALL');
-  const displayText = showByName ? `${operationType} BY NAME` : operationType;
+  const operation = SET_OPERATIONS.find((item) => item.value === operationType);
+  const operationLabel = operation
+    ? t(operation.labelKey, operation.labelFallback)
+    : operationType;
+  const displayText = showByName
+    ? `${operationLabel} · ${t('query.set.byNameLabel', '按列名对齐')}`
+    : operationLabel;
 
   return (
     <div className="flex items-center justify-center px-4 shrink-0">
@@ -249,7 +286,7 @@ const EmptyState: React.FC = () => {
       className="flex-1"
       icon={Layers}
       title={t('query.set.emptyTitle', '开始集合操作')}
-      description={t('query.set.emptyDescription', '双击左侧数据源面板中的表来添加到集合操作。可以添加多个表进行 UNION / INTERSECT / EXCEPT 操作。')}
+      description={t('query.set.emptyDescription', '双击左侧数据源中的表开始集合操作，可添加多张表进行合并、交集或差集。')}
     />
   );
 };
@@ -644,20 +681,19 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
                 role="tab"
                 aria-selected={operationType === op.value}
                 onClick={() => setOperationType(op.value)}
-                title={op.tooltip}
+                title={t(op.tooltipKey, op.tooltipFallback)}
                 className={`shrink-0 whitespace-nowrap px-2.5 text-xs font-medium rounded transition-colors ${operationType === op.value
                   ? 'bg-surface text-foreground shadow-sm'
                   : 'text-muted-foreground hover:text-foreground'
                   }`}
               >
-                {op.label}
+                {t(op.labelKey, op.labelFallback)}
               </button>
             ))}
           </div>
           <label
             className={`flex shrink-0 items-center gap-1.5 text-xs cursor-pointer select-none ${currentOpSupportsByName ? 'text-foreground' : 'text-muted-foreground opacity-50 cursor-not-allowed'
               }`}
-            title={t('query.set.byNameTooltip', '按列名匹配合并（DuckDB 特性），不要求列数量一致')}
           >
             <input
               type="checkbox"
@@ -666,8 +702,26 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
               onChange={(e) => setByName(e.target.checked)}
               disabled={!currentOpSupportsByName}
             />
-            <span className="whitespace-nowrap">BY NAME</span>
+            <span className="whitespace-nowrap">
+              {t('query.set.byNameLabel', '按列名对齐')}
+            </span>
           </label>
+          <TooltipProvider>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  className="inline-flex h-6 w-6 shrink-0 items-center justify-center text-muted-foreground hover:text-foreground"
+                  aria-label={t('query.set.byNameTooltip', '合并字段不同的数据：同名列自动对齐，缺失列补 NULL')}
+                >
+                  <CircleHelp className="h-3.5 w-3.5" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent>
+                <p>{t('query.set.byNameTooltip', '合并字段不同的数据：同名列自动对齐，缺失列补 NULL')}</p>
+              </TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </div>
 
         <div className="flex shrink-0 items-center gap-2 ml-auto">
@@ -705,7 +759,7 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
           <Alert className="mb-4 border-primary/50 bg-primary/10">
             <Layers className="h-4 w-4 text-primary" />
             <AlertDescription className="text-primary">
-              {t('query.set.byNameModeHint', 'BY NAME 模式：按列名匹配合并，不要求列数量一致。缺失的列将填充 NULL 值。')}
+              {t('query.set.byNameModeHint', '已按列名对齐：可合并字段不同的数据，缺失列补 NULL。')}
             </AlertDescription>
           </Alert>
         )}

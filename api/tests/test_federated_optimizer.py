@@ -240,3 +240,33 @@ def test_optimize_parse_failure_keeps_warning_shape():
     assert out_sql == "SELECT FROM WHERE )("
     assert suggestions == []
     assert warnings == [{"error": "parse_failed", "pushed": False}]
+
+
+def test_optimize_pushes_same_mysql_star_join_as_one_remote_query():
+    """历史回归（2026-07-28）：同一 MySQL 的多表 JOIN 不应分表拉回 DuckDB。
+
+    SELECT * 必须按远端 schema 展开并复用结果层的去重口径，否则 mysql_query
+    会因 id/created_at 等重复列名在绑定阶段失败。
+    """
+    conn = _ConnStub()
+    sql = (
+        'SELECT * FROM "mysql_db"."orders" o '
+        'JOIN "mysql_db"."items" i ON o.id = i.order_id '
+        'WHERE o.id >= 1 AND i.id > 0 LIMIT 100'
+    )
+
+    out_sql, _suggestions, warnings = optimize_federated_sql(
+        conn,
+        sql,
+        {"mysql_db"},
+        _CfgStub(),
+        mysql_aliases={"mysql_db"},
+    )
+
+    assert out_sql.startswith("SELECT * FROM mysql_query('mysql_db', '")
+    assert "FROM `orders` AS o JOIN `items` AS i" in out_sql
+    assert "WHERE o.id >= 1 AND i.id > 0" in out_sql
+    assert "o.id AS `id`" in out_sql
+    assert "i.id AS `id_1`" in out_sql
+    assert "i.created_at AS `created_at_1`" in out_sql
+    assert warnings == []

@@ -139,6 +139,7 @@ export {
     clearOldErrors,
     type ListTasksOptions,
     type ListTasksResponse,
+    type AsyncDownloadFormat,
     type DownloadOptions,
 } from './asyncTaskApi';
 

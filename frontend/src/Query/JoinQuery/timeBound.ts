@@ -1,6 +1,6 @@
 /**
  * 联邦大表 JOIN 时间边界推荐 —— 纯函数。
- * 检测 create/update 审计时间列，构造 placement='on' 的时间过滤条件，
+ * 检测表 schema 中的日期/时间列，构造 placement='on' 的时间过滤条件，
  * 由现有联邦子查询下推机制限制 ATTACH 抽取量。
  */
 import type { TableColumn } from '@/hooks/useTableColumns';
@@ -34,12 +34,19 @@ export function classifyAuditColumn(name: string): AuditClass {
   return null;
 }
 
-/** 候选时间边界列：仅"类型为时间型 且 审计命名"的列，create 系排在 update 系前。 */
+/** 候选时间边界列：索引首列优先，其次按 create、update、其他时间列排序。 */
 export function detectTimeBoundCandidates(columns: TableColumn[]): string[] {
   const timeCols = (columns || []).filter((c) => isTimeType(c.type));
-  const creates = timeCols.filter((c) => classifyAuditColumn(c.name) === 'create').map((c) => c.name);
-  const updates = timeCols.filter((c) => classifyAuditColumn(c.name) === 'update').map((c) => c.name);
-  return [...creates, ...updates];
+  const auditRank = (column: TableColumn): number => {
+    const auditClass = classifyAuditColumn(column.name);
+    return auditClass === 'create' ? 0 : auditClass === 'update' ? 1 : 2;
+  };
+  return [...timeCols]
+    .sort((left, right) =>
+      Number(Boolean(right.hasLeadingIndex)) - Number(Boolean(left.hasLeadingIndex))
+      || auditRank(left) - auditRank(right)
+    )
+    .map((column) => column.name);
 }
 
 /** 近 N 天的起点，格式化为裸日期串 'YYYY-MM-DD 00:00:00'（不含 SQL 引号；生成器会自动加）。 */
@@ -147,7 +154,7 @@ export function buildTimeBoundSuggestions(ctx: TimeBoundContext): TimeBoundSugge
     if (!columns || columns.length === 0) return;
     const candidates = detectTimeBoundCandidates(columns);
     if (candidates.length === 0) return;
-    // 抑制只看候选(审计)列：用户若已对 birthday 等非候选时间列设界，不影响本推荐
+    // 任一候选时间列已有范围条件时，不再重复建议该表。
     const candidateSet = new Set(candidates);
     if (hasFilterTreeBound(ctx.filterTree, tableName, candidateSet)) return;
     if (hasExpressionBound(ctx.joinConfigs, tableName, candidateSet)) return;

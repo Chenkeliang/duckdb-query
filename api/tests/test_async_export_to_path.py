@@ -21,7 +21,23 @@ from routers.async_tasks import (
 
 def test_rejects_bad_format(tmp_path):
     with pytest.raises(ValueError, match="format"):
-        _export_result_file_to_local_path("t1", "xlsx", str(tmp_path / "out.xlsx"))
+        _export_result_file_to_local_path("t1", "xml", str(tmp_path / "out.xml"))
+
+
+@pytest.mark.parametrize("fmt", ["json", "xlsx"])
+def test_accepts_json_and_xlsx_formats(monkeypatch, tmp_path, fmt):
+    """2026-07-29: desktop direct export supports all async download formats."""
+    out = tmp_path / f"out.{fmt}"
+
+    def fake_generate(_task_id, requested_format, target_path=None):
+        assert requested_format == fmt
+        assert target_path == str(out)
+        out.write_bytes(b"result")
+        return target_path
+
+    monkeypatch.setattr("routers.async_tasks.generate_download_file", fake_generate)
+
+    assert _export_result_file_to_local_path("t1", fmt, str(out)) == 6
 
 
 def test_rejects_relative_path():

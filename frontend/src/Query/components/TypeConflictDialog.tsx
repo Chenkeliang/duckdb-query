@@ -140,7 +140,7 @@ export const TypeConflictDialog: React.FC<TypeConflictDialogProps> = ({
           e.preventDefault();
         }}
       >
-        <DialogHeader>
+        <DialogHeader className="flex-row flex-wrap items-baseline gap-x-2 gap-y-1 space-y-0">
           <DialogTitle className="flex items-center gap-2">
             {allResolved ? (
               <CheckCircle2 className="w-5 h-5 text-success" />
@@ -152,7 +152,7 @@ export const TypeConflictDialog: React.FC<TypeConflictDialogProps> = ({
           <DialogDescription>
             {t(
               'query.typeConflict.description',
-              '请选择一个统一的类型来对齐左右两侧字段，以避免 DuckDB 类型转换错误。'
+              '为左右字段选择同一类型后再关联'
             )}
           </DialogDescription>
         </DialogHeader>
@@ -163,7 +163,7 @@ export const TypeConflictDialog: React.FC<TypeConflictDialogProps> = ({
           <AlertDescription className="text-warning text-xs">
             {t(
               'query.typeConflict.tryCastWarning',
-              '注意：TRY_CAST 转换失败的行将返回 NULL，这些行将被排除在 JOIN 结果之外。'
+              'TRY_CAST 失败会得到 NULL，该 JOIN 条件不会匹配。'
             )}
           </AlertDescription>
         </Alert>

@@ -56,6 +56,20 @@ def test_retries_after_mysql_connection_lost():
     assert conn._calls["clear_cache"] == 1
 
 
+def test_retries_after_mysql_packets_out_of_order():
+    """历史回归（2026-07-28）：取消后的协议乱序同样需要重建连接并重试。"""
+    err = Exception(
+        'IO Error: Failed to prepare MySQL query "SELECT ...": Got packets out of order'
+    )
+    conn = _make_conn([("raise", err), ("ok", ROWS)])
+
+    columns, records, _ = duckdb_engine.fetch_query_records(conn, QUERY)
+
+    assert columns == ["a"]
+    assert records == [{"a": 1}, {"a": 2}]
+    assert conn._calls["clear_cache"] == 1
+
+
 def test_non_connection_error_is_not_retried():
     err = Exception("Binder Error: Referenced column x not found")
     conn = _make_conn([("raise", err)])
@@ -73,6 +87,36 @@ def test_connection_lost_twice_reraises_once_retried():
     assert "Lost connection" in str(ei.value)
     # 只清一次缓存、只重试一次，不无限重试
     assert conn._calls["clear_cache"] == 1
+
+
+def test_aborted_transaction_preserves_connection_lost_for_outer_retry():
+    """历史回归（2026-07-28）：事务中清缓存失败时必须保留原始断线异常，
+    让事务所有者先回滚；不能在已中止的事务里再次执行查询。"""
+    lost = Exception("Server has gone away")
+    aborted = Exception(
+        "TransactionContext Error: Current transaction is aborted (please ROLLBACK)"
+    )
+    query_calls = 0
+
+    def execute(sql):
+        nonlocal query_calls
+        if sql == QUERY:
+            query_calls += 1
+            if query_calls == 1:
+                raise lost
+            raise AssertionError("query retried before transaction rollback")
+        if "mysql_clear_cache" in sql:
+            raise aborted
+        return MagicMock()
+
+    conn = MagicMock()
+    conn.execute.side_effect = execute
+
+    with pytest.raises(Exception) as exc_info:
+        duckdb_engine.fetch_query_records(conn, QUERY)
+
+    assert exc_info.value is lost
+    assert query_calls == 1
 
 
 WRITE_QUERY = "DELETE FROM mysql_db.t WHERE id = 1"

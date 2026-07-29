@@ -1,12 +1,8 @@
-"""
-DuckDB WAL 损坏时的隔离与恢复（仅移动 .wal，不删 main.db）
-"""
+"""DuckDB WAL replay error detection."""
 
 from __future__ import annotations
 
 import logging
-import shutil
-import time
 from pathlib import Path
 
 logger = logging.getLogger(__name__)
@@ -23,38 +19,20 @@ def is_wal_replay_error(message: str) -> bool:
     return any(marker in text for marker in WAL_REPLAY_MARKERS)
 
 
-def quarantine_wal_for_database(database_path: Path) -> list[Path]:
-    """
-    将 database_path 对应的 .wal（及 .wal.backup）移到 *.broken.<ts>。
-    返回已移动的文件列表；无文件可移时返回空列表。
-    """
-    database_path = database_path.resolve()
-    moved: list[Path] = []
-    ts = int(time.time())
-
-    candidates = [
-        Path(f"{database_path}.wal"),
-        Path(f"{database_path}.wal.backup"),
-    ]
-    for wal in candidates:
-        if not wal.is_file():
-            continue
-        dest = wal.with_name(f"{wal.name}.broken.{ts}")
-        try:
-            shutil.move(str(wal), str(dest))
-            moved.append(dest)
-            logger.warning("Quarantined DuckDB WAL file: %s -> %s", wal, dest)
-        except OSError as exc:
-            logger.error("Failed to quarantine WAL %s: %s", wal, exc)
-
-    return moved
-
-
 def try_recover_database_after_wal_error(
     database_path: Path, error_message: str
 ) -> bool:
-    """若为 WAL 回放错误则隔离 .wal；成功移动至少一个文件时返回 True。"""
+    """Report WAL replay failure without mutating recovery files.
+
+    Automatic quarantine used to reopen the last checkpoint and silently hide
+    every committed change that existed only in the WAL. Recovery now fails
+    closed so the original connection error reaches the caller and the WAL
+    remains available for explicit repair.
+    """
     if not is_wal_replay_error(error_message):
         return False
-    moved = quarantine_wal_for_database(database_path)
-    return len(moved) > 0
+    logger.error(
+        "DuckDB WAL replay failed for %s; preserving WAL and aborting recovery",
+        database_path,
+    )
+    return False

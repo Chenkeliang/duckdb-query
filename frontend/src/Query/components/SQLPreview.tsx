@@ -89,7 +89,7 @@ export const SQLPreview: React.FC<SQLPreviewProps> = ({
             <Code2 className="h-5 w-5" />
             {t('query.preview.title', 'SQL 预览')}
           </DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="sr-only">
             {t('query.preview.description', '查看 SQL，可复制或直接执行')}
           </DialogDescription>
         </DialogHeader>

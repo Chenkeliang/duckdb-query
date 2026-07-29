@@ -1,5 +1,7 @@
 """federated_attach 工具测试"""
 
+from contextlib import contextmanager
+
 import duckdb as duckdb_mod
 import pytest
 from unittest.mock import MagicMock, patch
@@ -137,6 +139,168 @@ def test_attach_databases_on_connection_escapes_alias_in_detach(_mock_build_atta
         conn, [(malicious_alias, {"type": "mysql", "host": "h", "database": "d"})]
     )
     assert seen_detach_sql == [f'DETACH {_quote_identifier(malicious_alias)}']
+
+
+def test_persist_disables_mysql_pool_before_attach(monkeypatch):
+    """历史回归（2026-07-28）：预览/取消留下的 MySQL 会话不得被全量落表复用。"""
+    from core.database import federated_attach
+    from core.data import file_datasource_manager
+
+    events = []
+    connection = MagicMock()
+
+    def execute(sql):
+        events.append(sql)
+        return MagicMock()
+
+    connection.execute.side_effect = execute
+
+    @contextmanager
+    def connection_scope():
+        yield connection
+
+    mysql_configs = [("mysql_prod", {"type": "mysql"})]
+    monkeypatch.setattr(
+        federated_attach, "resolve_attach_configs", lambda _attached: mysql_configs
+    )
+    monkeypatch.setattr(federated_attach, "with_duckdb_connection", connection_scope)
+
+    def attach(_connection, _configs):
+        events.append("ATTACH")
+        return ["mysql_prod"]
+
+    monkeypatch.setattr(federated_attach, "attach_databases_on_connection", attach)
+    monkeypatch.setattr(
+        federated_attach, "detach_databases_on_connection", lambda *_args: None
+    )
+    monkeypatch.setattr(
+        file_datasource_manager,
+        "build_table_metadata_snapshot",
+        lambda *_args: {"row_count": 1},
+    )
+
+    federated_attach.execute_sql_and_persist(
+        "SELECT 1", "saved_result", [{"alias": "mysql_prod"}]
+    )
+
+    force_pool = "SET mysql_pool_acquire_mode = 'force'"
+    disable_pool = "SET mysql_pool_size = 0"
+    assert events.index(force_pool) < events.index("ATTACH")
+    assert events.index(disable_pool) < events.index("ATTACH")
+
+
+def test_persist_retries_read_only_ctas_after_mysql_connection_lost(monkeypatch):
+    """Regression 2026-07-28: save-to-DuckDB must retry a read-only CTAS after
+    MySQL prepare fails with ``Server has gone away``, just like preview does.
+    """
+    from core.database import federated_attach
+    from core.data import file_datasource_manager
+
+    connection = MagicMock()
+    create_attempts = 0
+    clear_cache_calls = 0
+
+    def execute(sql):
+        nonlocal create_attempts, clear_cache_calls
+        if sql.startswith('CREATE OR REPLACE TABLE "__stage_'):
+            create_attempts += 1
+            if create_attempts == 1:
+                raise duckdb_mod.IOException(
+                    'IO Error: Failed to prepare MySQL query "SELECT ...": '
+                    "Server has gone away"
+                )
+        elif sql == "CALL mysql_clear_cache()":
+            clear_cache_calls += 1
+        return MagicMock()
+
+    connection.execute.side_effect = execute
+
+    @contextmanager
+    def connection_scope():
+        yield connection
+
+    monkeypatch.setattr(
+        federated_attach,
+        "resolve_attach_configs",
+        lambda _attached: [("mysql_prod", {"type": "mysql"})],
+    )
+    monkeypatch.setattr(federated_attach, "with_duckdb_connection", connection_scope)
+    monkeypatch.setattr(
+        federated_attach,
+        "attach_databases_on_connection",
+        lambda *_args: ["mysql_prod"],
+    )
+    monkeypatch.setattr(
+        federated_attach, "detach_databases_on_connection", lambda *_args: None
+    )
+    monkeypatch.setattr(
+        file_datasource_manager,
+        "build_table_metadata_snapshot",
+        lambda *_args: {"row_count": 1},
+    )
+
+    snapshot = federated_attach.execute_sql_and_persist(
+        "SELECT * FROM mysql_prod.orders", "saved_result", [{"alias": "mysql_prod"}]
+    )
+
+    assert snapshot["row_count"] == 1
+    assert create_attempts == 2
+    assert clear_cache_calls == 1
+
+
+def test_persist_restores_duckdb_threads_after_mysql_ctas_failure(monkeypatch):
+    """历史回归（2026-07-28）：多表 MySQL CTAS 临时串行，失败后也恢复线程数。"""
+    from core.database import federated_attach
+
+    connection = MagicMock()
+    events = []
+
+    def execute(sql):
+        events.append(sql)
+        if sql == "SELECT current_setting('threads')":
+            result = MagicMock()
+            result.fetchone.return_value = (8,)
+            return result
+        if sql.startswith('CREATE OR REPLACE TABLE "__stage_'):
+            raise RuntimeError("simulated CTAS failure")
+        return MagicMock()
+
+    connection.execute.side_effect = execute
+
+    @contextmanager
+    def connection_scope():
+        yield connection
+
+    monkeypatch.setattr(
+        federated_attach,
+        "resolve_attach_configs",
+        lambda _attached: [("mysql_prod", {"type": "mysql"})],
+    )
+    monkeypatch.setattr(federated_attach, "with_duckdb_connection", connection_scope)
+
+    def attach(_connection, _configs):
+        events.append("ATTACH")
+        return ["mysql_prod"]
+
+    monkeypatch.setattr(federated_attach, "attach_databases_on_connection", attach)
+    monkeypatch.setattr(
+        federated_attach, "detach_databases_on_connection", lambda *_args: None
+    )
+
+    with pytest.raises(RuntimeError, match="simulated CTAS failure"):
+        federated_attach.execute_sql_and_persist(
+            "SELECT * FROM mysql_prod.orders",
+            "saved_result",
+            [{"alias": "mysql_prod"}],
+        )
+
+    ctas_index = next(
+        index
+        for index, sql in enumerate(events)
+        if sql.startswith('CREATE OR REPLACE TABLE "__stage_')
+    )
+    assert events.index("SET GLOBAL threads=1") < events.index("ATTACH") < ctas_index
+    assert ctas_index < events.index("SET GLOBAL threads=8")
 
 
 class TestExecuteSqlAndPersist:

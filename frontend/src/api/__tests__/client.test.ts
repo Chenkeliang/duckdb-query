@@ -5,8 +5,9 @@
  */
 
 import { describe, it, expect } from 'vitest';
-import type { AxiosResponse } from 'axios';
+import axios, { type AxiosResponse } from 'axios';
 import {
+  apiClient,
   normalizeResponse,
   isStandardSuccess,
   isStandardList,
@@ -28,6 +29,35 @@ function createMockResponse<T>(data: T, status = 200): AxiosResponse<T> {
     config: {} as never,
   };
 }
+
+describe('apiClient cancellation classification', () => {
+  /**
+   * Regression 2026-07-29: an AbortController cancellation has no response,
+   * but it must not be rewritten to NETWORK_ERROR by the response interceptor.
+   */
+  it('preserves Axios cancellation instead of reporting a network error', async () => {
+    const request = apiClient.get('/cancelled-request', {
+      adapter: async () => {
+        throw new axios.CanceledError('canceled');
+      },
+    });
+
+    await expect(request).rejects.toMatchObject({
+      name: 'CanceledError',
+      code: 'ERR_CANCELED',
+    });
+  });
+
+  it('still maps an ordinary response-less failure to NETWORK_ERROR', async () => {
+    const request = apiClient.get('/offline-request', {
+      adapter: async () => {
+        throw new axios.AxiosError('offline', 'ERR_NETWORK');
+      },
+    });
+
+    await expect(request).rejects.toMatchObject({ code: 'NETWORK_ERROR' });
+  });
+});
 
 describe('isStandardSuccess', () => {
   it('should return true for valid success response', () => {

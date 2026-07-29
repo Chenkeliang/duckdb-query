@@ -291,7 +291,7 @@ const ExcelSheetSelector: React.FC<ExcelSheetSelectorProps> = ({
       <DialogContent className="max-w-2xl max-h-[85vh] overflow-hidden flex flex-col">
         <DialogHeader>
           <DialogTitle>{t('page.datasource.excelSheet.title')}</DialogTitle>
-          <DialogDescription>
+          <DialogDescription className="sr-only">
             {t('page.datasource.excelSheet.description')}
           </DialogDescription>
         </DialogHeader>

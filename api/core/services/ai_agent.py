@@ -73,21 +73,19 @@ def _error(ctx: AgentRunCtx, termination: str, message: str) -> Dict[str, Any]:
     }
 
 
-def _answer(ctx: AgentRunCtx, result: Dict[str, Any], termination: str) -> Dict[str, Any]:
+def _answer(
+    ctx: AgentRunCtx,
+    result: Dict[str, Any],
+    termination: str,
+    *,
+    scope_suggestions: Optional[List[str]] = None,
+) -> Dict[str, Any]:
     event = {
         "event": "answer", "run_id": ctx.run_id,
         "result": result, "termination_reason": termination,
     }
-    # 拒答里点名的表若确实存在、只是不在本轮范围内,附带给前端 → 一键「加入该表」重问。
-    # 放在事件层而非 result 里:result 受 Profile 的 output_model 严格校验,这是 UI 提示。
-    content = (result or {}).get("content") if isinstance(result, dict) else None
-    if content:
-        try:
-            suggestions = ai_agent_tools.out_of_scope_candidates(ctx, str(content))
-        except Exception:  # noqa: BLE001  提示是锦上添花,绝不能带翻回答
-            suggestions = []
-        if suggestions:
-            event["scope_suggestions"] = suggestions
+    if scope_suggestions:
+        event["scope_suggestions"] = scope_suggestions
     return event
 
 
@@ -221,8 +219,7 @@ async def run_agent(
             action = parsed.get("action") if isinstance(parsed, dict) else None
             # 纠错兜底:模型把要跑的 SELECT 放进 ```sql 围栏/<run_query> 标签而非 JSON 协议
             # (实测 protocol_violation 的残余形态)→ 若 run_query 在允许集,恢复为一次探查动作。
-            # 只在 action 既非终止动作(final/refuse)、又非已知工具时触发——绝不覆盖合法的
-            # final/refuse(其 content 里可能含 ```sql 说明),也绝不恢复 final 当成功结果。
+            # 只在 action 既非终止动作、又非已知工具时触发,避免覆盖合法 answer/final/refuse。
             if (action not in profile.terminal_actions
                     and action not in profile.allowed_tools
                     and "run_query" in profile.allowed_tools):
@@ -230,9 +227,8 @@ async def run_agent(
                 if recovered is not None:
                     parsed, action = recovered, "run_query"
 
-            if action == "refuse" and "refuse" in profile.terminal_actions:
-                # 安全拒绝 / 无需查询的答复:content-only,不过 grounding,强制 sql=null。
-                # 与普通数据 final 分开——数据 final 必须绑定本次跑过的只读 SELECT(见 validator)。
+            if action in {"answer", "refuse"} and action in profile.terminal_actions:
+                # 普通回答 / 安全拒绝均不承载数据证据,不过 grounding。
                 result_raw = parsed.get("result")
                 try:
                     if not isinstance(result_raw, dict):
@@ -251,10 +247,24 @@ async def run_agent(
                     termination = "output_invalid"
                     yield _apply_output_policy(profile, ctx, inp, str(exc)[:200])
                     break
+                missing_tables = validated.pop("missing_tables", [])
+                validated.pop("query_id", None)
                 validated["sql"] = None
                 validated["evidence"] = []
                 termination = "completed"
-                yield _answer(ctx, validated, termination)
+                suggestions = []
+                if action == "refuse":
+                    latest_user_text = next((
+                        str(message.get("content") or "")
+                        for message in reversed(messages or [])
+                        if message.get("role") == "user"
+                    ), "")
+                    suggestions = ai_agent_tools.out_of_scope_candidates(
+                        ctx,
+                        missing_tables,
+                        user_texts=[latest_user_text] if latest_user_text else [],
+                    )
+                yield _answer(ctx, validated, termination, scope_suggestions=suggestions)
                 break
 
             if action == "final":
@@ -299,6 +309,7 @@ async def run_agent(
                 # 3) finalize + emit
                 if profile.finalize is not None:
                     validated = profile.finalize(validated, ctx)
+                validated.pop("missing_tables", None)
                 termination = "completed"
                 yield _answer(ctx, validated, termination)
                 break
@@ -327,8 +338,11 @@ async def run_agent(
                 else:
                     hint = ("reply with exactly one JSON object and nothing else; "
                             f"valid actions: {valid}")
+                    if "answer" in profile.terminal_actions:
+                        hint += ('. An explanation that needs no data query must use '
+                                 '{"action":"answer","result":{"content":"..."}}')
                     if "refuse" in profile.terminal_actions:
-                        hint += ('. A refusal or a caveat is ALSO an action — send '
+                        hint += ('. A write, file, scope, or authorization refusal must use '
                                  '{"action":"refuse","result":{"content":"..."}}, never plain prose')
                 conversation.append({"role": "assistant", "content": raw or ""})
                 conversation.append({"role": "user", "content": _obs(
@@ -351,7 +365,12 @@ async def run_agent(
                                     ui_summary="invalid tool args", ok=False)
             else:
                 if tool.name == "run_query":
-                    result = await ai_agent_tools.run_query_async(ctx, args, profile.max_sql_calls)
+                    result = await ai_agent_tools.run_query_async(
+                        ctx,
+                        args,
+                        profile.max_sql_calls,
+                        query_id=tcid,
+                    )
                 else:
                     result = await asyncio.to_thread(tool.handler, ctx, args)
             yield {"event": "tool_completed", "run_id": ctx.run_id, "tool_call_id": tcid,

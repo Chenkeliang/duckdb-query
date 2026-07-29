@@ -6,6 +6,8 @@
 **Feature: async-federated-query**
 """
 
+from contextlib import contextmanager
+
 import pytest
 from unittest.mock import patch, MagicMock, AsyncMock
 from pydantic import ValidationError
@@ -419,6 +421,85 @@ class TestDetachDatabases:
 
 class TestExecuteAsyncFederatedQuery:
     """测试 execute_async_federated_query 执行函数"""
+
+    def test_mysql_persistence_uses_hardened_shared_path(self, monkeypatch):
+        """Regression 2026-07-29: async federated CTAS must use the shared
+        MySQL single-thread and reconnect-retry persistence path.
+        """
+        from core.database import duckdb_pool, federated_attach
+        from routers import async_tasks
+
+        task_id = "mysql-retry-task"
+        sql = "SELECT * FROM mysql_prod.orders LIMIT 10000"
+        attach_databases = [
+            {"alias": "mysql_prod", "connection_id": "mysql-connection"}
+        ]
+
+        fake_task_manager = MagicMock()
+        fake_task_manager.start_task.return_value = True
+        fake_task_manager.is_cancellation_requested.return_value = False
+        fake_task_manager.complete_task.return_value = True
+        monkeypatch.setattr(async_tasks, "task_manager", fake_task_manager)
+
+        direct_connection = MagicMock()
+
+        def reject_direct_ctas(statement, *_args):
+            if str(statement).startswith("CREATE OR REPLACE TABLE"):
+                raise AssertionError("async worker executed CTAS directly")
+            return MagicMock()
+
+        direct_connection.execute.side_effect = reject_direct_ctas
+
+        @contextmanager
+        def direct_connection_scope(*_args, **_kwargs):
+            yield direct_connection
+
+        fake_pool = MagicMock()
+        monkeypatch.setattr(duckdb_pool, "get_connection_pool", lambda: fake_pool)
+        monkeypatch.setattr(
+            duckdb_pool, "interruptible_connection", direct_connection_scope
+        )
+        monkeypatch.setattr(
+            async_tasks,
+            "_attach_external_databases",
+            lambda *_args: ["mysql_prod"],
+        )
+
+        persist = MagicMock(
+            return_value={
+                "row_count": 10727,
+                "column_count": 1,
+                "columns": ["id"],
+                "column_profiles": [
+                    {"name": "id", "duckdb_type": "BIGINT"}
+                ],
+                "schema_version": 2,
+            }
+        )
+        monkeypatch.setattr(federated_attach, "execute_sql_and_persist", persist)
+        monkeypatch.setattr(
+            async_tasks.file_datasource_manager,
+            "save_file_datasource",
+            lambda *_args: None,
+        )
+
+        async_tasks.execute_async_federated_query(
+            task_id,
+            sql,
+            custom_table_name="async_mysql_retry",
+            attach_databases=attach_databases,
+            overwrite=True,
+            apply_row_limit=False,
+        )
+
+        persist.assert_called_once_with(
+            "SELECT * FROM mysql_prod.orders",
+            "async_mysql_retry",
+            attach_databases,
+            query_id=task_id,
+        )
+        fake_task_manager.complete_task.assert_called_once()
+        fake_task_manager.force_fail_task.assert_not_called()
 
     def test_federated_query_success_flow(self):
         """

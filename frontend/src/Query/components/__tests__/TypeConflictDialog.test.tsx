@@ -212,7 +212,7 @@ describe('TypeConflictDialog', () => {
       render(<TypeConflictDialog {...defaultProps} />);
       
       expect(
-        screen.getByText(/TRY_CAST 转换失败的行将返回 NULL/)
+        screen.getByText('TRY_CAST 失败会得到 NULL，该 JOIN 条件不会匹配。')
       ).toBeInTheDocument();
     });
   });

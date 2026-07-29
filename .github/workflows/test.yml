@@ -66,13 +66,17 @@ jobs:
       - uses: actions/setup-python@v6
         with:
           python-version: "3.11"
-          cache: pip
+
+      - uses: astral-sh/setup-uv@v7
+        with:
+          enable-cache: true
+          cache-dependency-glob: mcp/uv.lock
 
       - name: Install MCP (editable) + dev deps
-        run: cd mcp && pip install -e ".[dev]"
+        run: cd mcp && uv sync --frozen --extra dev
 
       - name: Run MCP pytest
-        run: cd mcp && python -m pytest tests -q --tb=short
+        run: cd mcp && uv run python -m pytest tests -q --tb=short
 
   rust-test:
     name: Tauri Rust Cargo Test

@@ -250,7 +250,7 @@ wheels = [
 
 [[package]]
 name = "duckquery-mcp"
-version = "0.2.0"
+version = "0.3.1"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },
@@ -267,7 +267,7 @@ dev = [
 [package.metadata]
 requires-dist = [
     { name = "httpx", specifier = ">=0.27" },
-    { name = "mcp", specifier = ">=1.2.0" },
+    { name = "mcp", specifier = ">=1.2.0,<2.0" },
     { name = "pytest", marker = "extra == 'dev'", specifier = ">=8" },
     { name = "pytest-asyncio", marker = "extra == 'dev'", specifier = ">=0.23" },
     { name = "respx", marker = "extra == 'dev'", specifier = ">=0.21" },

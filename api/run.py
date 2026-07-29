@@ -83,8 +83,8 @@ def start_parent_watchdog() -> None:
 
     Tauri 在崩溃/被 SIGKILL/macOS `terminate:`(AppleScript quit、Dock 退出)时不会触发
     Rust 侧的优雅 kill,故后端自己看护父进程。发现父进程消失后必须走优雅停机而不是
-    os._exit:硬退不关 DuckDB 连接会留脏 WAL,下次启动重放失败即丢最后一次 checkpoint
-    之后的所有数据(见 duckdb_recovery 的隔离逻辑)。
+    os._exit:硬退不关 DuckDB 连接会留脏 WAL；当前恢复策略会保留 WAL 并拒绝打开
+    旧 checkpoint，避免把最后一次 checkpoint 之后的数据静默隐藏。
     """
     import threading
     import time
@@ -112,7 +112,9 @@ def start_parent_watchdog() -> None:
                     # 优雅路径正常应在 1s 内退完(进程退出后本线程随之消失);
                     # 走到 os._exit 只剩一种情况:停机被长任务卡死,兜底硬退。
                     time.sleep(15)
-                os._exit(1)
+                from core.common.process_exit import hard_exit_after_duckdb_cleanup
+
+                hard_exit_after_duckdb_cleanup(1)
 
     threading.Thread(target=_watch, daemon=True).start()
 

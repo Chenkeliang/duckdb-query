@@ -210,6 +210,85 @@ class TestAsyncQueryMemoryOptimization:
         assert "file_path" in mock_task.result_info
         assert mock_task.result_info["file_format"] == format
 
+    @pytest.mark.parametrize(
+        ("format", "expected_copy_fragment"),
+        [
+            ("json", "FORMAT JSON, ARRAY true"),
+            ("xlsx", "FORMAT XLSX, HEADER true"),
+        ],
+    )
+    @patch("core.database.duckdb_pool.get_connection_pool")
+    @patch("routers.async_tasks.task_manager")
+    def test_generate_download_file_supports_structured_formats(
+        self,
+        mock_task_manager,
+        mock_get_pool,
+        format,
+        expected_copy_fragment,
+        monkeypatch,
+    ):
+        """2026-07-29: async JSON/XLSX exports must use their DuckDB COPY formats."""
+        task_id = f"test_{format}"
+        mock_task_manager.get_task.return_value = make_async_task(task_id)
+        mock_con = setup_mock_duckdb_connection(mock_get_pool)
+        mock_con.execute.return_value.fetchone.return_value = [2]
+        if format == "json":
+            monkeypatch.setattr(
+                "routers.async_tasks._normalize_non_finite_json",
+                lambda _source, _target: None,
+            )
+
+        target = os.path.join(self.temp_dir, f"result.{format}")
+        generate_download_file(task_id, format, target_path=target)
+
+        copy_sql = next(
+            str(call) for call in mock_con.execute.call_args_list if "COPY" in str(call)
+        )
+        assert expected_copy_fragment in copy_sql
+
+    @patch("core.database.duckdb_pool.get_connection_pool")
+    @patch("routers.async_tasks.task_manager")
+    def test_generate_download_file_rejects_xlsx_over_sheet_limit(
+        self, mock_task_manager, mock_get_pool
+    ):
+        """2026-07-29: XLSX reserves one of 1,048,576 sheet rows for its header."""
+        task_id = "test_xlsx_too_large"
+        mock_task_manager.get_task.return_value = make_async_task(task_id)
+        mock_con = setup_mock_duckdb_connection(mock_get_pool)
+        mock_con.execute.return_value.fetchone.return_value = [1_048_576]
+
+        with pytest.raises(ValueError, match="1,048,575"):
+            generate_download_file(
+                task_id,
+                "xlsx",
+                target_path=os.path.join(self.temp_dir, "too-large.xlsx"),
+            )
+
+        assert not any("COPY" in str(call) for call in mock_con.execute.call_args_list)
+
+    @patch("core.database.duckdb_pool.get_connection_pool")
+    @patch("routers.async_tasks.task_manager")
+    def test_cached_xlsx_still_rejects_result_over_sheet_limit(
+        self, mock_task_manager, mock_get_pool
+    ):
+        """2026-07-29: cached XLSX files must not bypass the task row limit."""
+        cached_file = os.path.join(self.temp_dir, "cached.xlsx")
+        with open(cached_file, "wb") as file:
+            file.write(b"cached")
+        mock_task_manager.get_task.return_value = make_async_task(
+            "cached_xlsx",
+            result_file_path=cached_file,
+            result_info={
+                "table_name": "async_result_cached_xlsx",
+                "row_count": 1_048_576,
+            },
+        )
+
+        with pytest.raises(ValueError, match="1,048,575"):
+            generate_download_file("cached_xlsx", "xlsx")
+
+        mock_get_pool.assert_not_called()
+
     @patch("core.database.duckdb_pool.get_connection_pool")
     @patch("routers.async_tasks.task_manager")
     def test_generate_download_file_validation(self, mock_task_manager, mock_get_pool):

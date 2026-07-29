@@ -47,6 +47,18 @@ const submitButton = () => screen.getByRole('button', { name: '提交任务' });
 describe('AsyncTaskDialog 行数范围', () => {
   beforeEach(() => mocks.submit.mockClear());
 
+  it('精确说明当前行数范围并随勾选状态切换', () => {
+    renderDialog(true);
+    expect(
+      screen.getByText('不限结果行数：移除 SQL 最外层 LIMIT，保留子查询 LIMIT')
+    ).toBeInTheDocument();
+
+    fireEvent.click(limitCheckbox());
+    expect(
+      screen.getByText('限制结果行数：保留 SQL 最外层 LIMIT；未设置时限制为 10,000 行')
+    ).toBeInTheDocument();
+  });
+
   it('默认未勾选:提交 apply_row_limit=false(全量)', async () => {
     renderDialog(true);
     expect((limitCheckbox() as HTMLElement).getAttribute('data-state')).toBe('unchecked');

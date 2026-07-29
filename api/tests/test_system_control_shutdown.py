@@ -2,8 +2,8 @@
 「关池(checkpoint)→硬退」,而不是滞留成僵尸等外部 SIGKILL。
 
 背景:桌面壳 quit 后约 5s 会 SIGKILL sidecar;强杀若落在 WAL checkpoint
-中途,WAL 与 db 文件的 checkpoint iteration 脱节,DuckDB 下次启动把整个
-WAL 弃为 main.db.wal.broken.*,期间已提交数据全部丢失(实机已复现)。
+中途,WAL 与 db 文件的 checkpoint iteration 脱节。当前版本会保留 WAL 并
+拒绝打开旧 checkpoint，避免把已提交数据静默隐藏。
 """
 from unittest.mock import patch
 
