@@ -98,6 +98,11 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
     onExecuteRef.current = onExecute;
   }, [onExecute]);
 
+  const onChangeRef = useRef(onChange);
+  useEffect(() => {
+    onChangeRef.current = onChange;
+  }, [onChange]);
+
   useEffect(() => {
     columnHintsRef.current = columnNameHints;
   }, [columnNameHints]);
@@ -190,8 +195,8 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
 
         // 更新监听
         EditorView.updateListener.of((update) => {
-          if (update.docChanged && onChange) {
-            onChange(update.state.doc.toString());
+          if (update.docChanged && onChangeRef.current) {
+            onChangeRef.current(update.state.doc.toString());
           }
         }),
 

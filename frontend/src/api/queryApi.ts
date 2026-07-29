@@ -286,7 +286,7 @@ export async function saveQueryToDuckDB(
             sql,
             datasource,
             table_alias: tableAlias,
-            // 行数范围:false(默认)=全量落表,逐字执行尊重用户 LIMIT;true=缺则补 max_query_rows
+            // 保存选择:false(默认)=移除页面最外层 LIMIT;true=保留或补 max_query_rows
             apply_row_limit: applyRowLimit,
         };
 
@@ -324,4 +324,3 @@ export async function cancelSyncQuery(requestId: string): Promise<void> {
         throw handleApiError(error as never, '取消查询失败');
     }
 }
-

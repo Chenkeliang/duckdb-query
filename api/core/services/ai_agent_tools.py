@@ -11,9 +11,10 @@ from __future__ import annotations
 
 import asyncio
 import logging
+import re
 import time
 from dataclasses import dataclass, field
-from typing import Callable, Dict, List, Optional, Tuple
+from typing import Callable, Dict, List, Optional, Sequence, Tuple
 
 import duckdb
 from pydantic import BaseModel
@@ -26,7 +27,7 @@ from core.database.federated_attach import (
     format_qualified_table_reference,
 )
 from core.services import ai_sql_guard, schema_sampler, table_registry
-from core.services.ai_sql_validation import is_select_only, normalize_sql
+from core.services.ai_sql_validation import is_select_only
 
 logger = logging.getLogger(__name__)
 
@@ -46,6 +47,13 @@ class ToolResult:
     ok: bool = True
 
 
+@dataclass(frozen=True)
+class ExecutedQuery:
+    query_id: str
+    sql: str
+    tables: Tuple[str, ...]
+
+
 @dataclass
 class AgentRunCtx:
     run_id: str
@@ -58,8 +66,7 @@ class AgentRunCtx:
     sql_calls_used: int = 0
     sql_rejected: int = 0
     llm_calls: int = 0  # 真实 LLM 调用总数(steps + reformats)
-    executed_sql: set = field(default_factory=set)  # 本次 run 成功执行过的 run_query SQL(规范化);
-    #                                                  data_qa final 的 grounding 门控据此判定
+    executed_queries: Dict[str, ExecutedQuery] = field(default_factory=dict)
     unavailable_aliases: List[Tuple[str, str]] = field(default_factory=list)
     #   本次授权但解析/连接失败、已被排除的别名 [(alias, reason)];逐别名降级(见 ai.py _prepare_agent),
     #   由 profile 上下文显式列给 Agent,避免静默把联邦查询范围缩成本地
@@ -194,24 +201,45 @@ def _scan_attached_tables(alias: str, db_config: dict) -> List[str]:
     return out
 
 
-def out_of_scope_candidates(ctx: "AgentRunCtx", text: str, cap: int = 3) -> List[str]:
-    """从答复文本里挑出「用户库里确实存在、但本轮不在范围内」的表名。
+def out_of_scope_candidates(
+    ctx: "AgentRunCtx",
+    candidates: Sequence[str],
+    cap: int = 3,
+    *,
+    user_texts: Sequence[str] = (),
+) -> List[str]:
+    """校验结构化候选或用户明确点名的范围外表。
 
     用途:拒答时前端给一个「加入该表」按钮,一键把它加进作用域重问,而不是让
     用户自己回面板里找。只认**真实存在**的表名(本地目录 ∪ 已授权别名的表清单),
-    模型随口编的名字不会变成按钮。
+    模型随口编的名字不会变成按钮；不扫描模型回答。用户问题仅按完整 SQL 标识符
+    边界匹配，避免 sq 误命中 SQL。
     """
     limits = ctx.scope_limits
-    if limits is None or not text:
+    requested = {str(name).strip().lower() for name in candidates if str(name).strip()}
+    question_texts = [str(text) for text in user_texts if str(text).strip()]
+    if limits is None or (not requested and not question_texts):
         return []  # 未收窄范围 = 无所谓"范围外"
 
-    body = text.lower()
     found: List[str] = []
+    seen: set[str] = set()
 
-    def consider(name: str, in_scope: bool) -> None:
-        if in_scope or not name or len(name) < 2:
+    def consider(name: str, in_scope: bool, accepted_names: Sequence[str]) -> None:
+        key = name.lower()
+        structured = bool(requested.intersection(n.lower() for n in accepted_names))
+        mentioned = any(
+            len(candidate) >= 2
+            and any(re.search(
+                rf"(?<![A-Za-z0-9_]){re.escape(candidate)}(?![A-Za-z0-9_])",
+                text,
+                re.IGNORECASE,
+            ) for text in question_texts)
+            for candidate in accepted_names
+        )
+        if in_scope or not (structured or mentioned):
             return
-        if name.lower() in body and name not in found:
+        if key not in seen:
+            seen.add(key)
             found.append(name)
 
     try:
@@ -223,7 +251,8 @@ def out_of_scope_candidates(ctx: "AgentRunCtx", text: str, cap: int = 3) -> List
         for (tname,) in rows:
             if str(tname).lower().startswith("system_"):
                 continue
-            consider(str(tname), limits.local_allowed(str(tname)))
+            actual = str(tname)
+            consider(actual, limits.local_allowed(actual), [actual])
     except Exception:  # noqa: BLE001  目录读不到就少给建议,不影响回答本身
         pass
 
@@ -233,8 +262,13 @@ def out_of_scope_candidates(ctx: "AgentRunCtx", text: str, cap: int = 3) -> List
         except Exception:  # noqa: BLE001
             continue
         for qualified in names:
-            short = qualified.split(".")[-1]
-            consider(short, limits.alias_allowed(alias, short))
+            prefix = f"{alias}."
+            scoped = qualified[len(prefix):] if qualified.lower().startswith(prefix.lower()) else qualified
+            consider(
+                qualified,
+                limits.alias_allowed(alias, scoped),
+                [qualified, scoped],
+            )
 
     return found[:cap]
 
@@ -478,7 +512,13 @@ def _execute_guarded(ctx: AgentRunCtx, sql: str) -> ToolResult:
                 detach_databases_on_connection(con, attached)
 
 
-async def run_query_async(ctx: AgentRunCtx, args: RunQueryArgs, max_sql_calls: int) -> ToolResult:
+async def run_query_async(
+    ctx: AgentRunCtx,
+    args: RunQueryArgs,
+    max_sql_calls: int,
+    *,
+    query_id: Optional[str] = None,
+) -> ToolResult:
     """五层闸 + 线程执行 + 超时中断。唯一的 async 工具(其余轻查询直接同步)。"""
     sql = args.sql.strip().rstrip(";")
     if ctx.sql_calls_used >= max_sql_calls:
@@ -508,9 +548,12 @@ async def run_query_async(ctx: AgentRunCtx, args: RunQueryArgs, max_sql_calls: i
     task = asyncio.create_task(asyncio.to_thread(_execute_guarded, ctx, sql))
     try:
         result = await asyncio.wait_for(asyncio.shield(task), timeout=QUERY_TIMEOUT_S)
-        if result.ok:
-            # 记录本次 run 成功执行过的查询(规范化),供 data_qa final 的 grounding 门控
-            ctx.executed_sql.add(normalize_sql(sql))
+        if result.ok and query_id:
+            ctx.executed_queries[query_id] = ExecutedQuery(
+                query_id=query_id,
+                sql=sql,
+                tables=tuple(ai_sql_guard.extract_physical_tables(sql)),
+            )
         return result
     except asyncio.TimeoutError:
         interrupt_run(ctx.run_id)

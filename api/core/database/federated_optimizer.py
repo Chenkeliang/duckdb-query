@@ -11,7 +11,10 @@ from typing import Callable, Optional
 
 import sqlglot
 from sqlglot import exp
+from sqlglot.errors import ErrorLevel
 
+from core.common.sql_identifiers import escape_string_literal
+from core.common.utils import dedupe_column_names
 from core.database.federated_time_bound import detect_time_bound_candidates, default_time_bound_value
 
 logger = logging.getLogger(__name__)
@@ -257,7 +260,85 @@ def _make_schema_provider(conn):
     return provider
 
 
-def optimize_federated_sql(conn, sql: str, attach_aliases: set[str], cfg) -> tuple[str, list[dict], list[dict]]:
+def _push_same_mysql_star_join(
+    tree: exp.Expression,
+    mysql_aliases: set[str],
+    schema_provider: SchemaProvider,
+) -> Optional[str]:
+    """同一 MySQL 的简单 SELECT * JOIN 改写为一次 mysql_query。"""
+    if not isinstance(tree, exp.Select) or len(tree.expressions) != 1:
+        return None
+    star = tree.expressions[0]
+    if not isinstance(star, exp.Star) or any(
+        value is not None for value in star.args.values()
+    ):
+        return None
+    if tree.find(exp.Subquery) is not None or any(
+        isinstance(node, exp.Func) and not isinstance(node, (exp.And, exp.Or))
+        for node in tree.walk()
+    ):
+        return None
+
+    tables = list(tree.find_all(exp.Table))
+    joins = list(tree.find_all(exp.Join))
+    if len(tables) < 2 or not joins:
+        return None
+    if any(not _is_top_level_bare(table) for table in tables):
+        return None
+    if any((join.side or "").upper() == "FULL" for join in joins):
+        return None
+
+    source_aliases = {_leftmost(table) for table in tables}
+    if len(source_aliases) != 1 or not source_aliases <= mysql_aliases:
+        return None
+    source_alias = next(iter(source_aliases))
+    if source_alias is None:
+        return None
+
+    column_specs: list[tuple[str, str]] = []
+    for table in tables:
+        remote_ref = ".".join(
+            part for part in (table.catalog, table.db, table.name) if part
+        )
+        columns = schema_provider(remote_ref)
+        if not columns:
+            return None
+        table_alias = table.alias or table.name
+        column_specs.extend(
+            (table_alias, str(column["name"])) for column in columns
+        )
+
+    output_names = dedupe_column_names([name for _, name in column_specs])
+    remote_tree = tree.copy()
+    remote_tables = list(remote_tree.find_all(exp.Table))
+    projections = [
+        exp.column(name, table=table_alias).as_(output_name, quoted=True)
+        for (table_alias, name), output_name in zip(column_specs, output_names)
+    ]
+    remote_tree.set("expressions", projections)
+    for table in remote_tables:
+        if table.catalog == source_alias:
+            table.set("catalog", None)
+        elif table.db == source_alias:
+            table.set("db", None)
+
+    remote_sql = remote_tree.sql(
+        dialect="mysql", unsupported_level=ErrorLevel.RAISE
+    )
+    return (
+        f"SELECT * FROM mysql_query('{escape_string_literal(source_alias)}', "
+        f"'{escape_string_literal(remote_sql)}')"
+    )
+
+
+def optimize_federated_sql(
+    conn,
+    sql: str,
+    attach_aliases: set[str],
+    cfg,
+    *,
+    mysql_aliases: Optional[set[str]] = None,
+) -> tuple[str, list[dict], list[dict]]:
     """主入口（已 ATTACH 的连接内调用）。返回 (优化后 SQL, suggestions, warnings)。
 
     全程 bailout：任何异常 → 返回原 SQL。优化保持结果;时间界仅作建议不改 SQL。
@@ -283,6 +364,16 @@ def optimize_federated_sql(conn, sql: str, attach_aliases: set[str], cfg) -> tup
         logger.info("time-bound suggestion skipped: %s", exc)
     warnings: list[dict] = []
     out_sql = sql
+    if mysql_aliases:
+        try:
+            out_sql = _push_same_mysql_star_join(
+                tree, mysql_aliases, _make_schema_provider(conn)
+            ) or sql
+        except Exception as exc:  # noqa: BLE001
+            logger.info("same-MySQL JOIN pushdown skipped: %s", exc)
+            out_sql = sql
+        if out_sql != sql:
+            return out_sql, suggestions, warnings
     try:
         out_sql, reports = apply_semijoin_pushdown(
             sql, attach_aliases, key_provider=_make_key_provider(conn),

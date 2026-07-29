@@ -9,6 +9,8 @@ import { normalizeSelectedTable, getTableName } from '@/utils/tableUtils';
 export interface TableColumn {
   name: string;
   type: string;
+  /** 该列是远程索引首列，可直接用于范围谓词。 */
+  hasLeadingIndex?: boolean;
 }
 
 /**
@@ -46,14 +48,30 @@ export const TABLE_COLUMNS_QUERY_KEY = ['table-columns'] as const;
  * @param columns - 外部表 API 返回的列信息
  * @returns 标准化的列信息数组
  */
-export const transformExternalColumns = (columns: unknown): TableColumn[] => {
+export const transformExternalColumns = (columns: unknown, indexes?: unknown): TableColumn[] => {
   if (!Array.isArray(columns)) return [];
 
+  const leadingIndexColumns = new Set(
+    (Array.isArray(indexes) ? indexes : [])
+      .map((index) => {
+        const rawColumns = (index as Record<string, unknown>)?.columns;
+        const first = Array.isArray(rawColumns)
+          ? rawColumns[0]
+          : String(rawColumns || '').split(',')[0];
+        return String(first || '').trim().replace(/^[`"]|[`"]$/g, '').toLowerCase();
+      })
+      .filter(Boolean)
+  );
+
   return columns
-    .map((col: Record<string, unknown>) => ({
-      name: String(col?.name || col?.column_name || 'unknown'),
-      type: String(col?.type || col?.data_type || 'unknown'),
-    }))
+    .map((col: Record<string, unknown>) => {
+      const name = String(col?.name || col?.column_name || 'unknown');
+      return {
+        name,
+        type: String(col?.type || col?.data_type || 'unknown'),
+        ...(leadingIndexColumns.has(name.toLowerCase()) ? { hasLeadingIndex: true } : {}),
+      };
+    })
     .filter((col) => col.name !== 'unknown');
 };
 
@@ -137,7 +155,10 @@ export const useTableColumns = (table: SelectedTable | null): UseTableColumnsRes
       if (isExternal && connectionId) {
         // 外部表：使用 getExternalTableDetail API
         const response = await getExternalTableDetail(connectionId, tableName, schema);
-        return transformExternalColumns(response?.columns);
+        return transformExternalColumns(
+          response?.columns,
+          (response as { indexes?: unknown })?.indexes
+        );
       } else {
         // DuckDB 表：使用 getDuckDBTableDetail API
         const response = await getDuckDBTableDetail(tableName);
@@ -194,7 +215,10 @@ export const useMultipleTableColumns = (
         queryFn: async (): Promise<TableColumn[]> => {
           if (isExternal && connectionId) {
             const response = await getExternalTableDetail(connectionId, tableName, schema);
-            return transformExternalColumns(response?.columns);
+            return transformExternalColumns(
+              response?.columns,
+              (response as { indexes?: unknown })?.indexes
+            );
           } else {
             const response = await getDuckDBTableDetail(tableName);
             return transformDuckDBColumns(response?.columns);

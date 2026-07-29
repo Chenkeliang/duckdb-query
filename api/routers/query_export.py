@@ -63,8 +63,7 @@ class QueryResultExportRequest(BaseModel):
     sql: str = Field(..., min_length=1)
     format: Literal["parquet", "csv"] = "parquet"
     attach_databases: Optional[List[AttachDatabase]] = None
-    # 行数范围【显式选择】:False(默认)=全量导出(逐字执行,尊重用户自己的 LIMIT);
-    # True=限制(最外层缺 LIMIT 时补 max_query_rows)。不从 SQL 文本猜测。
+    # 行数范围最终选择:False(默认)=移除页面最外层 LIMIT;True=保留或补默认 LIMIT。
     apply_row_limit: bool = False
 
 

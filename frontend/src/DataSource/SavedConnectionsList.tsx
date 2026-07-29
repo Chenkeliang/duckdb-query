@@ -309,7 +309,11 @@ const SavedConnectionsList = ({ onSelect, onNew }: SavedConnectionsListProps) =>
         <DialogContent>
           <DialogHeader>
             <DialogTitle>{t("actions.delete")}</DialogTitle>
-            <DialogDescription>{t("page.datasource.list.deleteConfirmDesc")}</DialogDescription>
+            <DialogDescription>
+              {t("page.datasource.list.deleteConfirmDesc", {
+                name: configToDelete?.name || configToDelete?.id || t("page.datasource.list.unnamed"),
+              })}
+            </DialogDescription>
           </DialogHeader>
           <DialogFooter>
             <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} disabled={isDeleting}>

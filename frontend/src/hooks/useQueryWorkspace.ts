@@ -668,19 +668,21 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
       keys.add(`tab:${activeResultTabId}`);
     }
     for (const key of keys) {
+      const requestId = latestRequestByKeyRef.current.get(key);
+      // 先让槽位失效再触发 abort，避免取消 rejection 抢在后端取消请求前
+      // 被当前查询当作 NETWORK_ERROR 处理。
+      latestRequestByKeyRef.current.delete(key);
       const controller = abortByKeyRef.current.get(key);
       if (controller) {
         controller.abort();
         abortByKeyRef.current.delete(key);
       }
-      const requestId = latestRequestByKeyRef.current.get(key);
       if (requestId) {
         try {
           await cancelSyncQuery(requestId);
         } catch (e) {
           console.warn('Cancel request failed:', e);
         }
-        latestRequestByKeyRef.current.delete(key);
       }
     }
 
@@ -697,7 +699,7 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
                 result: {
                   ...tab.result,
                   loading: false,
-                  error: new Error(t('query.cancelled')),
+                  error: null,
                 },
               }
             : tab
@@ -706,7 +708,7 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
     } else if (!retainQueryResults) {
       setSingleResult((prev) =>
         prev
-          ? { ...prev, loading: false, error: new Error(t('query.cancelled')) }
+          ? { ...prev, loading: false, error: null }
           : null
       );
     }

@@ -4,7 +4,7 @@ from pathlib import Path
 
 from core.database.duckdb_recovery import (
     is_wal_replay_error,
-    quarantine_wal_for_database,
+    try_recover_database_after_wal_error,
 )
 
 
@@ -13,12 +13,17 @@ def test_is_wal_replay_error():
     assert not is_wal_replay_error("Catalog Error: table not found")
 
 
-def test_quarantine_wal_for_database(tmp_path: Path):
+def test_wal_replay_error_preserves_wal_and_fails_closed(tmp_path: Path):
+    """Regression 2026-07-28: never reopen a stale snapshot automatically."""
     db = tmp_path / "main.db"
     db.write_text("")
     wal = Path(f"{db}.wal")
     wal.write_text("broken wal")
-    moved = quarantine_wal_for_database(db)
-    assert len(moved) == 1
-    assert not wal.exists()
-    assert moved[0].name.startswith("main.db.wal.broken.")
+
+    recovered = try_recover_database_after_wal_error(
+        db, "Failure while replaying WAL file"
+    )
+
+    assert recovered is False
+    assert wal.read_text() == "broken wal"
+    assert list(tmp_path.glob("main.db.wal.broken.*")) == []

@@ -4,11 +4,12 @@
  */
 import React from 'react';
 import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
-import { render, screen, waitFor } from '@testing-library/react';
+import { fireEvent, render, screen, waitFor } from '@testing-library/react';
 import { beforeEach, describe, expect, it, vi } from 'vitest';
 
 const mocks = vi.hoisted(() => ({
   generateSetOperation: vi.fn(),
+  performJoinQuery: vi.fn(),
   validateSetOperation: vi.fn(),
 }));
 
@@ -48,7 +49,7 @@ vi.mock('@/api', () => ({
   generateSetOperation: mocks.generateSetOperation,
   inferColumnCast: vi.fn(),
   parseFederatedQueryError: vi.fn(),
-  performJoinQuery: vi.fn(),
+  performJoinQuery: mocks.performJoinQuery,
   toAttachDatabasesPayload: (databases: unknown[]) => databases,
   validateSetOperation: mocks.validateSetOperation,
 }));
@@ -99,6 +100,7 @@ function renderWithQueryClient(ui: React.ReactElement) {
 describe('query builder favorite SQL', () => {
   beforeEach(() => {
     mocks.generateSetOperation.mockReset();
+    mocks.performJoinQuery.mockReset();
     mocks.validateSetOperation.mockReset();
     mocks.validateSetOperation.mockResolvedValue({
       is_valid: true,
@@ -119,6 +121,32 @@ describe('query builder favorite SQL', () => {
     expect(favoriteSql).toHaveTextContent('FROM orders AS t1');
     expect(favoriteSql).toHaveTextContent('LEFT JOIN customers AS t2');
     expect(favoriteSql).not.toHaveTextContent('LIMIT 777');
+  });
+
+  it('passes limit-free JOIN base SQL with a server preview result', async () => {
+    const previewSql =
+      'SELECT * FROM orders AS t1 LEFT JOIN customers AS t2 ON t1.id = t2.id LIMIT 777';
+    mocks.performJoinQuery.mockResolvedValue({
+      data: [{ id: 1 }],
+      columns: ['id'],
+      column_types: [],
+      row_count: 1,
+      sql: previewSql,
+    });
+    const onDisplayPreview = vi.fn();
+
+    renderWithQueryClient(
+      <JoinQueryPanel selectedTables={TABLES} onDisplayPreview={onDisplayPreview} />
+    );
+
+    fireEvent.click(await screen.findByRole('button', { name: '执行' }));
+
+    await waitFor(() => expect(onDisplayPreview).toHaveBeenCalledTimes(1));
+    expect(onDisplayPreview.mock.calls[0][1]).toBe(previewSql);
+    expect(onDisplayPreview.mock.calls[0][3].baseSql).toContain(
+      'LEFT JOIN customers AS t2'
+    );
+    expect(onDisplayPreview.mock.calls[0][3].baseSql).not.toContain('LIMIT 777');
   });
 
   it('passes SET base SQL to SaveQueryDialog while preview keeps the visible limit', async () => {

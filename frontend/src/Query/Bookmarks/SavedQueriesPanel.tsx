@@ -119,7 +119,7 @@ export const SavedQueriesPanel: React.FC<SavedQueriesPanelProps> = ({
                         <Star className="h-5 w-5 fill-yellow-500" />
                         {t('query.bookmark.title', 'SQL 收藏夹')}
                     </SheetTitle>
-                    <SheetDescription>
+                    <SheetDescription className="sr-only">
                         {t('query.bookmark.description', '管理您的常用查询语句')}
                     </SheetDescription>
 

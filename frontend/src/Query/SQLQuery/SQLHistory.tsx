@@ -106,7 +106,7 @@ export const SQLHistory: React.FC<SQLHistoryProps> = ({
             <Clock className="h-5 w-5" />
             {t('query.history.title', '查询历史')}
           </SheetTitle>
-          <SheetDescription>
+          <SheetDescription className="sr-only">
             {t('query.history.description', '最近执行的 SQL 查询记录')}
           </SheetDescription>
         </SheetHeader>

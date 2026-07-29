@@ -3,11 +3,16 @@ from typing import Any
 
 async def save_as_table(client, cfg, *, sql: str, table_name: str,
                         attach_databases: list | None = None,
+                        apply_row_limit: bool = True,
                         confirm: bool = False) -> Any:
     """Materialize a query's result as a new DuckDB table.
 
     Writes a table, so it needs confirm=true outside read-only mode (which blocks
     it outright), like every other write tool.
+
+    apply_row_limit=True (default) preserves an existing outer LIMIT or adds the
+    backend default when absent. Set it to False to remove the outer LIMIT while
+    preserving nested LIMIT clauses.
 
     Pass attach_databases (same shape as federated_query) when the SQL references
     attached external tables (alias.table) — without it such SQL fails with
@@ -17,7 +22,11 @@ async def save_as_table(client, cfg, *, sql: str, table_name: str,
     if blocked:
         return blocked
     # Router reads "table_alias" (or "tableAlias"); public param kept as table_name for clarity.
-    body: dict = {"sql": sql, "table_alias": table_name}
+    body: dict = {
+        "sql": sql,
+        "table_alias": table_name,
+        "apply_row_limit": apply_row_limit,
+    }
     if attach_databases:
         body["attach_databases"] = attach_databases
     return await client.call("POST", "/api/save_query_to_duckdb", json_body=body)

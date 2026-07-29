@@ -161,16 +161,23 @@ def test_ensure_query_has_limit_sql_boundaries():
     assert ensure_query_has_limit(sql, 100) == sql
 
 
-def test_apply_row_limit_choice_full_is_verbatim():
-    """复审 P1:全量(apply_limit=False)逐字执行,尊重用户自己写的 LIMIT——绝不再按
-    'LIMIT 值==上限' 猜测删除(旧 remove_auto_added_limit 会把 LIMIT 10000 静默删成全表)。"""
-    # 无 LIMIT → 保持无 LIMIT(全量)
-    assert apply_row_limit_choice("SELECT * FROM range(20000)", False) == "SELECT * FROM range(20000)"
-    # 用户手写的 LIMIT(即便等于常见上限)→ 原样保留
-    assert (
-        apply_row_limit_choice("SELECT * FROM range(20000) LIMIT 10000", False)
-        == "SELECT * FROM range(20000) LIMIT 10000"
+def test_apply_row_limit_choice_unchecked_removes_only_outer_limit():
+    """Regression 2026-07-29: the checkbox is the final global row choice.
+    Unchecked removes the page's outer LIMIT while preserving nested LIMITs.
+    """
+    import duckdb
+
+    con = duckdb.connect(":memory:")
+    full_sql = apply_row_limit_choice(
+        "SELECT * FROM range(10727) LIMIT 10000", False
     )
+    assert len(con.execute(full_sql).fetchall()) == 10727
+
+    nested_sql = apply_row_limit_choice(
+        "SELECT * FROM (SELECT * FROM range(20000) LIMIT 10727) LIMIT 10000",
+        False,
+    )
+    assert len(con.execute(nested_sql).fetchall()) == 10727
 
 
 def test_apply_row_limit_choice_limited_default_not_cap():

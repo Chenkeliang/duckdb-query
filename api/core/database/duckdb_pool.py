@@ -17,6 +17,7 @@ logger = logging.getLogger(__name__)
 
 # 获取应用配置
 from core.common.config_manager import config_manager
+from core.database.duckdb_durability import checkpoint_database_if_needed
 from core.database.duckdb_recovery import try_recover_database_after_wal_error
 from core.database.duckdb_storage import connect_duckdb_database
 
@@ -94,17 +95,14 @@ class DuckDBConnectionPool:
             self._create_connection()
 
     def _connect_duckdb(self, db_path: str):
-        """打开 DuckDB（storage latest）；WAL 损坏时尝试隔离 .wal 后重试一次。"""
+        """Open DuckDB and preserve recovery files if WAL replay fails."""
         paths = config_manager.get_duckdb_paths()
         try:
             return connect_duckdb_database(db_path)
         except Exception as first_error:
-            msg = str(first_error)
-            if try_recover_database_after_wal_error(paths.database_path, msg):
-                logger.warning(
-                    "Retrying DuckDB connect after WAL quarantine: %s", db_path
-                )
-                return connect_duckdb_database(db_path)
+            try_recover_database_after_wal_error(
+                paths.database_path, str(first_error)
+            )
             raise
 
     def _create_connection(self) -> Optional[int]:
@@ -233,6 +231,16 @@ class DuckDBConnectionPool:
                     # 如果没有活动事务，COMMIT 会失败，这是正常的
                     logger.debug(f"[POOL_DEBUG] COMMIT failed (possibly no active transaction): conn_id={conn_id}, error={commit_error}")
                     pass
+                try:
+                    paths = config_manager.get_duckdb_paths()
+                    checkpoint_database_if_needed(
+                        self._connections[conn_id].connection, paths.database_path
+                    )
+                except Exception as checkpoint_error:
+                    logger.warning(
+                        "DuckDB checkpoint after connection use failed: %s",
+                        checkpoint_error,
+                    )
                 self._release_connection(conn_id)
                 logger.debug(f"[POOL_DEBUG] Connection released: conn_id={conn_id}")
 
@@ -549,16 +557,10 @@ class SystemDBConnection:
                 try:
                     self._connection = connect_duckdb_database(db_path)
                 except Exception as first_error:
-                    if try_recover_database_after_wal_error(
+                    try_recover_database_after_wal_error(
                         paths.system_database_path, str(first_error)
-                    ):
-                        logger.warning(
-                            "Retrying system DB connect after WAL quarantine: %s",
-                            db_path,
-                        )
-                        self._connection = connect_duckdb_database(db_path)
-                    else:
-                        raise
+                    )
+                    raise
                 # 应用基本配置
                 app_config = config_manager.get_app_config()
                 if app_config.duckdb_memory_limit:

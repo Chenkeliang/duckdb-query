@@ -41,8 +41,8 @@ describe('isTimeType', () => {
       { name: 'id', type: 'bigint(20)' },
       { name: 'update_time', type: 'datetime' },
       { name: 'create_time', type: 'datetime' },
-      { name: 'pay_time', type: 'datetime' }, // 时间型但非审计名 -> 不入候选
-    ])).toEqual(['create_time', 'update_time']);
+      { name: 'pay_time', type: 'datetime' },
+    ])).toEqual(['create_time', 'update_time', 'pay_time']);
   });
 });
 
@@ -62,7 +62,7 @@ describe('classifyAuditColumn', () => {
 });
 
 describe('detectTimeBoundCandidates', () => {
-  it('keeps only audit-named time-typed columns, create before update', () => {
+  it('keeps schema time columns, with create and update audit names first', () => {
     const cols = [
       { name: 'id', type: 'BIGINT' },
       { name: 'updated_at', type: 'TIMESTAMP' },
@@ -70,14 +70,23 @@ describe('detectTimeBoundCandidates', () => {
       { name: 'birthday', type: 'DATE' },
       { name: 'create_user', type: 'VARCHAR' },
     ];
-    expect(detectTimeBoundCandidates(cols)).toEqual(['create_time', 'updated_at']);
+    expect(detectTimeBoundCandidates(cols)).toEqual(['create_time', 'updated_at', 'birthday']);
   });
 
-  it('returns empty when no audit time column', () => {
+  it('keeps non-audit schema time columns', () => {
     expect(detectTimeBoundCandidates([
       { name: 'birthday', type: 'DATE' },
       { name: 'pay_time', type: 'TIMESTAMP' },
-    ])).toEqual([]);
+    ])).toEqual(['birthday', 'pay_time']);
+  });
+
+  /** Regression 2026-07-28: an indexed schema time column should beat audit-name heuristics. */
+  it('prioritizes range-indexed time columns before unindexed candidates', () => {
+    expect(detectTimeBoundCandidates([
+      { name: 'create_time', type: 'TIMESTAMP' },
+      { name: 'update_time', type: 'TIMESTAMP' },
+      { name: 'pay_time', type: 'TIMESTAMP', hasLeadingIndex: true },
+    ])).toEqual(['pay_time', 'create_time', 'update_time']);
   });
 });
 
@@ -212,7 +221,7 @@ describe('buildTimeBoundSuggestions', () => {
     expect(out.map((s) => s.tableName)).toEqual(['orders']);
   });
 
-  it('does NOT suppress when a non-candidate time column (birthday) is bounded', () => {
+  it('suppresses when a non-audit schema time column is already bounded', () => {
     const cols = {
       members: [
         { name: 'create_time', type: 'TIMESTAMP' },
@@ -227,7 +236,7 @@ describe('buildTimeBoundSuggestions', () => {
       filterTree: tree,
       joinConfigs: [],
     });
-    expect(out.map((s) => s.tableName)).toEqual(['members']);
+    expect(out).toEqual([]);
   });
 });
 

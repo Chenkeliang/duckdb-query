@@ -10,6 +10,7 @@ import logging
 import os
 import re
 import shutil
+import tempfile
 import time
 import traceback
 from datetime import datetime
@@ -58,9 +59,106 @@ task_utils = TaskUtils(EXPORTS_DIR)
 
 SUPPORTED_EXTERNAL_TYPES = {"mysql", "postgresql", "sqlite", "duckdb"}
 
-# 本地导出仅支持 DuckDB COPY 的这两种格式(excel 需转换、不走此路径)。
-# 单一来源,避免同文件两处各写一份字面量。
-LOCAL_EXPORT_FORMATS = ("csv", "parquet")
+# 单一来源,避免下载与桌面直写两条路径各写一份格式白名单。
+LOCAL_EXPORT_FORMATS = ("csv", "parquet", "json", "xlsx")
+XLSX_MAX_DATA_ROWS = 1_048_575
+
+
+class XlsxRowLimitError(ValueError):
+    """Raised when an async result cannot fit in one XLSX worksheet."""
+
+
+def _validate_xlsx_row_count(format: str, row_count: Any) -> None:
+    if format != "xlsx" or row_count is None:
+        return
+    try:
+        normalized_count = int(row_count)
+    except (TypeError, ValueError):
+        return
+    if normalized_count > XLSX_MAX_DATA_ROWS:
+        raise XlsxRowLimitError(
+            "Excel export supports at most "
+            f"{XLSX_MAX_DATA_ROWS:,} data rows; this result has {normalized_count:,} rows"
+        )
+
+
+def _normalize_non_finite_json(source_path: str, target_path: str) -> None:
+    """Replace DuckDB's bare non-finite floats with JSON null, preserving strings."""
+    tokens = (b"-Infinity", b"Infinity", b"NaN")
+    token_starts = {token[0] for token in tokens}
+    pending = bytearray()
+    output = bytearray()
+    in_string = False
+    escaped = False
+
+    def flush_if_needed(target) -> None:
+        if len(output) >= 1024 * 1024:
+            target.write(output)
+            output.clear()
+
+    with open(source_path, "rb") as source, open(target_path, "wb") as target:
+        while chunk := source.read(1024 * 1024):
+            for byte in chunk:
+                if in_string:
+                    output.append(byte)
+                    if escaped:
+                        escaped = False
+                    elif byte == ord("\\"):
+                        escaped = True
+                    elif byte == ord('"'):
+                        in_string = False
+                    flush_if_needed(target)
+                    continue
+
+                if pending:
+                    pending.append(byte)
+                    candidate = bytes(pending)
+                    if candidate in tokens:
+                        output.extend(b"null")
+                        pending.clear()
+                    elif not any(token.startswith(candidate) for token in tokens):
+                        output.extend(pending)
+                        pending.clear()
+                    flush_if_needed(target)
+                    continue
+
+                if byte in token_starts:
+                    pending.append(byte)
+                else:
+                    output.append(byte)
+                    if byte == ord('"'):
+                        in_string = True
+                flush_if_needed(target)
+
+        output.extend(pending)
+        target.write(output)
+
+
+def _copy_standard_json(con, table_name: str, result_file_path: str) -> None:
+    """COPY JSON through temporary files so the published file is RFC 8259 JSON."""
+    target_dir = os.path.dirname(os.path.abspath(result_file_path))
+    raw_fd, raw_path = tempfile.mkstemp(
+        prefix=".duckquery-json-", suffix=".raw", dir=target_dir
+    )
+    normalized_fd, normalized_path = tempfile.mkstemp(
+        prefix=".duckquery-json-", suffix=".tmp", dir=target_dir
+    )
+    os.close(raw_fd)
+    os.close(normalized_fd)
+    os.unlink(raw_path)
+
+    try:
+        escaped_raw_path = raw_path.replace("'", "''")
+        con.execute(
+            f"COPY \"{table_name}\" TO '{escaped_raw_path}' "
+            "WITH (FORMAT JSON, ARRAY true)"
+        )
+        _normalize_non_finite_json(raw_path, normalized_path)
+        os.replace(normalized_path, result_file_path)
+    finally:
+        for temporary_path in (raw_path, normalized_path):
+            if os.path.exists(temporary_path):
+                os.remove(temporary_path)
 
 
 def validate_attach_databases(attach_databases: Optional[List[AttachDatabase]]) -> None:
@@ -253,8 +351,8 @@ class AsyncQueryRequest(BaseModel):
     attach_databases: Optional[List[AttachDatabase]] = None
     # 自定义表名撞已有表时是否允许覆盖；默认 False，避免静默 CREATE OR REPLACE 毁数据
     overwrite: bool = False
-    # 行数范围【显式选择】：False=全量(逐字执行,尊重用户自己的 LIMIT);True=限制(缺 LIMIT 时补
-    # max_query_rows)。异步/导出默认全量。绝不再按 "LIMIT==上限" 猜测系统是否追加过(复审 P1)。
+    # 最终行数选择:False=移除页面最外层 LIMIT;True=保留或补 max_query_rows。
+    # 子查询 LIMIT 始终保留,不按 LIMIT 数值猜测来源。
     apply_row_limit: bool = False
 
 
@@ -703,7 +801,7 @@ def _serve_task_download(task_id: str, fmt: str):
     try:
         if fmt not in LOCAL_EXPORT_FORMATS:
             raise APIValidationError(
-                "Unsupported format, only csv and parquet are allowed",
+                "Unsupported format",
                 details={"field": "format", "allowed": list(LOCAL_EXPORT_FORMATS)},
             )
 
@@ -775,7 +873,9 @@ def _export_result_file_to_local_path(task_id: str, fmt: str, target_path: str) 
     已向用户确认过覆盖,此处直接覆盖。
     """
     if fmt not in LOCAL_EXPORT_FORMATS:
-        raise ValueError("Unsupported format, only csv and parquet are allowed")
+        raise ValueError(
+            f"Unsupported format; allowed formats: {', '.join(LOCAL_EXPORT_FORMATS)}"
+        )
     target = validate_local_target_path(target_path)
 
     source = generate_download_file(task_id, fmt, target_path=target)
@@ -938,8 +1038,7 @@ def execute_async_query(
 
         logger.info(f"Starting async query task: {task_id}")
 
-        # 行数范围按【显式选择】:全量=逐字执行(尊重用户 LIMIT),限制=缺 LIMIT 时补 max_query_rows。
-        # 不再按 "LIMIT==上限" 猜测删除(会误删用户手写等值 LIMIT,复审 P1)。
+        # 行数范围按最终选择:全量=移除页面最外层 LIMIT;限制=保留或补默认 LIMIT。
         from routers.query_sql_utils import apply_row_limit_choice
 
         clean_sql = apply_row_limit_choice(sql, apply_row_limit)
@@ -1181,7 +1280,7 @@ def execute_async_federated_query(
         attach_databases: 需要 ATTACH 的外部数据库列表
     """
     import duckdb
-    from core.database.duckdb_pool import get_connection_pool, interruptible_connection
+    from core.database.duckdb_pool import get_connection_pool
 
     pool = get_connection_pool()
 
@@ -1208,7 +1307,7 @@ def execute_async_federated_query(
         logger.info(f"Starting async federated query task: {task_id}")
         logger.info(f"Databases to ATTACH: {attach_databases}")
 
-        # 行数范围按【显式选择】(见 execute_async_query);不再按 "LIMIT==上限" 猜测删除(复审 P1)。
+        # 行数范围按最终选择,与本地异步、导出、保存路径使用同一公共 helper。
         from routers.query_sql_utils import apply_row_limit_choice
 
         from core.common.sql_mysql_quotes import (
@@ -1224,60 +1323,42 @@ def execute_async_federated_query(
         table_name, is_custom = _resolve_result_table_name(custom_table_name, task_id)
         logger.info(f"Federated query result will be stored in table: {table_name}")
 
-        # 第二步：在同一连接中执行 ATTACH、查询、DETACH
-        with interruptible_connection(task_id, clean_sql) as con:
-            try:
-                # 自定义名撞已有表且未显式允许覆盖 → 报错，绝不静默覆盖用户表
-                if is_custom and not overwrite:
-                    _raise_if_table_exists(con, table_name)
+        attached_aliases = [db["alias"] for db in (attach_databases or [])]
 
-                # 2.1 执行 ATTACH 操作
-                if attach_databases:
-                    attached_aliases = _attach_external_databases(con, attach_databases)
-                    logger.info(
-                        f"Successfully ATTACHed {len(attached_aliases)} databases: {attached_aliases}"
-                    )
+        # 自定义名撞已有表且未显式允许覆盖 → 报错，绝不静默覆盖用户表
+        if is_custom and not overwrite:
+            with pool.get_connection() as con:
+                _raise_if_table_exists(con, table_name)
 
-                # 取消检查点 2: ATTACH 完成后检查
-                if task_manager.is_cancellation_requested(task_id):
-                    logger.info(f"Federated query task cancelled after ATTACH: {task_id}")
-                    _detach_databases(con, attached_aliases)
-                    task_manager.mark_cancelled(task_id, "User cancelled (after ATTACH)")
-                    return
+        # 取消检查点 2: 进入联邦落表前检查
+        if task_manager.is_cancellation_requested(task_id):
+            logger.info(f"Federated query task cancelled before persistence: {task_id}")
+            task_manager.mark_cancelled(task_id, "User cancelled (before persistence)")
+            return
 
-                # 2.2 执行查询并保存结果
-                create_sql = f'CREATE OR REPLACE TABLE "{table_name}" AS ({clean_sql})'
-                logger.info(f"Executing federated query: {create_sql[:200]}...")
-                con.execute(create_sql)
-                logger.info(f"Federated query result table created: {table_name}")
+        # 共享落表路径统一处理 MySQL 新连接、单线程 CTAS、断线重试和 DETACH。
+        from core.database.federated_attach import execute_sql_and_persist
 
-                # 2.3 获取元数据（在同一连接中）
-                metadata_snapshot = build_table_metadata_snapshot(con, table_name)
-                row_count = metadata_snapshot.get("row_count", 0)
-                logger.info(f"Federated query result row count: {row_count}")
+        metadata_snapshot = execute_sql_and_persist(
+            clean_sql,
+            table_name,
+            attach_databases,
+            query_id=task_id,
+        )
+        row_count = metadata_snapshot.get("row_count", 0)
+        columns = [
+            {"name": profile["name"], "type": profile["duckdb_type"]}
+            for profile in metadata_snapshot.get("column_profiles", [])
+        ]
+        logger.info(f"Federated query result table created: {table_name}")
+        logger.info(f"Federated query result row count: {row_count}")
+        logger.info(f"Federated query result column count: {len(columns)}")
 
-                columns_sql = f'DESCRIBE \"{table_name}\"'
-                columns_info = con.execute(columns_sql).fetchall()
-                columns = [{"name": col[0], "type": col[1]} for col in columns_info]
-                logger.info(f"Federated query result column count: {len(columns)}")
+        # 显式触发 GC 回收联邦扫描临时内存
+        import gc
 
-                # 内存清理
-                try:
-                    # 显式触发GC回收内存
-                    import gc
-
-                    gc.collect()
-                    logger.info("Memory cleanup completed")
-                except Exception as cleanup_error:
-                    logger.warning(f"Memory cleanup failed: {str(cleanup_error)}")
-
-            finally:
-                # 2.4 DETACH（无论成功失败都要执行）
-                if attached_aliases:
-                    logger.info(f"Starting DETACH cleanup: {attached_aliases}")
-                    _detach_databases(con, attached_aliases)
-
-        # 连接池连接在这里释放
+        gc.collect()
+        logger.info("Memory cleanup completed")
 
         # 取消检查点 3: 查询完成后检查
         if task_manager.is_cancellation_requested(task_id):
@@ -1452,6 +1533,9 @@ def generate_download_file(task_id: str, format: str = "csv", target_path: Optio
         if not task_utils.is_task_completed(task_info):
             raise ValueError(f"Task {task_id} not completed, cannot generate download file")
 
+        if task_info.result_info:
+            _validate_xlsx_row_count(format, task_info.result_info.get("row_count"))
+
         # 检查是否已经有生成的文件
         if task_info.result_file_path and os.path.exists(task_info.result_file_path):
             existing_file = task_info.result_file_path
@@ -1481,9 +1565,13 @@ def generate_download_file(task_id: str, format: str = "csv", target_path: Optio
         with pool.get_connection() as con:
             # 验证表是否存在
             try:
-                con.execute(f'SELECT COUNT(*) FROM "{table_name}"').fetchone()
+                row_count = con.execute(
+                    f'SELECT COUNT(*) FROM "{table_name}"'
+                ).fetchone()[0]
             except Exception as e:
                 raise ValueError(f"Table does not exist or has been deleted: {str(e)}")
+
+            _validate_xlsx_row_count(format, row_count)
 
             # 生成文件路径:默认写 exports 缓存;桌面直写导出传入 target_path 时
             # 一步写到用户选定路径(单遍磁盘写,不产生缓存副本)
@@ -1495,11 +1583,22 @@ def generate_download_file(task_id: str, format: str = "csv", target_path: Optio
             escaped_path = str(result_file_path).replace("'", "''")
             if format == "csv":
                 copy_sql = f"COPY \"{table_name}\" TO '{escaped_path}' WITH (FORMAT CSV, HEADER true)"
-            else:
+            elif format == "parquet":
                 copy_sql = f"COPY \"{table_name}\" TO '{escaped_path}' WITH (FORMAT PARQUET)"
+            elif format == "json":
+                copy_sql = None
+            else:
+                con.execute("LOAD excel")
+                copy_sql = (
+                    f"COPY \"{table_name}\" TO '{escaped_path}' "
+                    "WITH (FORMAT XLSX, HEADER true)"
+                )
 
             logger.info(f"Starting download file generation: {result_file_path}")
-            con.execute(copy_sql)
+            if format == "json":
+                _copy_standard_json(con, table_name, result_file_path)
+            else:
+                con.execute(copy_sql)
             logger.info(f"Download file generated successfully: {result_file_path}")
 
             # 仅写缓存位置时登记任务文件元数据;直写用户路径不算缓存
@@ -1508,6 +1607,8 @@ def generate_download_file(task_id: str, format: str = "csv", target_path: Optio
 
             return result_file_path
 
+    except XlsxRowLimitError:
+        raise
     except Exception as e:
         import traceback
 
@@ -1531,9 +1632,12 @@ def cleanup_old_files():
 
         # 清理exports目录中的旧文件（含异步 task-* 与同步导出的 {uuid} 文件）
         if os.path.exists(EXPORTS_DIR):
-            for file_path in glob.glob(
-                os.path.join(EXPORTS_DIR, "*.csv")
-            ) + glob.glob(os.path.join(EXPORTS_DIR, "*.parquet")):
+            for file_path in (
+                glob.glob(os.path.join(EXPORTS_DIR, "*.csv"))
+                + glob.glob(os.path.join(EXPORTS_DIR, "*.parquet"))
+                + glob.glob(os.path.join(EXPORTS_DIR, "*.json"))
+                + glob.glob(os.path.join(EXPORTS_DIR, "*.xlsx"))
+            ):
                 try:
                     # 检查文件修改时间
                     file_mtime = datetime.fromtimestamp(os.path.getmtime(file_path))

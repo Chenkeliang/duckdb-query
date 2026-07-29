@@ -250,7 +250,7 @@ wheels = [
 
 [[package]]
 name = "duckquery-mcp"
-version = "0.2.0"
+version = "0.3.1"
 source = { editable = "." }
 dependencies = [
     { name = "httpx" },

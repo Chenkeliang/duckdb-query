@@ -79,7 +79,7 @@
 | POST | `/api/duckdb/execute` | 对象 | `executeDuckDBSQL`；`data`: `columns`, `column_types[]`（`{name, duckdb_type}`；来自 `DESCRIBE (<sql>)`，PRAGMA/EXPLAIN/多语句等不可 DESCRIBE 时由同一次执行的游标 description 类型兜底）, `data`, `row_count`, `preview_limit_applied?`；499 / 500 |
 | POST | `/api/duckdb/federated-query` | 对象 | `executeFederatedQuery`；同上含 `column_types`；额外 `optimized_sql`（半连接下推改写后 SQL）、`suggestions[]`（审计列时间界建议，**不自动改结果**）；404 `connection_id`；503 ATTACH；499 / 500 / **504 超时** |
 | POST | `/api/query/cancel/{request_id}` | 对象 | `cancelSyncQuery`；404 `QUERY_NOT_FOUND`（无活跃同步查询） |
-| POST | `/api/save_query_to_duckdb` | 对象 | 保存结果表元数据（依请求）；`apply_row_limit`（默认 `false`，兼容 `applyRowLimit`）语义与 `/api/async-tasks` 相同 | `saveQueryToDuckDB` |
+| POST | `/api/save_query_to_duckdb` | 对象 | 保存结果表元数据（依请求）；`apply_row_limit`（默认 `false`，兼容 `applyRowLimit`）为保存对话框的最终选择：`false`＝移除查询页面最外层 `LIMIT` 后全量保存（子查询 `LIMIT` 保留），`true`＝保留页面最外层 `LIMIT`，页面无最外层 `LIMIT` 时补默认 `max_query_rows` | `saveQueryToDuckDB` |
 | GET | `/api/duckdb/tables` | **列表** | `items[]`: `table_name`, `row_count`, `column_count`, `created_at`（应用时区 ISO，仅展示，可为 null）。顺序 = `system_table_registry.sort_seq` 倒序（稳定创建序登记表，新建/替换置顶，跨重启稳定；与 AI 目录同口径） | `getDuckDBTables` |
 | GET | `/api/duckdb/tables/{name}` | 对象 | 表详情 / `table` 包装 | `getDuckDBTableDetail` |
 | DELETE | `/api/duckdb/tables/{name}` | 对象 | `deleted_table` | `deleteDuckDBTable` |
@@ -144,11 +144,11 @@
 |------|------|--------|----------|
 | GET | `/api/async-tasks` | **列表** | `listAsyncTasks`（`limit`, `offset`, `order_by`） |
 | GET | `/api/async-tasks/{id}` | 对象 | `getAsyncTask`；404 `RESOURCE_NOT_FOUND` |
-| POST | `/api/async-tasks` | 对象 | `submitAsyncQuery`（`task_id`；可 `attach_databases` 或由 `datasource` 推导）；`apply_row_limit`（默认 `false`）＝行数范围显式选择：`false`＝全量（逐字执行提交的 SQL，不加系统 LIMIT、尊重用户自带 LIMIT），`true`＝最外层缺 LIMIT 时补默认 `max_query_rows`（用户已写则用用户值，**默认值不是硬上限**）；判定走 sqlglot AST（`has_top_level_limit`），禁止按 LIMIT 数值猜来源；**前端须提交 base_sql（无系统预览 LIMIT）**；retry 保留原任务选择；400 空 SQL / attach 校验 |
+| POST | `/api/async-tasks` | 对象 | `submitAsyncQuery`（`task_id`；可 `attach_databases` 或由 `datasource` 推导）；`apply_row_limit`（默认 `false`）为最终行数选择：`false`＝移除查询页面最外层 `LIMIT` 后全量执行（子查询 `LIMIT` 保留），`true`＝保留已有最外层 `LIMIT`，没有时补默认 `max_query_rows`（默认值不是硬上限）；判定走 sqlglot AST，禁止按 LIMIT 数值猜来源；retry 保留原任务选择；400 空 SQL / attach 校验 |
 | POST | `/api/async-tasks/{id}/cancel` | 对象 | `cancelAsyncTask`；404 任务不存在；400 `TASK_CANCEL_NOT_ALLOWED` |
 | POST | `/api/async-tasks/{id}/retry` | 对象 | `retryAsyncTask`；404 / 400 缺 SQL |
-| POST | `/api/async-tasks/{id}/download` | **blob** 或 JSON 错误体 | `downloadAsyncResult`（体：`format`）；400 格式；404 文件 |
-| POST | `/api/async-tasks/{id}/export-to-path` | `path`, `size_bytes` | `exportAsyncResultToPath`（体：`format`, `target_path`）；**桌面模式专用**——后端直写用户经原生存盘对话框选定的本地路径；非桌面（未设 `ALLOW_ARBITRARY_LOCAL_PATHS=1`）403，浏览器场景继续用 GET `/download` 流式；400 路径/格式非法 |
+| GET / POST | `/api/async-tasks/{id}/download` | **blob** 或 JSON 错误体 | `getAsyncDownloadUrl`（query / body：`format=csv\|parquet\|json\|xlsx`）；JSON 为标准数组；XLSX 含表头且最多 1,048,575 条数据；400 格式或 XLSX 行数超限；404 文件 |
+| POST | `/api/async-tasks/{id}/export-to-path` | `path`, `size_bytes` | `exportAsyncResultToPath`（体：`format=csv\|parquet\|json\|xlsx`, `target_path`）；**桌面模式专用**——后端直写用户经原生存盘对话框选定的本地路径；非桌面（未设 `ALLOW_ARBITRARY_LOCAL_PATHS=1`）403，浏览器场景继续用 GET `/download` 流式；400 路径、格式或 XLSX 行数超限 |
 | GET | `/api/errors/statistics` | 对象 | `getErrorStatistics` |
 | POST | `/api/errors/clear` | 对象 | `clearOldErrors`（query: `days`） |
 
@@ -193,7 +193,7 @@ BY NAME、LIMIT、预览 vs 执行语义见 [QUERY_BEHAVIOR_ZH.md](QUERY_BEHAVIO
 
 | 方法 | 路径 | 成功 `data` | 前端 |
 |------|------|-------------|------|
-| POST | `/api/query-results/export` | `file_id`, `download_url`, `format`, `row_count_estimate?` | `exportQueryResults`；`apply_row_limit`（默认 `false`）语义与 `/api/async-tasks` 相同（全量＝不加系统 LIMIT；限制＝缺则补默认，不封顶用户值）；前端提交 base_sql |
+| POST | `/api/query-results/export` | `file_id`, `download_url`, `format`, `row_count_estimate?` | `exportQueryResults`；`apply_row_limit`（默认 `false`）语义与 `/api/async-tasks` 相同（`false` 移除最外层 `LIMIT`，`true` 保留已有最外层 `LIMIT`、没有则补默认 `max_query_rows`）；子查询 `LIMIT` 始终保留 |
 | GET | `/api/query-results/export/{file_id}/download` | 文件流 | `getQueryExportDownloadUrl` + 浏览器下载 |
 | POST | `/api/query-results/export/{file_id}/save-to-path` | `path`, `size_bytes` | `saveQueryExportToPath`（体：`target_path`）；**桌面模式专用**（同 async export-to-path 门控，非桌面 403）；400 路径非法；404 文件不存在 |
 
@@ -237,7 +237,7 @@ BY NAME、LIMIT、预览 vs 执行语义见 [QUERY_BEHAVIOR_ZH.md](QUERY_BEHAVIO
 
 > 失败策略与终止码：`typed_error` → **error 事件**,`termination_reason=output_invalid`;`reject`/`fallback` → **answer 事件**,`result` 为 `null`(或 fallback),`termination_reason` 为 `output_invalid`(输出模型校验失败)或 `sql_validation_failed`(`generate_sql`/`repair_sql` 的 `EXPLAIN` 干跑失败)。故 `answer` 的 `termination_reason` 不只是 `completed`。
 >
-> **`data_qa` 的两个终止动作 `final` / `refuse`**：`final` 是**带数据的答复**——其 `result.sql` 必须是本轮**真正经 `run_query` 执行过的只读 SELECT**(确定性 grounding 门控:规范化后须命中本次执行集)。`sql` 为空、非只读、或未跑过一律**拒绝**并回喂纠错;纠错预算耗尽仍不达标 → **error 事件**、`termination_reason=ungrounded_final`(诚实终止,**绝不** `completed`;这挡住"拿 schema 样例直接算""执行 A 回答 B""写库被抹成 null 报假成功"三类静默错误)。`refuse` 是**不带数据的答复**(拒绝写/文件/越权请求,或确实无需查询)——`{"action":"refuse","result":{"content":"..."}}`,content-only、不过 grounding,后端强制 `sql=null`/`evidence=[]`,走正常 `answer` 事件、`termination_reason=completed`。前端无需特判 `refuse`(仍是 `answer`)。
+> **`data_qa` 的三个终止动作 `final` / `answer` / `refuse`**：`final` 是**带数据的答复**——模型只提交本轮成功 `run_query` 的内部 `query_id`；后端据该 ID 回填实际执行的 `sql`，并从 SQL AST 提取真实业务表生成 `evidence[]`，不采信模型自报的 SQL/证据。不存在、失败或未读取真实表的查询 ID（如 `SELECT 1` / `SELECT CURRENT_DATE`）一律拒绝并回喂纠错；预算耗尽仍不达标 → **error 事件**、`termination_reason=ungrounded_final`，绝不 `completed`。`answer` 用于无需查数的解释/普通回答，`refuse` 用于写入、文件、越权或缺少作用域；二者均由后端强制 `sql=null` / `evidence=[]`，仅 `refuse` 可产生范围外表建议。`query_id` 只属于模型内部协议，对外 `result` 仍是 `{content, sql|null, evidence[]}`，前端与 MCP 参数不变。
 >
 > **`safe` 由后端派生,不采信模型**：`generate_sql`/`repair_sql` 结果里的 `safe` **不在 output_model**(模型若在 `result` 里带 `safe`,`model_dump()` 阶段被丢弃),而由后端 `finalize` 用 AST 只读判定(`is_select_only`)重算并追加——`generate_sql.safe = SQL 为单条只读 SELECT`;`repair_sql` 中 `fixed_sql` 非只读 SELECT 时 `fixed_sql` 抹为 `null` 且 `safe=false`。前端(`ResultPanel`)据 `safe` 决定是否允许"应用修复 SQL",故此值必须服务端可信,不能让 LLM 决定。
 

@@ -7,6 +7,12 @@ import { Input } from '@/components/ui/input';
 import { Label } from '@/components/ui/label';
 import { Textarea } from '@/components/ui/textarea';
 import {
+    Accordion,
+    AccordionContent,
+    AccordionItem,
+    AccordionTrigger,
+} from '@/components/ui/accordion';
+import {
     Dialog,
     DialogContent,
     DialogDescription,
@@ -66,11 +72,11 @@ export const SaveQueryDialog: React.FC<SaveQueryDialogProps> = ({
             <DialogContent className="sm:max-w-[425px]">
                 <DialogHeader>
                     <DialogTitle>{t('query.bookmark.saveDialog.title')}</DialogTitle>
-                    <DialogDescription>
+                    <DialogDescription className="sr-only">
                         {t('query.bookmark.saveDialog.description')}
                     </DialogDescription>
                 </DialogHeader>
-                <div className="grid gap-4 py-4">
+                <div className="grid gap-3 py-2">
                     <div className="grid gap-2">
                         <Label htmlFor="name">{t('query.bookmark.saveDialog.name')}</Label>
                         <Input
@@ -91,15 +97,22 @@ export const SaveQueryDialog: React.FC<SaveQueryDialogProps> = ({
                             className="resize-none"
                         />
                     </div>
-                    <div className="grid gap-2">
-                        <Label>{t('query.bookmark.saveDialog.sqlPreview')}</Label>
-                        <SQLHighlight
-                            sql={sql}
-                            compact
-                            minHeight="4rem"
-                            maxHeight="6.25rem"
-                        />
-                    </div>
+                    <Accordion type="single" collapsible>
+                        <AccordionItem value="sql-preview" className="border-0">
+                            <AccordionTrigger className="py-2 text-sm hover:no-underline">
+                                {t('query.bookmark.saveDialog.sqlPreview')}
+                            </AccordionTrigger>
+                            <AccordionContent className="pb-0">
+                                <SQLHighlight
+                                    sql={sql}
+                                    compact
+                                    minHeight="4rem"
+                                    maxHeight="6.25rem"
+                                    scrollable
+                                />
+                            </AccordionContent>
+                        </AccordionItem>
+                    </Accordion>
                 </div>
                 <DialogFooter>
                     <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>

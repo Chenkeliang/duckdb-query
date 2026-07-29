@@ -73,7 +73,7 @@ def test_data_qa_stream_full_sequence(tmp_path, monkeypatch):
         replies = [
             json.dumps({"action": "run_query", "args": {"sql": good}}),
             json.dumps({"action": "final", "result": {
-                "content": "2 笔", "sql": good, "evidence": ["t1"]}}),
+                "content": "2 笔", "query_id": "t1"}}),
         ]
         with _scripted(replies):
             with client.stream("POST", "/api/ai/agent/stream", json={
@@ -88,6 +88,8 @@ def test_data_qa_stream_full_sequence(tmp_path, monkeypatch):
         assert names == ["run_started", "tool_started", "tool_completed", "answer", "done"]
         ans = events[3]
         assert ans["result"]["content"] == "2 笔"
+        assert ans["result"]["evidence"] == [t]
+        assert "query_id" not in ans["result"]
         with with_duckdb_connection() as con:
             assert con.execute(ans["result"]["sql"]).fetchone()[0] == 2
     finally:

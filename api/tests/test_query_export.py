@@ -60,6 +60,23 @@ def test_cleanup_keeps_recent_sync_export_file():
             os.remove(path)
 
 
+@pytest.mark.parametrize("extension", ["json", "xlsx"])
+def test_cleanup_removes_old_async_structured_export_files(extension):
+    """2026-07-29: async JSON/XLSX cache files follow the same 24-hour cleanup."""
+    file_id = uuid.uuid4().hex
+    path = os.path.join(EXPORTS_DIR, f"task-{file_id}.{extension}")
+    Path(path).write_text("x")
+    old = time.time() - 25 * 3600
+    os.utime(path, (old, old))
+
+    try:
+        cleanup_old_files()
+        assert not os.path.exists(path)
+    finally:
+        if os.path.exists(path):
+            os.remove(path)
+
+
 def test_export_returns_actual_row_count():
     table = f"export_unit_{uuid.uuid4().hex[:8]}"
     with with_duckdb_connection() as con:

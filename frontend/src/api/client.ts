@@ -77,6 +77,9 @@ const normalizeAxiosError = (error: AxiosError): AxiosError & ApiError => {
 apiClient.interceptors.response.use(
     (response) => response,
     (error: AxiosError) => {
+        if (axios.isCancel(error)) {
+            return Promise.reject(error);
+        }
         if (error.code === 'ECONNABORTED') {
             const err = new Error('TIMEOUT_ERROR') as ApiError;
             err.code = 'TIMEOUT_ERROR';

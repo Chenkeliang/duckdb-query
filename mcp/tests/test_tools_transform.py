@@ -17,6 +17,21 @@ async def test_save_as_table(cfg):
     # 本地保存不带 attach_databases 键,后端仍走原本地分支
     sent = json.loads(route.calls.last.request.content)
     assert "attach_databases" not in sent
+    assert sent["apply_row_limit"] is True
+
+
+@respx.mock
+async def test_save_as_table_can_use_full_result_limit_semantics(cfg):
+    base = "http://127.0.0.1:48001"
+    respx.get(f"{base}/health").mock(return_value=httpx.Response(200, json={"status": "healthy"}))
+    route = respx.post(f"{base}/api/save_query_to_duckdb").mock(
+        return_value=httpx.Response(200, json={"success": True, "data": {"table_name": "t2"}}))
+    await save_as_table(
+        DuckQueryClient(cfg), cfg, sql="SELECT 1 LIMIT 10", table_name="t2",
+        apply_row_limit=False, confirm=True,
+    )
+    sent = json.loads(route.calls.last.request.content)
+    assert sent["apply_row_limit"] is False
 
 
 @respx.mock

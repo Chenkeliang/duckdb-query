@@ -8,6 +8,9 @@ shutdown_all_duckdb_connections() 不会为了关闭而现开一个新池/新连
 
 from __future__ import annotations
 
+from pathlib import Path
+from types import SimpleNamespace
+
 import pytest
 
 duckdb = pytest.importorskip("duckdb")
@@ -86,3 +89,31 @@ def test_shutdown_all_duckdb_connections_closes_an_existing_pool(monkeypatch):
         assert p._connections == {}
     finally:
         p.close_all()
+
+
+def test_pool_release_checkpoints_pending_user_database_wal(monkeypatch, tmp_path):
+    """Regression 2026-07-28: a returned writer must checkpoint its WAL."""
+    database_path = tmp_path / "main.db"
+    temp_dir = tmp_path / "temp"
+    temp_dir.mkdir()
+    paths = SimpleNamespace(database_path=database_path, temp_dir=temp_dir)
+    monkeypatch.setattr(pool_module.config_manager, "get_duckdb_paths", lambda: paths)
+    monkeypatch.setattr(
+        DuckDBConnectionPool,
+        "_configure_connection",
+        lambda _self, _connection, _app_config, _temp_dir: None,
+    )
+
+    pool = DuckDBConnectionPool(min_connections=1, max_connections=1)
+    wal_path = Path(f"{database_path}.wal")
+    try:
+        with pool.get_connection() as connection:
+            connection.execute(
+                "CREATE TABLE imported AS "
+                "SELECT range AS id, repeat('x', 200) AS payload FROM range(3940)"
+            )
+            assert wal_path.stat().st_size > 0
+
+        assert not wal_path.exists() or wal_path.stat().st_size == 0
+    finally:
+        pool.close_all()

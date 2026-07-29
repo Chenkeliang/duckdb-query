@@ -1,5 +1,9 @@
 import socket
 import importlib
+import logging
+import threading
+import time
+from unittest.mock import patch
 
 import pytest
 
@@ -42,3 +46,48 @@ def test_desktop_env_sets_memory_and_loopback(monkeypatch, tmp_path):
     assert os.environ["DUCKDB_MEMORY_LIMIT"].endswith("GB")
     # 扩展目录指向可写用户目录(而非只读包内目录)
     assert os.environ["DUCKDB_EXTENSION_DIRECTORY"] == str(tmp_path / "duckdb_extensions")
+
+
+def test_parent_watchdog_cleans_up_duckdb_before_hard_exit(monkeypatch):
+    """Regression 2026-07-28: parent loss must checkpoint before hard exit."""
+    import run
+
+    importlib.reload(run)
+    order = []
+
+    class _ImmediateThread:
+        def __init__(self, target=None, **_kwargs):
+            self._target = target
+
+        def start(self):
+            self._target()
+
+    monkeypatch.setattr(run.os, "getppid", lambda: 4242)
+    monkeypatch.setattr(threading, "Thread", _ImmediateThread)
+    monkeypatch.setattr(time, "sleep", lambda _seconds: None)
+    monkeypatch.setattr("psutil.pid_exists", lambda _pid: False)
+
+    def _exit(code):
+        order.append(("exit", code))
+        raise SystemExit(code)
+
+    monkeypatch.setattr(run.os, "_exit", _exit)
+    monkeypatch.setattr(logging, "shutdown", lambda: order.append("logging_shutdown"))
+
+    with patch(
+        "core.common.server_control.request_graceful_shutdown", return_value=True
+    ), patch(
+        "core.database.connection_registry.connection_registry.interrupt_all",
+        side_effect=lambda: order.append("queries_interrupted"),
+    ), patch(
+        "core.database.duckdb_pool.shutdown_all_duckdb_connections",
+        side_effect=lambda: order.append("pool_closed"),
+    ), pytest.raises(SystemExit):
+        run.start_parent_watchdog()
+
+    assert order == [
+        "queries_interrupted",
+        "pool_closed",
+        "logging_shutdown",
+        ("exit", 1),
+    ]

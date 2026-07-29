@@ -86,6 +86,23 @@ describe('useTableColumns', () => {
 
       expect(result).toEqual([{ name: 'col1', type: 'unknown' }]);
     });
+
+    /** Regression 2026-07-28: JOIN time-bound recommendations ignored remote indexes. */
+    it('marks only leading index columns as range-indexed', () => {
+      const columns = [
+        { name: 'create_time', type: 'DATETIME' },
+        { name: 'update_time', type: 'DATETIME' },
+      ];
+      const indexes = [
+        { name: 'idx_status_create', columns: 'status, create_time' },
+        { name: 'idx_update_time', columns: 'update_time, id' },
+      ];
+
+      expect(transformExternalColumns(columns, indexes)).toEqual([
+        { name: 'create_time', type: 'DATETIME' },
+        { name: 'update_time', type: 'DATETIME', hasLeadingIndex: true },
+      ]);
+    });
   });
 
   describe('transformDuckDBColumns', () => {

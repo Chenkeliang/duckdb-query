@@ -1,6 +1,9 @@
 import duckdb
 import pytest
+import sqlglot
+from sqlglot import exp
 
+from core.common.utils import dedupe_column_names
 from core.database.federated_optimizer import optimize_federated_sql
 
 
@@ -11,6 +14,8 @@ def conn(tmp_path):
     r = duckdb.connect(str(remote_path))
     r.execute("CREATE TABLE orders (id INTEGER, amount DOUBLE, created_at TIMESTAMP)")
     r.execute("INSERT INTO orders VALUES (1,10,'2020-01-01'),(2,20,'2026-06-01'),(3,30,'2026-06-10')")
+    r.execute("CREATE TABLE items (id INTEGER, order_id INTEGER, label VARCHAR)")
+    r.execute("INSERT INTO items VALUES (10,2,'x'),(11,2,'y'),(12,3,'z')")
     r.close()
 
     c = duckdb.connect()
@@ -52,3 +57,55 @@ def test_left_join_preserved_remote_returns_all_rows(conn):
     baseline = conn.execute(sql).fetchall()
     opt, _s, _w = optimize_federated_sql(conn, sql, {"remote_db"}, _Cfg())
     assert conn.execute(opt).fetchall() == baseline == [(1,), (2,), (3,)]
+
+
+def test_same_mysql_star_join_remote_sql_executes_and_preserves_result(conn):
+    """历史回归（2026-07-28）：整条同库 JOIN 下推生成的远端 SQL 必须在
+    真实 DuckDB 上执行，并与原联邦 SQL 的值、字段顺序及去重列名一致。"""
+    sql = (
+        "SELECT * FROM remote_db.orders o JOIN remote_db.items i "
+        "ON o.id = i.order_id ORDER BY o.id, i.id"
+    )
+    baseline_cursor = conn.execute(sql)
+    baseline_rows = baseline_cursor.fetchall()
+    baseline_columns = dedupe_column_names(
+        [str(column[0]) for column in baseline_cursor.description]
+    )
+
+    optimized, _suggestions, warnings = optimize_federated_sql(
+        conn,
+        sql,
+        {"remote_db"},
+        _Cfg(),
+        mysql_aliases={"remote_db"},
+    )
+    wrapper = sqlglot.parse_one(optimized, read="duckdb")
+    mysql_query = next(wrapper.find_all(exp.Anonymous))
+    remote_mysql_sql = mysql_query.expressions[1].this
+    remote_duckdb_sql = sqlglot.transpile(
+        remote_mysql_sql, read="mysql", write="duckdb"
+    )[0]
+
+    remote_path = conn.execute(
+        "SELECT path FROM duckdb_databases() WHERE database_name = 'remote_db'"
+    ).fetchone()[0]
+    remote = duckdb.connect(remote_path, read_only=True)
+    try:
+        remote_cursor = remote.execute(remote_duckdb_sql)
+        remote_rows = remote_cursor.fetchall()
+        remote_columns = [str(column[0]) for column in remote_cursor.description]
+    finally:
+        remote.close()
+
+    assert remote_rows == baseline_rows
+    assert [
+        (row[0], row[1], row[3], row[4], row[5]) for row in remote_rows
+    ] == [
+        (2, 20.0, 10, 2, "x"),
+        (2, 20.0, 11, 2, "y"),
+        (3, 30.0, 12, 3, "z"),
+    ]
+    assert remote_columns == baseline_columns == [
+        "id", "amount", "created_at", "id_1", "order_id", "label"
+    ]
+    assert warnings == []

@@ -8,7 +8,7 @@
 import duckdb
 import pytest
 
-from core.services.ai_sql_guard import ScopeLimits, check_sql
+from core.services.ai_sql_guard import ScopeLimits, check_sql, extract_physical_tables
 
 ALIASES = ["sorder", "demo_duck"]
 
@@ -176,3 +176,19 @@ def test_cte_name_is_not_mistaken_for_an_out_of_scope_table():
     limits = ScopeLimits(local_tables=["guard_orders"])
     sql = "WITH tmp AS (SELECT * FROM guard_orders) SELECT count(*) AS n FROM tmp"
     assert check_sql(sql, ALIASES, limits)[0] is True
+
+
+@pytest.mark.parametrize(("sql", "expected"), [
+    ("SELECT * FROM guard_orders", ["guard_orders"]),
+    ("SELECT * FROM sorder.iget_order", ["sorder.iget_order"]),
+    ("SELECT * FROM sorder.public.orders", ["sorder.public.orders"]),
+    (
+        "WITH scoped AS (SELECT * FROM guard_orders) SELECT * FROM scoped",
+        ["guard_orders"],
+    ),
+    ("SELECT * FROM range(3)", []),
+    ("SELECT 1 AS grounding", []),
+])
+def test_extract_physical_tables_excludes_ctes_and_table_functions(sql, expected):
+    """Regression (2026-07-29): only real business tables may ground a data answer."""
+    assert extract_physical_tables(sql) == expected

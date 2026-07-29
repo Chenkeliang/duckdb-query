@@ -1,15 +1,21 @@
 /**
  * 下载结果对话框
  * 
- * 用于下载异步任务的结果文件（CSV/Parquet）
+ * 用于下载异步任务的结果文件（CSV/Parquet/JSON/Excel）
  */
 
-import React, { useCallback, useState } from 'react';
+import React, { useCallback, useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Download, FileSpreadsheet, FileArchive, Loader2, Check } from 'lucide-react';
+import {
+  Check,
+  Download,
+  FileArchive,
+  FileJson,
+  FileSpreadsheet,
+  Loader2,
+} from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import { Label } from '@/components/ui/label';
 import {
   Dialog,
   DialogContent,
@@ -19,7 +25,11 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { cn } from '@/lib/utils';
-import { getAsyncDownloadUrl, exportAsyncResultToPath } from '@/api';
+import {
+  getAsyncDownloadUrl,
+  exportAsyncResultToPath,
+  type AsyncDownloadFormat,
+} from '@/api';
 import { openExternal, isTauri } from '@/desktop/openExternal';
 import { pickSavePath } from '@/desktop/saveLocal';
 import {
@@ -28,7 +38,9 @@ import {
   handleApiErrorToast,
 } from '@/utils/toastHelpers';
 
-export type DownloadFormat = 'csv' | 'parquet';
+export type DownloadFormat = AsyncDownloadFormat;
+
+const XLSX_MAX_DATA_ROWS = 1_048_575;
 
 export interface DownloadResultDialogProps {
   /** 是否打开 */
@@ -50,6 +62,7 @@ interface FormatOption {
   label: string;
   description: string;
   icon: React.ComponentType<{ className?: string }>;
+  disabled?: boolean;
 }
 
 /**
@@ -66,6 +79,13 @@ export const DownloadResultDialog: React.FC<DownloadResultDialogProps> = ({
   const { t } = useTranslation('common');
   const [format, setFormat] = useState<DownloadFormat>('csv');
   const [isDownloading, setIsDownloading] = useState(false);
+  const xlsxDisabled = rowCount !== undefined && rowCount > XLSX_MAX_DATA_ROWS;
+
+  useEffect(() => {
+    if (format === 'xlsx' && xlsxDisabled) {
+      setFormat('csv');
+    }
+  }, [format, xlsxDisabled]);
 
   // 格式选项
   const formatOptions: FormatOption[] = [
@@ -81,6 +101,22 @@ export const DownloadResultDialog: React.FC<DownloadResultDialogProps> = ({
       description: t('async.download.parquetDescription', '高效压缩格式，适合大数据分析'),
       icon: FileArchive,
     },
+    {
+      value: 'json',
+      label: 'JSON',
+      description: t('async.download.jsonDescription', '结构化格式，适合程序处理'),
+      icon: FileJson,
+    },
+    {
+      value: 'xlsx',
+      label: 'Excel',
+      description: t(
+        'async.download.xlsxDescription',
+        '电子表格格式，最多 1,048,575 行'
+      ),
+      icon: FileSpreadsheet,
+      disabled: xlsxDisabled,
+    },
   ];
 
   // 下载处理,分两条链路:
@@ -92,6 +128,9 @@ export const DownloadResultDialog: React.FC<DownloadResultDialogProps> = ({
   //   两条链路都绝不能用 axios blob 把整个文件读进 webview——2 亿行 CSV 达数 GB,
   //   会把界面卡死(此前的 bug)。大文件建议用 Parquet(体积约 CSV 的 1/10)。
   const handleDownload = useCallback(async () => {
+    if (format === 'xlsx' && xlsxDisabled) {
+      return;
+    }
     setIsDownloading(true);
     try {
       if (isTauri()) {
@@ -118,19 +157,21 @@ export const DownloadResultDialog: React.FC<DownloadResultDialogProps> = ({
     } finally {
       setIsDownloading(false);
     }
-  }, [taskId, format, tableName, onOpenChange, onSuccess, t]);
+  }, [taskId, format, tableName, onOpenChange, onSuccess, t, xlsxDisabled]);
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[400px]">
-        <DialogHeader>
+        <DialogHeader className="flex-row flex-wrap items-baseline gap-x-2 gap-y-1 space-y-0">
           <DialogTitle className="flex items-center gap-2">
             <Download className="h-5 w-5" />
             {t('async.download.title', '下载结果')}
           </DialogTitle>
           {/* 表名是下划线长 token(async_result_<uuid>),浏览器不在 _ 处折行,
               不加 break-all 会横向撑出弹窗;行数徽标 nowrap 保持"(420 行)"完整 */}
-          <DialogDescription className="break-all">
+          <DialogDescription
+            className={tableName || rowCount !== undefined ? 'break-all' : 'sr-only'}
+          >
             {tableName && (
               <span className="font-mono text-xs">{tableName}</span>
             )}
@@ -139,24 +180,34 @@ export const DownloadResultDialog: React.FC<DownloadResultDialogProps> = ({
                 ({rowCount.toLocaleString()} {t('query.result.rows', '行')})
               </span>
             )}
+            {!tableName && rowCount === undefined && (
+              <span>{t('async.download.selectFormat', '选择下载格式')}</span>
+            )}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="py-4">
-          <Label className="mb-3 block">
-            {t('async.download.selectFormat', '选择下载格式')}
-          </Label>
-          <div className="space-y-3">
+        <div className="py-2">
+          <div
+            className="space-y-3"
+            role="radiogroup"
+            aria-label={t('async.download.selectFormat', '选择下载格式')}
+          >
             {formatOptions.map((option) => {
               const Icon = option.icon;
               const isSelected = format === option.value;
+              const descriptionId = `async-download-${option.value}-description`;
               return (
                 <button
                   key={option.value}
                   type="button"
+                  role="radio"
+                  aria-checked={isSelected}
+                  aria-label={option.label}
+                  aria-describedby={descriptionId}
                   onClick={() => setFormat(option.value)}
+                  disabled={option.disabled}
                   className={cn(
-                    'flex items-start gap-3 p-3 rounded-lg border w-full text-left transition-colors',
+                    'flex items-start gap-3 p-3 rounded-lg border w-full text-left transition-colors disabled:cursor-not-allowed disabled:opacity-50',
                     isSelected
                       ? 'border-primary bg-primary/5'
                       : 'border-border hover:bg-muted/50'
@@ -176,7 +227,7 @@ export const DownloadResultDialog: React.FC<DownloadResultDialogProps> = ({
                       )} />
                       <span className="font-medium text-foreground">{option.label}</span>
                     </div>
-                    <p className={cn(
+                    <p id={descriptionId} className={cn(
                       'text-xs mt-1',
                       isSelected ? 'text-foreground/80' : 'text-foreground/60'
                     )}>
@@ -197,7 +248,10 @@ export const DownloadResultDialog: React.FC<DownloadResultDialogProps> = ({
           >
             {t('actions.cancel', '取消')}
           </Button>
-          <Button onClick={handleDownload} disabled={isDownloading}>
+          <Button
+            onClick={handleDownload}
+            disabled={isDownloading || (format === 'xlsx' && xlsxDisabled)}
+          >
             {isDownloading ? (
               <Loader2 className="h-4 w-4 mr-2 animate-spin" />
             ) : (

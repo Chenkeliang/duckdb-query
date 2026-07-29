@@ -20,7 +20,7 @@
 from __future__ import annotations
 
 import logging
-from typing import Mapping, Optional, Sequence, Tuple
+from typing import List, Mapping, Optional, Sequence, Tuple
 
 import sqlglot
 from sqlglot import exp
@@ -71,6 +71,41 @@ class ScopeLimits:
             return True
         allowed = self.alias_tables.get(alias.lower())
         return allowed is None or name.lower() in allowed
+
+
+def extract_physical_tables(sql: str) -> List[str]:
+    """Return physical business table references in first-seen order."""
+    try:
+        tree = sqlglot.parse_one(sql, read="duckdb")
+    except Exception:  # noqa: BLE001  无法审计的 SQL 不产生 provenance
+        return []
+
+    cte_names = {
+        str(cte.alias).lower() for cte in tree.find_all(exp.CTE) if cte.alias
+    }
+    tables: List[str] = []
+    seen: set[str] = set()
+    for table in tree.find_all(exp.Table):
+        if not isinstance(table.this, exp.Identifier):
+            continue
+        name = str(table.this.name)
+        if not table.db and not table.catalog and name.lower() in cte_names:
+            continue
+
+        catalog = str(table.catalog) if table.catalog else ""
+        db = str(table.db) if table.db else ""
+        if catalog and catalog.lower() not in _LOCAL_QUALIFIERS:
+            qualified = ".".join(part for part in (catalog, db, name) if part)
+        elif db and db.lower() not in _LOCAL_QUALIFIERS:
+            qualified = f"{db}.{name}"
+        else:
+            qualified = name
+
+        key = qualified.lower()
+        if key not in seen:
+            seen.add(key)
+            tables.append(qualified)
+    return tables
 
 
 def _scope_reason(table: exp.Table, name: str, qualifier: str, limits: ScopeLimits) -> str | None:

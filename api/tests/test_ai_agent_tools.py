@@ -127,6 +127,36 @@ def test_run_query_correct_aggregate_value(ctx, table):
     assert "125" in result.model_text  # 0..249 偶数 125 个
 
 
+def test_run_query_records_successful_query_provenance(ctx, table):
+    """Regression (2026-07-29): final grounding must bind to an executed tool call ID."""
+    sql = f"SELECT count(*) AS n FROM {table}"
+    result = asyncio.run(
+        ai_agent_tools.run_query_async(
+            ctx,
+            RunQueryArgs(sql=sql),
+            3,
+            query_id="t7",
+        )
+    )
+    assert result.ok is True
+    assert ctx.executed_queries["t7"].sql == sql
+    assert ctx.executed_queries["t7"].tables == (table,)
+
+
+def test_run_query_does_not_record_failed_query_provenance(ctx):
+    """Regression (2026-07-29): a failed query ID must never be accepted as evidence."""
+    result = asyncio.run(
+        ai_agent_tools.run_query_async(
+            ctx,
+            RunQueryArgs(sql="SELECT * FROM table_that_does_not_exist_729"),
+            3,
+            query_id="t8",
+        )
+    )
+    assert result.ok is False
+    assert "t8" not in ctx.executed_queries
+
+
 def test_run_query_budget_exhausted(ctx, table):
     ctx.sql_calls_used = 3
     result = asyncio.run(
@@ -335,12 +365,12 @@ def test_out_of_scope_candidates_picks_real_but_unauthorized_table(tmp_path):
         con.execute("CREATE TABLE IF NOT EXISTS scope_hint_refunds(id INTEGER)")
     try:
         ctx = _ctx_with_scope(["scope_hint_refunds"])  # 只授权 refunds
-        got = out_of_scope_candidates(ctx, "scope_hint_orders 不在当前范围内，请先加入。")
+        got = out_of_scope_candidates(ctx, ["scope_hint_orders"])
         assert got == ["scope_hint_orders"]
         # 已在范围内的不会被当成"缺失"
-        assert out_of_scope_candidates(ctx, "scope_hint_refunds 有 4 条") == []
+        assert out_of_scope_candidates(ctx, ["scope_hint_refunds"]) == []
         # 编造的表名不进建议(只认真实存在的)
-        assert out_of_scope_candidates(ctx, "nonexistent_table_xyz 不在范围内") == []
+        assert out_of_scope_candidates(ctx, ["nonexistent_table_xyz"]) == []
     finally:
         with with_duckdb_connection() as con:
             con.execute("DROP TABLE IF EXISTS scope_hint_orders")
@@ -352,4 +382,22 @@ def test_out_of_scope_candidates_silent_without_limits():
     from core.services.ai_agent_tools import out_of_scope_candidates
 
     ctx = AgentRunCtx(run_id="r", authorized_aliases=[], attach_configs=[])
-    assert out_of_scope_candidates(ctx, "任何表名") == []
+    assert out_of_scope_candidates(ctx, ["任何表名"]) == []
+
+
+def test_out_of_scope_candidates_matches_complete_structured_names_only():
+    """回归(2026-07-29):结构化候选和用户问题都须完整匹配表名。"""
+    from core.database.duckdb_engine import with_duckdb_connection
+    from core.services.ai_agent_tools import out_of_scope_candidates
+
+    with with_duckdb_connection() as con:
+        con.execute("CREATE TABLE sq(id INTEGER)")
+    try:
+        ctx = _ctx_with_scope([])
+        assert out_of_scope_candidates(ctx, ["SQL"]) == []
+        assert out_of_scope_candidates(ctx, ["SQ"]) == ["sq"]
+        assert out_of_scope_candidates(ctx, [], user_texts=["解释 SQL"]) == []
+        assert out_of_scope_candidates(ctx, [], user_texts=["查询 SQ"]) == ["sq"]
+    finally:
+        with with_duckdb_connection() as con:
+            con.execute("DROP TABLE sq")

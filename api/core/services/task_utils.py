@@ -96,6 +96,9 @@ class TaskUtils:
         """
         file_name = os.path.basename(file_path)
         table_name = self.task_id_to_table_name(task_id)
+        file_format = os.path.splitext(file_name)[1].lower().lstrip(".")
+        if file_format not in {"csv", "parquet", "json", "xlsx"}:
+            file_format = "csv"
 
         # 创建result_info字典
         result_info = {
@@ -103,7 +106,7 @@ class TaskUtils:
             "table_name": table_name,
             "file_generated": True,
             "file_path": file_path,
-            "file_format": "parquet" if file_name.endswith(".parquet") else "csv",
+            "file_format": file_format,
         }
 
         # 创建AsyncTask对象
@@ -144,10 +147,13 @@ class TaskUtils:
         """
         根据文件扩展名获取媒体类型
         """
-        if file_path.endswith(".csv"):
-            return "text/csv"
-        else:  # 默认为parquet
-            return "application/octet-stream"
+        media_types = {
+            ".csv": "text/csv",
+            ".json": "application/json",
+            ".xlsx": "application/vnd.openxmlformats-officedocument.spreadsheetml.sheet",
+        }
+        extension = os.path.splitext(file_path)[1].lower()
+        return media_types.get(extension, "application/octet-stream")
 
     def update_task_file_info(
         self, task: AsyncTask, file_path: str, format: str

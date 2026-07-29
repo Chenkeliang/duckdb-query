@@ -7,7 +7,7 @@
 import React, { useCallback, useState, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { useMutation, useQueryClient } from '@tanstack/react-query';
-import { Loader2, AlertCircle, Info, Database } from 'lucide-react';
+import { Loader2, AlertCircle, Database } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -22,9 +22,12 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import {
-  Alert,
-  AlertDescription,
-} from '@/components/ui/alert';
+  Accordion,
+  AccordionContent,
+  AccordionItem,
+  AccordionTrigger,
+} from '@/components/ui/accordion';
+import { SQLHighlight } from '@/components/SQLHighlight';
 import { submitAsyncQuery, toAttachDatabasesPayload, type CreateTaskRequest, type DataSource } from '@/api';
 import { showSuccessToast, handleApiErrorToast } from '@/utils/toastHelpers';
 
@@ -92,15 +95,6 @@ function validateTableName(name: string): { valid: boolean; error?: string } {
 }
 
 /**
- * 截断 SQL 显示
- */
-function truncateSQL(sql: string, maxLength: number = 200): string {
-  const singleLine = sql.replace(/\s+/g, ' ').trim();
-  if (singleLine.length <= maxLength) return singleLine;
-  return singleLine.substring(0, maxLength) + '...';
-}
-
-/**
  * 异步任务发起对话框
  */
 export const AsyncTaskDialog: React.FC<AsyncTaskDialogProps> = ({
@@ -117,7 +111,7 @@ export const AsyncTaskDialog: React.FC<AsyncTaskDialogProps> = ({
   // 表单状态
   const [customTableName, setCustomTableName] = useState('');
   const [tableNameError, setTableNameError] = useState<string | undefined>();
-  // 行数范围:默认全量(异步任务本就用于导全表);勾选则限制到系统上限。始终保留用户自己写的 LIMIT。
+  // 行数范围以当前选择为准:默认忽略页面最外层 LIMIT;勾选后保留或补系统默认值。
   const [applyRowLimit, setApplyRowLimit] = useState(false);
 
   // 是否为联邦查询
@@ -196,69 +190,79 @@ export const AsyncTaskDialog: React.FC<AsyncTaskDialogProps> = ({
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[500px]">
-        <DialogHeader>
+        <DialogHeader className="flex-row flex-wrap items-baseline gap-x-2 gap-y-1 space-y-0">
           <DialogTitle>{t('async.dialog.title', '提交异步任务')}</DialogTitle>
           <DialogDescription>
-            {t('async.dialog.description', '异步任务将在后台执行，结果保存到 DuckDB 表中')}
+            {t('async.dialog.description', '后台执行 · 结果保存为 DuckDB 表')}
           </DialogDescription>
         </DialogHeader>
 
-        <div className="space-y-4 py-4">
+        <div className="space-y-3 py-2">
           {/* SQL 预览 */}
-          <div className="space-y-2">
-            <Label>{t('async.dialog.sql', 'SQL 语句')}</Label>
-            <div className="p-3 bg-muted rounded-md">
-              <code className="text-xs font-mono text-muted-foreground break-all">
-                {truncateSQL(sql)}
-              </code>
-            </div>
-          </div>
+          <Accordion type="single" collapsible>
+            <AccordionItem value="sql-preview" className="border-0">
+              <AccordionTrigger className="py-2 text-sm hover:no-underline">
+                {t('async.dialog.sql', 'SQL 语句')}
+              </AccordionTrigger>
+              <AccordionContent className="pb-0">
+                <SQLHighlight
+                  sql={sql}
+                  compact
+                  minHeight="4rem"
+                  maxHeight="6rem"
+                  scrollable
+                />
+              </AccordionContent>
+            </AccordionItem>
+          </Accordion>
 
           {/* 数据源信息 */}
-          {datasource && (
-            <Alert>
-              <Info className="h-4 w-4" />
-              <AlertDescription>
-                {t('async.dialog.externalSource', '数据来自外部数据库: {{name}} ({{type}})', {
-                  name: datasource.name || datasource.id,
-                  type: datasource.type,
-                })}
-              </AlertDescription>
-            </Alert>
-          )}
-
-          {/* 联邦查询附加数据库列表 */}
-          {isFederatedQuery && (
-            <div className="space-y-2">
-              <Label className="flex items-center gap-2">
-                <Database className="h-4 w-4" />
-                {t('async.dialog.attachedDatabases', '附加的外部数据库')}
-              </Label>
-              <div className="p-3 bg-muted rounded-md space-y-1">
-                {attachDatabases!.map((db, index) => (
-                  <div key={index} className="text-sm flex items-center gap-2">
-                    <span className="font-mono text-primary">{db.alias}</span>
-                    <span className="text-muted-foreground">→</span>
-                    <span className="text-muted-foreground">
-                      {db.connectionName || db.connectionId}
+          {(datasource || isFederatedQuery) && (
+            <div className="flex flex-wrap items-center gap-x-2 gap-y-1 rounded-md border border-border px-3 py-2 text-xs">
+              <Database className="h-4 w-4 text-muted-foreground" />
+              {datasource && (
+                <>
+                  <span className="font-medium text-foreground">
+                    {datasource.name || datasource.id}
+                  </span>
+                  <span className="text-muted-foreground">{datasource.type.toUpperCase()}</span>
+                </>
+              )}
+              {datasource && isFederatedQuery && (
+                <span className="text-muted-foreground">·</span>
+              )}
+              {isFederatedQuery && (
+                <>
+                  <span className="text-muted-foreground">
+                    {t('async.dialog.attachedDatabases', '附加数据库')}:
+                  </span>
+                  {attachDatabases!.map((db) => (
+                    <span key={`${db.alias}-${db.connectionId}`} className="whitespace-nowrap">
+                      <span className="font-mono text-primary">{db.alias}</span>
+                      <span className="mx-1 text-muted-foreground">→</span>
+                      <span className="text-foreground">
+                        {db.connectionName || db.connectionId}
+                      </span>
                     </span>
-                  </div>
-                ))}
-              </div>
-              <p className="text-xs text-muted-foreground">
-                {t('async.dialog.federatedQueryHint', '这些数据库将在查询执行期间临时附加')}
-              </p>
+                  ))}
+                </>
+              )}
             </div>
           )}
 
           {/* 自定义表名 */}
           <div className="space-y-2">
-            <Label htmlFor="tableName">
-              {t('async.dialog.tableName', '结果表名')}
-              <span className="text-muted-foreground text-xs ml-2">
-                ({t('async.dialog.tableNameOptional', '可选')})
+            <div className="flex flex-wrap items-baseline justify-between gap-x-3 gap-y-1">
+              <Label htmlFor="tableName">
+                {t('async.dialog.tableName', '结果表名')}
+                <span className="ml-2 text-xs text-muted-foreground">
+                  ({t('async.dialog.tableNameOptional', '可选')})
+                </span>
+              </Label>
+              <span className="text-xs text-muted-foreground">
+                {t('async.dialog.tableNameHint', '字母或 _ 开头；仅限字母、数字、_；最多 64 字符')}
               </span>
-            </Label>
+            </div>
             <Input
               id="tableName"
               placeholder={t('async.dialog.tableNamePlaceholder', '留空则自动生成')}
@@ -272,27 +276,23 @@ export const AsyncTaskDialog: React.FC<AsyncTaskDialogProps> = ({
                 {tableNameError}
               </p>
             )}
-            <p className="text-xs text-muted-foreground">
-              {t('async.dialog.tableNameHint', '表名只能包含字母、数字和下划线，不能以数字开头')}
-            </p>
           </div>
 
-          {/* 行数范围:默认全量;勾选后仅为无外层 LIMIT 的 SQL 追加系统默认值 */}
-          <div className="flex items-start gap-2">
+          {/* 行数范围以当前选择为准:默认忽略外层 LIMIT;勾选后保留或补默认值 */}
+          <div className="flex flex-wrap items-center gap-x-2 gap-y-1">
             <Checkbox
               id="applyRowLimit"
               checked={applyRowLimit}
               onCheckedChange={(v) => setApplyRowLimit(v === true)}
-              className="mt-0.5"
             />
-            <div className="space-y-0.5">
-              <Label htmlFor="applyRowLimit" className="cursor-pointer">
-                {t('async.dialog.limitRows', '限制行数')}
-              </Label>
-              <p className="text-xs text-muted-foreground">
-                {t('async.dialog.limitRowsHint', '默认导出全部行；勾选后，仅当 SQL 没有最外层 LIMIT 时追加系统预览行数。SQL 中手写的 LIMIT 始终原样保留')}
-              </p>
-            </div>
+            <Label htmlFor="applyRowLimit" className="cursor-pointer whitespace-nowrap">
+              {t('async.dialog.limitRows', '限制行数')}
+            </Label>
+            <p className="min-w-0 text-xs text-muted-foreground">
+              {applyRowLimit
+                ? t('async.dialog.rowLimitLimited', '限制结果行数：保留 SQL 最外层 LIMIT；未设置时限制为 10,000 行')
+                : t('async.dialog.rowLimitFull', '不限结果行数：移除 SQL 最外层 LIMIT，保留子查询 LIMIT')}
+            </p>
           </div>
         </div>
 

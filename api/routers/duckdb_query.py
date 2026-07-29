@@ -36,14 +36,18 @@ from core.data.file_datasource_manager import (
 )
 from core.database.database_manager import db_manager
 from core.database.duckdb_engine import (
+    _is_federated_connection_lost as is_federated_connection_lost,
+    _is_read_only_query as is_read_only_query,
     fetch_query_records,
     with_duckdb_connection,
 )
 from core.database.federated_attach import (
     attach_databases_on_connection,
+    configure_mysql_fresh_connections,
     detach_databases_on_connection,
     mysql_remote_cancellation_scope,
     resolve_attach_configs,
+    single_threaded_mysql_persistence,
 )
 from core.database.duckdb_pool import interruptible_connection
 from core.database.connection_registry import connection_registry
@@ -849,50 +853,77 @@ def execute_federated_query(
 
         # 1. ATTACH 所有外部数据库（连接池复用时会容忍已挂载别名）
         if attach_configs:
+            configure_mysql_fresh_connections(conn, attach_configs)
             attached_aliases = attach_databases_on_connection(conn, attach_configs)
             logger.info(f"Attached databases: {attached_aliases}")
 
         # DETACH 必须放 finally:查询/保存中途抛错时,若不清理,连接会带着
         # ATTACH 回到池里被后续请求复用(Codex S-13)
         try:
-            with mysql_remote_cancellation_scope(conn, query_id, attach_configs):
-                # 2. 智能下推：半连接键下推(保持结果) + 时间界建议(不改 SQL)
-                attach_aliases = {alias for (alias, _cfg) in attach_configs}
-                opt_sql, suggestions, opt_warnings = optimize_federated_sql(
-                    conn, _opt["sql"], attach_aliases, config_manager.get_app_config()
-                )
-                _opt["sql"] = opt_sql
-                _opt["suggestions"] = suggestions or None
-                if opt_warnings:
-                    warnings.extend(str(w) for w in opt_warnings)
+            for attempt in range(2):
+                try:
+                    with mysql_remote_cancellation_scope(conn, query_id, attach_configs):
+                        # 2. 智能下推：半连接键下推(保持结果) + 时间界建议(不改 SQL)
+                        attach_aliases = {alias for (alias, _cfg) in attach_configs}
+                        mysql_aliases = {
+                            alias
+                            for alias, db_config in attach_configs
+                            if str(db_config.get("type", "")).lower() == "mysql"
+                        }
+                        opt_sql, suggestions, opt_warnings = optimize_federated_sql(
+                            conn,
+                            sql_query,
+                            attach_aliases,
+                            config_manager.get_app_config(),
+                            mysql_aliases=mysql_aliases,
+                        )
+                        _opt["sql"] = opt_sql
+                        _opt["suggestions"] = suggestions or None
+                        if opt_warnings:
+                            warnings.extend(str(w) for w in opt_warnings)
 
-                # 3. 执行用户 SQL（使用优化后的语句）
-                result_triplet = fetch_query_records(
-                    conn,
-                    opt_sql,
-                    # DESCRIBE(mysql_query(...)) 会在 MySQL 上真实执行 SQL，且使用
-                    # 独立于事务扫描的连接；取消器无法精确命中。实际游标 description
-                    # 已提供同样的列类型，因此该表函数直接执行一次即可。
-                    describe_before_execute=not _uses_mysql_query_table_function(opt_sql),
-                )
+                        # 3. 执行用户 SQL（使用优化后的语句）
+                        result_triplet = fetch_query_records(
+                            conn,
+                            opt_sql,
+                            # DESCRIBE(mysql_query(...)) 会在 MySQL 上真实执行 SQL，且使用
+                            # 独立于事务扫描的连接；取消器无法精确命中。实际游标 description
+                            # 已提供同样的列类型，因此该表函数直接执行一次即可。
+                            describe_before_execute=not _uses_mysql_query_table_function(opt_sql),
+                        )
 
-                # 4. 可选：保存查询结果为新表（使用原始 SQL，确保语义不变）
-                if request.save_as_table:
-                    table_name = request.save_as_table.strip()
-                    if table_name:
-                        try:
-                            save_sql = request.sql.strip().rstrip(";")
-                            create_sql = (
-                                f'CREATE OR REPLACE TABLE {quote_identifier(table_name)} AS ({save_sql})'
-                            )
-                            conn.execute(create_sql)
-                            table_registry.record_creation(table_name)
-                            logger.info(f"Query result saved as table: {table_name}")
-                        except Exception as save_error:
-                            logger.warning(f"Failed to save query result as table: {str(save_error)}")
-                            warnings.append(f"Failed to save result as table: {str(save_error)}")
+                        # 4. 可选：保存查询结果为新表（使用原始 SQL，确保语义不变）
+                        if request.save_as_table:
+                            table_name = request.save_as_table.strip()
+                            if table_name:
+                                try:
+                                    save_sql = request.sql.strip().rstrip(";")
+                                    create_sql = (
+                                        f'CREATE OR REPLACE TABLE {quote_identifier(table_name)} AS ({save_sql})'
+                                    )
+                                    conn.execute(create_sql)
+                                    table_registry.record_creation(table_name)
+                                    logger.info(f"Query result saved as table: {table_name}")
+                                except Exception as save_error:
+                                    logger.warning(f"Failed to save query result as table: {str(save_error)}")
+                                    warnings.append(f"Failed to save result as table: {str(save_error)}")
 
-                return result_triplet
+                        return result_triplet
+                except Exception as query_error:
+                    if (
+                        attempt > 0
+                        or not is_read_only_query(sql_query)
+                        or not is_federated_connection_lost(query_error)
+                    ):
+                        raise
+                    logger.warning(
+                        "Federated MySQL connection lost inside cancellation transaction; "
+                        "clearing cache after rollback and retrying once"
+                    )
+                    conn.execute("CALL mysql_clear_cache()")
+                    warnings.clear()
+                    _opt["sql"] = sql_query
+                    _opt["suggestions"] = None
         finally:
             # 5. DETACH 清理(无论成功失败)
             if attached_aliases:
@@ -910,24 +941,25 @@ def execute_federated_query(
     result_records: list = []
     query_column_types = []
     try:
-        with interruptible_connection(query_id, sql_query) as conn:
-            timer = threading.Timer(timeout_s, _on_timeout)
-            timer.start()
-            try:
-                result_columns, result_records, cursor_types = (
-                    execute_in_connection(conn)
+        with single_threaded_mysql_persistence(attach_configs):
+            with interruptible_connection(query_id, sql_query) as conn:
+                timer = threading.Timer(timeout_s, _on_timeout)
+                timer.start()
+                try:
+                    result_columns, result_records, cursor_types = (
+                        execute_in_connection(conn)
+                    )
+                    query_column_types = describe_query_column_types(
+                        conn, _opt["sql"]
+                    ) or [
+                        {"name": name, "duckdb_type": dtype}
+                        for name, dtype in cursor_types
+                    ]
+                finally:
+                    timer.cancel()
+                execution_time = _log_query_metrics_in_conn(
+                    conn, sql_query, start_time, len(result_records)
                 )
-                query_column_types = describe_query_column_types(
-                    conn, _opt["sql"]
-                ) or [
-                    {"name": name, "duckdb_type": dtype}
-                    for name, dtype in cursor_types
-                ]
-            finally:
-                timer.cancel()
-            execution_time = _log_query_metrics_in_conn(
-                conn, sql_query, start_time, len(result_records)
-            )
 
         response_data = {
             "columns": result_columns,

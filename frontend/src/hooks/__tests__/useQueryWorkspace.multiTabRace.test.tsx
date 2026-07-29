@@ -37,6 +37,8 @@ vi.mock('@/api', async (importOriginal) => {
 });
 
 import * as api from '@/api';
+import { showErrorToast } from '@/utils/toastHelpers';
+import { toast } from 'sonner';
 import { useQueryWorkspace } from '../useQueryWorkspace';
 
 type Deferred<T> = { promise: Promise<T>; resolve: (v: T) => void };
@@ -73,6 +75,99 @@ describe('useQueryWorkspace multi-tab refresh race (#10)', () => {
         isPreview: true,
       })
     );
+  });
+
+  /**
+   * Regression 2026-07-29: cancelQuery used to wait for the server-side cancel
+   * request before invalidating the running request. Its abort rejection won
+   * that race and produced both NETWORK_ERROR and cancellation notifications.
+   */
+  it('treats a user cancellation as expected control flow without an error toast', async () => {
+    const exec = vi.mocked(api.executeDuckDBSQL);
+    const cancelRequest = deferred<void>();
+    vi.mocked(api.cancelSyncQuery).mockReturnValueOnce(cancelRequest.promise);
+
+    exec.mockImplementationOnce(((_sql: string, opts?: { signal?: AbortSignal }) =>
+      new Promise((_resolve, reject) => {
+        opts?.signal?.addEventListener('abort', () => {
+          reject(Object.assign(new Error('canceled'), {
+            name: 'CanceledError',
+            code: 'ERR_CANCELED',
+          }));
+        });
+      })) as never);
+
+    const { result } = renderHook(() => useQueryWorkspace());
+    let query!: Promise<void>;
+    act(() => {
+      query = result.current.handleQueryExecute('SELECT * FROM slow_table');
+    });
+    await waitFor(() => expect(result.current.isResultLoading).toBe(true));
+
+    let cancel!: Promise<void>;
+    act(() => {
+      cancel = result.current.cancelQuery();
+    });
+
+    // Keep the server cancellation pending so the aborted request can settle
+    // first, reproducing the original race deterministically.
+    await act(async () => {
+      await Promise.resolve();
+    });
+    expect(showErrorToast).not.toHaveBeenCalled();
+    expect(result.current.lastFailure).toBeNull();
+
+    await act(async () => {
+      cancelRequest.resolve();
+      await Promise.all([query, cancel]);
+    });
+
+    expect(toast.info).toHaveBeenCalledOnce();
+    expect(toast.info).toHaveBeenCalledWith('query.cancelled');
+    expect(showErrorToast).not.toHaveBeenCalled();
+    expect(result.current.isCancelled).toBe(true);
+  });
+
+  it('keeps the previous tab result visible when its refresh is cancelled', async () => {
+    const exec = vi.mocked(api.executeDuckDBSQL);
+    exec.mockResolvedValueOnce(okResult('seed') as never);
+
+    const { result } = renderHook(() => useQueryWorkspace());
+    await act(async () => {
+      await result.current.handleQueryExecute('SELECT 1 AS v');
+    });
+    const tabId = result.current.resultTabs[0].id;
+
+    exec.mockImplementationOnce(((_sql: string, opts?: { signal?: AbortSignal }) =>
+      new Promise((_resolve, reject) => {
+        opts?.signal?.addEventListener('abort', () => {
+          reject(Object.assign(new Error('canceled'), {
+            name: 'CanceledError',
+            code: 'ERR_CANCELED',
+          }));
+        });
+      })) as never);
+    vi.mocked(api.cancelSyncQuery).mockResolvedValueOnce(undefined);
+
+    let refresh!: Promise<void>;
+    act(() => {
+      refresh = result.current.refreshResultTab(tabId);
+    });
+    await waitFor(() => {
+      expect(result.current.resultTabs[0].result.loading).toBe(true);
+    });
+
+    await act(async () => {
+      await result.current.cancelQuery();
+      await refresh;
+    });
+
+    expect(result.current.resultTabs[0].result).toMatchObject({
+      data: [{ v: 'seed' }],
+      loading: false,
+      error: null,
+    });
+    expect(showErrorToast).not.toHaveBeenCalled();
   });
 
   it('Tab A response is applied (not dropped) even if Tab B refresh started after', async () => {

@@ -360,8 +360,8 @@ fn post_shutdown_request(port: u16) -> bool {
 
 /// Kill the backend, preferring a graceful shutdown over SIGKILL: SIGKILL gives the DuckDB
 /// connection pool no chance to close its connections, which leaves the WAL dirty — replaying
-/// a dirty WAL can throw on next launch and trigger WAL quarantine, losing everything written
-/// since the last checkpoint. So: ask nicely via HTTP first, give it up to 5s to exit on its
+/// a dirty WAL can fail replay on next launch; the backend preserves that WAL and refuses to
+/// open an older checkpoint. So: ask nicely via HTTP first, give it up to 5s to exit on its
 /// own, and only hard-kill if that fails (backend didn't start, request failed, or it hung).
 fn kill_backend(app: &AppHandle) {
     let port = *app.state::<ApiPort>().0.lock().unwrap();
