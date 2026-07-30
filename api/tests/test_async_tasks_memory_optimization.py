@@ -17,6 +17,7 @@ from unittest.mock import Mock, patch, MagicMock
 from datetime import datetime, timedelta
 from typing import Any, Dict, Optional
 
+import duckdb
 import sys
 
 sys.path.append(os.path.join(os.path.dirname(__file__), ".."))
@@ -78,6 +79,45 @@ def make_async_task(
         result_file_path=result_file_path,
         result_info=task_result_info,
     )
+
+
+def test_cleanup_old_files_keeps_persistent_async_result_tables(
+    monkeypatch, tmp_path
+):
+    """2026-07-30: cleanup must not delete persisted async result tables."""
+    task_id = "a8b64662-c08a-461c-b977-af86c008e375"
+    table_name = f"async_result_{task_id.replace('-', '_')}"
+    task = make_async_task(task_id, table_name=table_name)
+    task.created_at = get_storage_time() - timedelta(days=30)
+
+    con = duckdb.connect(":memory:")
+    con.execute(f'CREATE TABLE "{table_name}" AS SELECT 1 AS id')
+
+    connection_context = MagicMock()
+    connection_context.__enter__.return_value = con
+    connection_context.__exit__.return_value = False
+    pool = Mock()
+    pool.get_connection.return_value = connection_context
+
+    monkeypatch.setattr(
+        "core.database.duckdb_pool.get_connection_pool", lambda: pool
+    )
+    monkeypatch.setattr(
+        "routers.async_tasks.task_manager.cleanup_expired_exports", lambda _cutoff: 0
+    )
+    monkeypatch.setattr(
+        "routers.async_tasks.task_manager.get_task", lambda _task_id: task
+    )
+    monkeypatch.setattr("routers.async_tasks.EXPORTS_DIR", str(tmp_path))
+
+    try:
+        cleanup_old_files()
+        assert con.execute(
+            "SELECT COUNT(*) FROM duckdb_tables() WHERE table_name = ?",
+            [table_name],
+        ).fetchone()[0] == 1
+    finally:
+        con.close()
 
 
 class TestAsyncQueryMemoryOptimization:
