@@ -1619,8 +1619,9 @@ def generate_download_file(task_id: str, format: str = "csv", target_path: Optio
 
 def cleanup_old_files():
     """
-    清理过期的临时文件
-    删除24小时前的下载文件，释放存储空间
+    清理24小时前的临时下载文件，释放存储空间。
+
+    异步结果表是持久化 DuckDB 表，不在此处自动删除。
     """
     try:
         import glob
@@ -1648,43 +1649,7 @@ def cleanup_old_files():
                 except Exception as e:
                     logger.warning(f"Failed to clean up file, error: {str(e)}")
 
-        # 清理过期的DuckDB表
-        try:
-            from core.database.duckdb_pool import get_connection_pool
-
-            pool = get_connection_pool()
-
-            with pool.get_connection() as con:
-                # 获取所有异步结果表
-                tables_sql = """
-                SELECT table_name
-                FROM information_schema.tables
-                WHERE table_name LIKE 'async_result_%'
-                """
-                tables = con.execute(tables_sql).fetchall()
-
-                for (table_name,) in tables:
-                    try:
-                        # 从表名中提取任务ID（需要将下划线还原为连字符）
-                        safe_task_id = table_name.replace("async_result_", "")
-                        task_id = safe_task_id.replace("_", "-")
-
-                        # 检查任务是否过期（24小时前创建）
-                        task_info = task_manager.get_task(task_id)
-                        if task_info:
-                            created_at = task_info.created_at
-                            if created_at < cutoff_time:
-                                # 删除过期的表
-                                con.execute(f'DROP TABLE IF EXISTS "{table_name}"')
-                                logger.info(f"Cleaned expired table: {table_name}")
-                                cleaned_count += 1
-                    except Exception as e:
-                        logger.warning(f"Failed to clean table: {table_name}, error: {str(e)}")
-
-        except Exception as e:
-            logger.warning(f"Failed to clean DuckDB tables: {str(e)}")
-
-        logger.info(f"File cleanup completed, cleaned {cleaned_count} files/tables")
+        logger.info(f"File cleanup completed, cleaned {cleaned_count} files")
         return cleaned_count
 
     except Exception as e:
