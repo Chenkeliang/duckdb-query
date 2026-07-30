@@ -187,6 +187,7 @@
     "cancelSuccess": "任务已取消",
     "cancelFailed": "取消失败: {{message}}",
     "retry": "重试",
+    "rerun": "重新运行",
     "retrySuccess": "任务已重试",
     "retryFailed": "重试失败: {{message}}",
     "deleteSuccess": "任务已删除",

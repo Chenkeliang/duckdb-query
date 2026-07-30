@@ -20,6 +20,10 @@ vi.mock('react-i18next', () => ({
   }),
 }));
 
+vi.mock('@/hooks/useDuckDBTables', () => ({
+  useDuckDBTables: () => ({ tables: [], isLoading: false, isError: true }),
+}));
+
 const listAsyncTasksMock = vi.fn();
 vi.mock('@/api', () => ({
   listAsyncTasks: (...args: unknown[]) => listAsyncTasksMock(...args),

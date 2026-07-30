@@ -187,6 +187,7 @@
     "cancelSuccess": "Task cancelled",
     "cancelFailed": "Cancel failed: {{message}}",
     "retry": "Retry",
+    "rerun": "Rerun",
     "retrySuccess": "Task retried",
     "retryFailed": "Retry failed: {{message}}",
     "deleteSuccess": "Task deleted",
