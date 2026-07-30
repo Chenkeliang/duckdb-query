@@ -35,6 +35,7 @@ import { listAsyncTasks, cancelAsyncTask, retryAsyncTask } from '@/api';
 import { invalidateAllDataCaches } from '@/utils/cacheInvalidation';
 import { showSuccessToast, handleApiErrorToast } from '@/utils/toastHelpers';
 import { useAppConfig } from '@/hooks/useAppConfig';
+import { useDuckDBTables } from '@/hooks/useDuckDBTables';
 import { cn } from '@/lib/utils';
 import { EmptyState } from '@/components/EmptyState';
 import { Skeleton } from '@/components/ui/skeleton';
@@ -60,7 +61,7 @@ export interface AsyncTask {
     custom_table_name?: string;
     display_name?: string;
   };
-  metadata?: { is_federated?: boolean };
+  metadata?: { is_federated?: boolean; custom_table_name?: string };
 }
 
 export interface AsyncTaskPanelProps {
@@ -118,6 +119,21 @@ function isFederatedSQL(sql?: string): boolean {
 /** 去掉开头的 -- 注释行并压成单行 */
 function cleanSQL(sql: string): string {
   return sql.replace(/^\s*(?:--[^\n]*\n?)+/, '').replace(/\s+/g, ' ').trim();
+}
+
+/** Resolve the persisted result table when historical metadata is sufficient. */
+function getResultTableName(task: AsyncTask): string | undefined {
+  const explicitName = task.result_info?.table_name || task.result_table;
+  if (explicitName) return explicitName;
+
+  const hasHistoricalCustomName = task.result_info?.custom_table_name
+    || task.result_info?.display_name
+    || task.custom_table_name
+    || task.display_name
+    || task.metadata?.custom_table_name;
+  if (hasHistoricalCustomName) return undefined;
+
+  return task.task_id ? `async_result_${task.task_id.replace(/-/g, '_')}` : undefined;
 }
 
 /** 行内 SQL 关键字高亮 */
@@ -179,7 +195,14 @@ function ActionBtn({
     <TooltipProvider>
       <Tooltip>
         <TooltipTrigger asChild>
-          <Button variant="ghost" size="icon" className="h-7 w-7" onClick={onClick} disabled={disabled}>
+          <Button
+            variant="ghost"
+            size="icon"
+            className="h-7 w-7"
+            aria-label={label}
+            onClick={onClick}
+            disabled={disabled}
+          >
             <Icon className="h-4 w-4" />
           </Button>
         </TooltipTrigger>
@@ -202,10 +225,16 @@ export const AsyncTaskPanel: React.FC<AsyncTaskPanelProps> = ({
   const { t } = useTranslation('common');
   const queryClient = useQueryClient();
   const { maxQueryRows } = useAppConfig();
+  const {
+    tables: duckDBTables,
+    isLoading: isLoadingDuckDBTables,
+    isError: isDuckDBTablesError,
+  } = useDuckDBTables();
 
   // 下载对话框状态
   const [downloadDialogOpen, setDownloadDialogOpen] = useState(false);
   const [selectedTaskForDownload, setSelectedTaskForDownload] = useState<AsyncTask | null>(null);
+  const [resubmittedTaskIds, setResubmittedTaskIds] = useState<Set<string>>(() => new Set());
 
   // 分页（前端分页，数据本来就一次拉全）
   const [page, setPage] = useState(1);
@@ -250,14 +279,21 @@ export const AsyncTaskPanel: React.FC<AsyncTaskPanelProps> = ({
       showSuccessToast(t, 'TASK_RETRY_SUCCESS', t('async.retrySuccess', '任务已重试'));
       queryClient.invalidateQueries({ queryKey: ASYNC_TASKS_QUERY_KEY });
     },
-    onError: (error: Error) => {
+    onError: (error: Error, taskId: string) => {
+      setResubmittedTaskIds((current) => {
+        const next = new Set(current);
+        next.delete(taskId);
+        return next;
+      });
       handleApiErrorToast(t, error, t('async.retryFailed', '重试失败'));
     },
   });
 
   const handleRetry = useCallback((taskId: string) => {
+    if (resubmittedTaskIds.has(taskId)) return;
+    setResubmittedTaskIds((current) => new Set(current).add(taskId));
     retryMutation.mutate(taskId);
-  }, [retryMutation]);
+  }, [resubmittedTaskIds, retryMutation]);
 
   // 处理刷新
   const handleRefresh = useCallback(() => {
@@ -279,7 +315,8 @@ export const AsyncTaskPanel: React.FC<AsyncTaskPanelProps> = ({
 
   const handlePreview = useCallback((task: AsyncTask) => {
     if (!onPreviewSQL) return;
-    const table = task.result_info?.table_name || task.result_table || `async_result_${task.task_id}`;
+    const table = getResultTableName(task);
+    if (!table) return;
     const sql = `SELECT * FROM ${quoteDuckDBTable(table)} LIMIT ${maxQueryRows}`;
     onPreviewSQL(sql);
   }, [onPreviewSQL]);
@@ -308,22 +345,43 @@ export const AsyncTaskPanel: React.FC<AsyncTaskPanelProps> = ({
   }, []);
 
   // 行内操作按钮
-  const renderActions = (task: AsyncTask) => (
-    <div className="flex items-center justify-end gap-0.5">
-      {onPreviewSQL && task.status === 'completed' && (
-        <ActionBtn icon={Play} label={t('async.previewResult', '预览结果')} onClick={() => handlePreview(task)} />
-      )}
-      {task.status === 'completed' && (
-        <ActionBtn icon={Download} label={t('async.downloadBtn', '下载')} onClick={() => handleDownload(task)} />
-      )}
-      {(task.status === 'pending' || task.status === 'running') && (
-        <ActionBtn icon={StopCircle} label={t('async.cancel', '取消')} onClick={() => handleCancel(task.task_id)} disabled={cancelMutation.isPending} />
-      )}
-      {task.status === 'failed' && (
-        <ActionBtn icon={RefreshCw} label={t('async.retry', '重试')} onClick={() => handleRetry(task.task_id)} disabled={retryMutation.isPending} />
-      )}
-    </div>
-  );
+  const renderActions = (task: AsyncTask) => {
+    const resultTableName = getResultTableName(task);
+    const catalogCheckable = !!resultTableName
+      && !resultTableName.toLowerCase().startsWith('system_');
+    const availabilityKnown = !isLoadingDuckDBTables
+      && !isDuckDBTablesError
+      && catalogCheckable;
+    const resultMissing = task.status === 'completed'
+      && availabilityKnown
+      && !duckDBTables.some((table) => table.name === resultTableName);
+    const resultUsable = task.status === 'completed'
+      && !isLoadingDuckDBTables
+      && !resultMissing;
+    const previewUsable = resultUsable && !!resultTableName;
+
+    return (
+      <div className="flex items-center justify-end gap-0.5">
+        {onPreviewSQL && previewUsable && (
+          <ActionBtn icon={Play} label={t('async.previewResult', '预览结果')} onClick={() => handlePreview(task)} />
+        )}
+        {resultUsable && (
+          <ActionBtn icon={Download} label={t('async.downloadBtn', '下载')} onClick={() => handleDownload(task)} />
+        )}
+        {(task.status === 'pending' || task.status === 'running') && (
+          <ActionBtn icon={StopCircle} label={t('async.cancel', '取消')} onClick={() => handleCancel(task.task_id)} disabled={cancelMutation.isPending} />
+        )}
+        {(task.status === 'failed' || resultMissing) && (
+          <ActionBtn
+            icon={RefreshCw}
+            label={resultMissing ? t('async.rerun', '重新运行') : t('async.retry', '重试')}
+            onClick={() => handleRetry(task.task_id)}
+            disabled={retryMutation.isPending || resubmittedTaskIds.has(task.task_id)}
+          />
+        )}
+      </div>
+    );
+  };
 
   // 分页计算
   const pageCount = Math.max(1, Math.ceil(tasks.length / pageSize));
