@@ -129,4 +129,6 @@ Permission modes (`read-only` / `normal` / `full`), the Cursor configuration and
 
 If DuckQuery is useful to you, a ⭐ Star helps others find it. If something is missing or does not fit your workflow, open an [Issue](https://github.com/Chenkeliang/duckdb-query/issues) describing your case.
 
+Community acknowledgement: Thanks to [LINUX DO](https://linux.do/) for supporting open-source projects.
+
 [Docs index](docs/README.md) · [API contract](docs/API_CONTRACT_FE_BE.md) · [Issues](https://github.com/Chenkeliang/duckdb-query/issues) · [Contributing](CONTRIBUTING.md) · [Code of Conduct](CODE_OF_CONDUCT.md) · [MIT License](LICENSE)

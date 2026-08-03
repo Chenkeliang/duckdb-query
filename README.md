@@ -129,4 +129,6 @@ uvx duckquery-mcp
 
 如果 DuckQuery 对你有帮助，欢迎点亮 ⭐ Star；使用中遇到问题或有功能需求，欢迎提交 [Issue](https://github.com/Chenkeliang/duckdb-query/issues) 描述你的场景。
 
+社区致谢：感谢 [LINUX DO](https://linux.do/) 对开源项目的支持。
+
 [文档索引](docs/README.md) · [API 契约](docs/API_CONTRACT_FE_BE.md) · [Issues](https://github.com/Chenkeliang/duckdb-query/issues) · [参与贡献](CONTRIBUTING.md) · [行为准则](CODE_OF_CONDUCT.md) · [MIT License](LICENSE)
