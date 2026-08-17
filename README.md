@@ -1,3 +1,5 @@
+
+
 <p align="center">
   <img src="docs/assets/readme/duckq-logo.svg" alt="DuckQuery" height="80">
 </p>
@@ -116,7 +118,7 @@ cd duckdb-query
 
 ## MCP
 
-先启动桌面版或 Docker，再执行：
+先启动桌面版或 Docker，再执行（需要 Python ≥ 3.10）：
 
 ```bash
 uvx duckquery-mcp
