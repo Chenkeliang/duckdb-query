@@ -35,6 +35,8 @@ class ConnectionRecord:
     start_time: float
     sql_preview: str  # 前 200 字符，用于调试
     remote_interrupts: List[Callable[[], bool]] = field(default_factory=list)
+    cancel_requested: bool = False
+    publication_completed: bool = False
 
 
 class ConnectionRegistry:
@@ -107,6 +109,30 @@ class ConnectionRegistry:
                     return True
             return False
 
+    def is_cancel_requested(self, task_id: str) -> bool:
+        """Return whether cancellation won before the result commit point."""
+        with self._lock:
+            record = self._registry.get(task_id)
+            return bool(record and record.cancel_requested)
+
+    def commit_if_not_cancelled(
+        self, task_id: str, commit: Callable[[], None]
+    ) -> bool:
+        """Linearize final publication against concurrent cancellation.
+
+        The registry lock defines the commit point: cancellation that records
+        first prevents the commit; a completed commit makes a later cancel too
+        late to interrupt or misreport the published result.
+        """
+        with self._lock:
+            record = self._registry.get(task_id)
+            if record and record.cancel_requested:
+                return False
+            commit()
+            if record:
+                record.publication_completed = True
+            return True
+
     def interrupt_with_remote(self, task_id: str) -> bool:
         """中断 DuckDB，并调用查询已登记的远端数据库取消器。"""
         with self._lock:
@@ -114,6 +140,10 @@ class ConnectionRegistry:
             if not record:
                 logger.warning("Cannot interrupt task %s: not found in registry", task_id)
                 return False
+            if record.publication_completed:
+                logger.info("Cancellation arrived after task %s publication", task_id)
+                return False
+            record.cancel_requested = True
             connection = record.connection
             remote_interrupts = list(record.remote_interrupts)
 
@@ -147,6 +177,10 @@ class ConnectionRegistry:
             if not record:
                 logger.warning(f"Cannot interrupt task {task_id}: not found in registry")
                 return False
+            if record.publication_completed:
+                logger.info("Cancellation arrived after task %s publication", task_id)
+                return False
+            record.cancel_requested = True
             
             try:
                 record.connection.interrupt()
@@ -169,6 +203,9 @@ class ConnectionRegistry:
             interrupted = 0
             for task_id, record in list(self._registry.items()):
                 try:
+                    if record.publication_completed:
+                        continue
+                    record.cancel_requested = True
                     record.connection.interrupt()
                     interrupted += 1
                 except Exception as e:  # pylint: disable=broad-exception-caught

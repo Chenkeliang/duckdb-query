@@ -15,6 +15,7 @@ from core.database.federated_attach import (
     execute_sql_and_persist,
     federated_source_sql_alias,
     format_qualified_table_reference,
+    publish_query_staging_table,
 )
 
 
@@ -327,6 +328,32 @@ def test_persist_rebinds_remote_cancellation_for_each_retry_attempt(monkeypatch)
         "ctas-2",
     ]
     assert events[6] == "cancel-commit"
+
+
+def test_cancel_before_commit_rolls_back_table_replacement(monkeypatch):
+    """Regression 2026-09-07: cancellation that wins the commit race must
+    preserve the previous result table and leave no partial replacement."""
+    from core.database import federated_attach
+
+    with duckdb_mod.connect(":memory:") as connection:
+        connection.execute("CREATE TABLE target AS SELECT 1 AS value")
+        connection.execute("CREATE TABLE staging AS SELECT 2 AS value")
+        monkeypatch.setattr(
+            federated_attach.connection_registry,
+            "commit_if_not_cancelled",
+            lambda _query_id, _commit: False,
+        )
+
+        with pytest.raises(duckdb_mod.InterruptException):
+            publish_query_staging_table(
+                connection,
+                "staging",
+                "target",
+                query_id="async:cancel-before-commit",
+            )
+
+        assert connection.execute("SELECT * FROM target").fetchall() == [(1,)]
+        assert connection.execute("SELECT * FROM staging").fetchall() == [(2,)]
 
 
 def test_persist_restores_duckdb_threads_after_mysql_ctas_failure(monkeypatch):

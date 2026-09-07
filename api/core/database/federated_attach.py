@@ -133,18 +133,35 @@ def drop_query_staging_table(conn: Any, staging_name: Optional[str]) -> None:
 
 
 def publish_query_staging_table(
-    conn: Any, staging_name: str, table_name: str
+    conn: Any,
+    staging_name: str,
+    table_name: str,
+    query_id: Optional[str] = None,
 ) -> None:
     """Atomically replace a local result table with a completed staging table."""
+    if query_id and connection_registry.is_cancel_requested(query_id):
+        raise duckdb.InterruptException("INTERRUPT Error: cancelled before publication")
     quoted_staging = _quote_identifier(staging_name)
     quoted_table = _quote_identifier(table_name)
     conn.execute("BEGIN TRANSACTION")
     try:
         conn.execute(f"DROP TABLE IF EXISTS {quoted_table}")
         conn.execute(f"ALTER TABLE {quoted_staging} RENAME TO {quoted_table}")
-        conn.execute("COMMIT")
+        if query_id:
+            committed = connection_registry.commit_if_not_cancelled(
+                query_id, lambda: conn.execute("COMMIT")
+            )
+            if not committed:
+                raise duckdb.InterruptException(
+                    "INTERRUPT Error: cancelled before publication"
+                )
+        else:
+            conn.execute("COMMIT")
     except Exception:
-        conn.execute("ROLLBACK")
+        try:
+            conn.execute("ROLLBACK")
+        except Exception:  # transaction may already be rolled back above
+            pass
         raise
 
 
@@ -440,7 +457,9 @@ def execute_sql_and_persist(
             if reject_empty and snapshot["row_count"] == 0:
                 drop_query_staging_table(conn, staging_name)
             else:
-                publish_query_staging_table(conn, staging_name, table_name)
+                publish_query_staging_table(
+                    conn, staging_name, table_name, query_id=query_id
+                )
             return snapshot
         finally:
             if attached:

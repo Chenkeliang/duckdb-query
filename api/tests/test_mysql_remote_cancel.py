@@ -75,6 +75,31 @@ def test_registry_removes_only_the_completed_attempt_remote_interrupt():
     second.assert_called_once_with()
 
 
+def test_cancel_wins_before_publication_commit():
+    registry = ConnectionRegistry()
+    connection = MagicMock()
+    commit = MagicMock()
+    registry.register("async:before-commit", connection, "SELECT 1")
+
+    assert registry.interrupt_with_remote("async:before-commit")
+
+    assert not registry.commit_if_not_cancelled("async:before-commit", commit)
+    commit.assert_not_called()
+
+
+def test_publication_commit_wins_before_late_cancel():
+    registry = ConnectionRegistry()
+    connection = MagicMock()
+    commit = MagicMock()
+    registry.register("async:committed", connection, "SELECT 1")
+
+    assert registry.commit_if_not_cancelled("async:committed", commit)
+    assert not registry.interrupt_with_remote("async:committed")
+
+    commit.assert_called_once_with()
+    connection.interrupt.assert_not_called()
+
+
 def test_mysql_remote_interrupt_lease_is_inactive_after_scope_exit():
     connection = MagicMock()
     session_result = MagicMock()

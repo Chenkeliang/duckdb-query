@@ -176,7 +176,14 @@ def _main_table_create_target(sql: str) -> tuple[Optional[str], bool]:
     return target.name or None, bool(tree.args.get("exists"))
 
 
-def _run_query_maybe_save(conn, sql_query, save_as_table, limit, original_sql=None):
+def _run_query_maybe_save(
+    conn,
+    sql_query,
+    save_as_table,
+    limit,
+    original_sql=None,
+    query_id=None,
+):
     """执行查询;若指定 save_as_table 则先 CTAS 物化(原查询只执行这一次),
     预览行改从已建的表读取——既避免为预览重跑昂贵/有副作用的查询,也保证预览行
     与落库数据一致(非确定性查询如 random()/now() 不再"预览≠落库",Codex P1-11)。
@@ -200,7 +207,9 @@ def _run_query_maybe_save(conn, sql_query, save_as_table, limit, original_sql=No
         try:
             staging_name = create_query_staging_table(conn, save_sql)
             snapshot = build_table_metadata_snapshot(conn, staging_name)
-            publish_query_staging_table(conn, staging_name, table_name)
+            publish_query_staging_table(
+                conn, staging_name, table_name, query_id=query_id
+            )
             logger.info("Query result saved as table: %s", table_name)
             try:
                 file_datasource_manager.save_file_datasource({
@@ -540,7 +549,13 @@ def execute_duckdb_query(
             with interruptible_connection(query_id, sql_query) as conn:
                 (result_columns, result_records, _cursor_types, query_column_types,
                  saved_table, save_error) = _run_query_maybe_save(
-                    conn, sql_query, request.save_as_table, limit, original_sql=request.sql)
+                    conn,
+                    sql_query,
+                    request.save_as_table,
+                    limit,
+                    original_sql=request.sql,
+                    query_id=query_id,
+                )
                 execution_time = _log_query_metrics_in_conn(
                     conn, sql_query, start_time, len(result_records)
                 )
@@ -548,7 +563,13 @@ def execute_duckdb_query(
             with with_duckdb_connection() as con:
                 (result_columns, result_records, _cursor_types, query_column_types,
                  saved_table, save_error) = _run_query_maybe_save(
-                    con, sql_query, request.save_as_table, limit, original_sql=request.sql)
+                    con,
+                    sql_query,
+                    request.save_as_table,
+                    limit,
+                    original_sql=request.sql,
+                    query_id=query_id,
+                )
                 execution_time = _log_query_metrics_in_conn(
                     con, sql_query, start_time, len(result_records)
                 )
@@ -929,7 +950,10 @@ def execute_federated_query(
 
                     if staging_name:
                         publish_query_staging_table(
-                            conn, staging_name, table_name
+                            conn,
+                            staging_name,
+                            table_name,
+                            query_id=query_id,
                         )
                         saved_table = table_name
                         table_registry.record_creation(table_name)
