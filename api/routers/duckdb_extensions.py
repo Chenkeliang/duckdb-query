@@ -15,12 +15,15 @@ import gzip
 import logging
 import os
 import ssl
+import sys
 import threading
 import urllib.request
+from dataclasses import dataclass
 from typing import Dict, Optional, Tuple
 
 from core.common.exceptions import ValidationError as APIValidationError
-from core.database.duckdb_engine import with_duckdb_connection
+from core.common.sql_identifiers import escape_string_literal
+from core.database.duckdb_engine import _autoinstall_toggle_lock, with_duckdb_connection
 from fastapi import APIRouter
 from utils.response_helpers import (
     MessageCode,
@@ -37,105 +40,131 @@ router = APIRouter()
 CATEGORY_DATASOURCE = "datasource"
 CATEGORY_CAPABILITY = "capability"
 
-# 桌面端预置扩展：打包时已下载进安装包，视为始终已安装，不可再次触发联网安装。
-# v1.2.0 起只预置 excel（约 8MB，本地导入/导出属离线场景）；mysql/postgres/httpfs
-# 合计约 76MB 改为本页按需下载（其使用前提本就是有网络），Docker 镜像仍全预置
-# （见 api/Dockerfile），已安装状态由下方 duckdb_extensions() 查询如实上报。
-PRESEEDED = {"excel"}
+@dataclass(frozen=True)
+class ExtensionSpec:
+    """Stable extension identity across UI, LOAD aliases and CDN artifacts."""
 
-# LOAD 名 -> CDN 文件名 / duckdb_extensions() 中的 extension_name。
-# DuckDB 1.1+ 将 mysql/postgres 扩展重命名为 mysql_scanner/postgres_scanner，
-# 但 LOAD 指令仍使用旧名，前端只暴露 LOAD 名（见 scripts/fetch_duckdb_extensions.py）。
-_CDN_NAME_OVERRIDES = {
-    "mysql": "mysql_scanner",
-    "postgres": "postgres_scanner",
-}
+    name: str
+    category: str
+    description: str
+    description_en: str
+    usage: Optional[str] = None
+    load_name: Optional[str] = None
+    artifact_name: Optional[str] = None
+    source: str = "official"
+    bundled: bool = False
+    installable: bool = True
 
-# name -> (category, 中文说明, English description, usage SQL 示例或 None)
-CATALOG: Dict[str, Tuple[str, str, str, Optional[str]]] = {
+    @property
+    def resolved_load_name(self) -> str:
+        return self.load_name or self.name
+
+    @property
+    def resolved_artifact_name(self) -> str:
+        return self.artifact_name or self.name
+
+
+def _extension(
+    name: str,
+    category: str,
+    description: str,
+    description_en: str,
+    usage: Optional[str] = None,
+    **kwargs,
+) -> ExtensionSpec:
+    return ExtensionSpec(name, category, description, description_en, usage, **kwargs)
+
+
+CATALOG: Dict[str, ExtensionSpec] = {
     # ---- 数据源 ----
-    "sqlite_scanner": (
+    "sqlite_scanner": _extension("sqlite_scanner",
         CATEGORY_DATASOURCE,
         "读写本地 SQLite 数据库文件",
         "Read & write local SQLite database files",
         "ATTACH IF NOT EXISTS 'path/to/data.db' AS sq (TYPE sqlite); SELECT * FROM sq.some_table",
     ),
-    "aws": (
+    "aws": _extension("aws",
         CATEGORY_DATASOURCE,
         "访问 S3 存储(凭证与签名,配合 httpfs)",
         "S3 credentials & signing (with httpfs)",
         "CREATE OR REPLACE SECRET my_s3 (TYPE s3, KEY_ID 'AK...', SECRET '...', REGION 'ap-east-1'); SELECT * FROM 's3://bucket/x.parquet'",
     ),
-    "azure": (
+    "azure": _extension("azure",
         CATEGORY_DATASOURCE,
         "读取 Azure Blob 存储",
         "Read Azure Blob Storage",
         "CREATE OR REPLACE SECRET my_az (TYPE azure, CONNECTION_STRING '...'); SELECT * FROM 'az://container/x.parquet'",
     ),
-    "iceberg": (
+    "iceberg": _extension("iceberg",
         CATEGORY_DATASOURCE,
         "读取 Apache Iceberg 表",
         "Read Apache Iceberg tables",
         "SELECT * FROM iceberg_scan('path/to/iceberg_table')",
     ),
-    "delta": (
+    "delta": _extension("delta",
         CATEGORY_DATASOURCE,
         "读取 Delta Lake 表",
         "Read Delta Lake tables",
         "SELECT * FROM delta_scan('path/to/delta_table')",
     ),
-    "ducklake": (
+    "ducklake": _extension("ducklake",
         CATEGORY_DATASOURCE,
         "DuckLake 湖仓格式",
         "DuckLake lakehouse format",
         "ATTACH IF NOT EXISTS 'ducklake:meta.ducklake' AS lake",
     ),
-    "vortex": (
+    "vortex": _extension("vortex",
         CATEGORY_DATASOURCE,
         "读取 Vortex 列式格式",
         "Read Vortex columnar files",
         "SELECT * FROM read_vortex('path/to/file.vortex')",
     ),
-    "excel": (
+    "excel": _extension("excel",
         CATEGORY_DATASOURCE,
         "Excel 读写",
         "Excel read & write",
-        "SELECT * FROM 'path/to/file.xlsx'",
+        "SELECT * FROM 'path/to/file.xlsx'", bundled=True,
     ),
-    "httpfs": (
+    "httpfs": _extension("httpfs",
         CATEGORY_DATASOURCE,
         "HTTP(S) 远程文件读取",
         "Remote files over HTTP(S)",
         "SELECT * FROM 'https://host/data.parquet'",
     ),
-    "mysql": (CATEGORY_DATASOURCE, "连接 MySQL", "Connect to MySQL", None),
-    "postgres": (CATEGORY_DATASOURCE, "连接 PostgreSQL", "Connect to PostgreSQL", None),
+    "mysql": _extension(
+        "mysql", CATEGORY_DATASOURCE, "连接 MySQL", "Connect to MySQL", None,
+        artifact_name="mysql_scanner",
+    ),
+    "postgres": _extension(
+        "postgres", CATEGORY_DATASOURCE, "连接 PostgreSQL", "Connect to PostgreSQL", None,
+        artifact_name="postgres_scanner",
+    ),
     # ---- 能力增强 ----
-    "encodings": (
+    "encodings": _extension("encodings",
         CATEGORY_CAPABILITY,
         "读取 GBK 等非 UTF-8 编码文件",
         "Non-UTF-8 encodings (e.g. GBK)",
         "SELECT * FROM read_csv('file.csv', encoding='gb18030')",
     ),
-    "fts": (
+    "fts": _extension("fts",
         CATEGORY_CAPABILITY,
         "全文检索索引(BM25)",
         "Full-text search (BM25)",
         "PRAGMA create_fts_index('docs', 'id', 'body')",
     ),
-    "vss": (
+    "vss": _extension("vss",
         CATEGORY_CAPABILITY,
-        "向量相似度检索(HNSW 索引)",
-        "Vector similarity search (HNSW)",
+        "可选 HNSW 向量索引加速（APPROX NEAREST 无需安装）",
+        "Optional HNSW vector index acceleration (not required by APPROX NEAREST)",
         "SET hnsw_enable_experimental_persistence = true; CREATE INDEX idx ON tbl USING HNSW (embedding)",
     ),
-    "spatial": (
+    "spatial": _extension("spatial",
         CATEGORY_CAPABILITY,
         "地理空间类型与函数(体积较大)",
         "Geospatial types & functions (large)",
         "SELECT ST_AsText(ST_Point(116.4, 39.9))",
     ),
-    "inet": (
+    "inet": _extension("inet",
         CATEGORY_CAPABILITY,
         "IP 地址类型与网段运算",
         "IP address types & functions",
@@ -143,8 +172,12 @@ CATALOG: Dict[str, Tuple[str, str, str, Optional[str]]] = {
     ),
 }
 
+# Compatibility export for packaging/tests; runtime installation state remains factual.
+PRESEEDED = {name for name, spec in CATALOG.items() if spec.bundled}
+
 _EXTENSIONS_CDN_BASE = "https://extensions.duckdb.org"
 _DOWNLOAD_USER_AGENT = "Mozilla/5.0"
+_MAX_EXTENSION_SIZE_BYTES = 512 * 1024 * 1024
 
 # ==================== 安装状态（内存,进程重启后重置） ====================
 
@@ -178,28 +211,42 @@ def _is_install_active(name: str) -> bool:
 
 @router.get("/api/duckdb/extensions", tags=["DuckDB Extensions"])
 def list_duckdb_extensions():
-    """列出精选扩展目录，标注每个扩展是否已预置/已安装"""
+    """List curated extensions with factual runtime installation metadata."""
     try:
         with with_duckdb_connection() as con:
             rows = con.execute(
-                "SELECT extension_name, installed FROM duckdb_extensions()"
+                "SELECT extension_name, installed, loaded, extension_version, installed_from "
+                "FROM duckdb_extensions()"
             ).fetchall()
-        installed_map = {str(row[0]).lower(): bool(row[1]) for row in rows}
+        runtime_map = {
+            str(row[0]).lower(): {
+                "installed": bool(row[1]),
+                "loaded": bool(row[2]),
+                "extension_version": row[3],
+                "installed_from": row[4],
+            }
+            for row in rows
+        }
 
         items = []
-        for name, (category, desc_zh, desc_en, usage) in CATALOG.items():
-            bundled = name in PRESEEDED
-            query_name = _CDN_NAME_OVERRIDES.get(name, name)
-            installed = bundled or installed_map.get(query_name.lower(), False)
+        for name, spec in CATALOG.items():
+            runtime = runtime_map.get(spec.resolved_artifact_name.lower(), {})
             items.append(
                 {
                     "name": name,
-                    "category": category,
-                    "description": desc_zh,
-                    "description_en": desc_en,
-                    "usage": usage,
-                    "installed": installed,
-                    "bundled": bundled,
+                    "load_name": spec.resolved_load_name,
+                    "artifact_name": spec.resolved_artifact_name,
+                    "category": spec.category,
+                    "source": spec.source,
+                    "description": spec.description,
+                    "description_en": spec.description_en,
+                    "usage": spec.usage,
+                    "installed": bool(runtime.get("installed", False)),
+                    "loaded": bool(runtime.get("loaded", False)),
+                    "extension_version": runtime.get("extension_version"),
+                    "installed_from": runtime.get("installed_from"),
+                    "bundled": spec.bundled,
+                    "installable": spec.installable,
                 }
             )
 
@@ -222,8 +269,8 @@ def install_duckdb_extension(name: str):
     """触发指定扩展的后台联网安装；已在安装中则幂等返回当前进度"""
     if name not in CATALOG:
         raise APIValidationError(f"Unknown extension: {name}")
-    if name in PRESEEDED:
-        raise APIValidationError(f"Extension '{name}' is bundled and cannot be installed")
+    if not CATALOG[name].installable:
+        raise APIValidationError(f"Extension '{name}' cannot be installed from this catalog")
 
     if _is_install_active(name):
         return create_success_response(
@@ -261,6 +308,7 @@ def get_duckdb_extension_install_status(name: str):
 
 def _resolve_target_path(name: str) -> Tuple[str, str, str]:
     """查询 DuckDB 版本/平台/扩展目录，返回 (下载 URL, 目标目录, 目标文件路径)"""
+    spec = CATALOG[name]
     with with_duckdb_connection() as con:
         version = con.execute("SELECT version()").fetchone()[0]
         platform = con.execute("SELECT platform FROM pragma_platform()").fetchone()[0]
@@ -270,9 +318,9 @@ def _resolve_target_path(name: str) -> Tuple[str, str, str]:
 
     ext_dir = ext_dir_row or os.path.expanduser("~/.duckdb/extensions")
     dest_dir = os.path.join(ext_dir, version, platform)
-    dest_path = os.path.join(dest_dir, f"{name}.duckdb_extension")
-    cdn_name = _CDN_NAME_OVERRIDES.get(name, name)
-    url = f"{_EXTENSIONS_CDN_BASE}/{version}/{platform}/{cdn_name}.duckdb_extension.gz"
+    artifact_name = spec.resolved_artifact_name
+    dest_path = os.path.join(dest_dir, f"{artifact_name}.duckdb_extension")
+    url = f"{_EXTENSIONS_CDN_BASE}/{version}/{platform}/{artifact_name}.duckdb_extension.gz"
     return url, dest_dir, dest_path
 
 
@@ -310,9 +358,72 @@ def _download_extension_archive(url: str, gz_path: str, name: str) -> None:
                     _set_install_state(name, status="downloading", progress=progress)
 
 
+def _extract_extension_archive(gz_path: str, candidate_path: str) -> None:
+    """Stream-decompress one artifact with a hard output-size bound."""
+    extracted = 0
+    with gzip.open(gz_path, "rb") as gz_file, open(candidate_path, "wb") as out_file:
+        while True:
+            chunk = gz_file.read(64 * 1024)
+            if not chunk:
+                break
+            extracted += len(chunk)
+            if extracted > _MAX_EXTENSION_SIZE_BYTES:
+                raise ValueError("Decompressed extension exceeds the maximum allowed size")
+            out_file.write(chunk)
+    if extracted == 0:
+        raise ValueError("Downloaded extension archive is empty")
+
+
+def _verify_and_publish_extension(
+    connection,
+    candidate_path: str,
+    destination_path: str,
+    *,
+    replace_before_load: Optional[bool] = None,
+) -> None:
+    """Verify and atomically publish one candidate without losing an old artifact.
+
+    Windows locks a successfully loaded DLL, so it must be moved into its final name
+    before LOAD. POSIX verifies the candidate first and publishes afterward.
+    """
+    replace_first = (
+        sys.platform.startswith("win")
+        if replace_before_load is None
+        else replace_before_load
+    )
+    if not replace_first:
+        connection.execute(f"LOAD '{escape_string_literal(candidate_path)}'")
+        os.replace(candidate_path, destination_path)
+        return
+
+    rollback_path = destination_path + ".rollback"
+    had_previous = os.path.exists(destination_path)
+    if os.path.exists(rollback_path):
+        raise RuntimeError(
+            f"Unresolved extension rollback file exists: {rollback_path}"
+        )
+    if had_previous:
+        os.replace(destination_path, rollback_path)
+    try:
+        os.replace(candidate_path, destination_path)
+        connection.execute(f"LOAD '{escape_string_literal(destination_path)}'")
+    except Exception:
+        if os.path.exists(destination_path):
+            os.remove(destination_path)
+        if had_previous and os.path.exists(rollback_path):
+            os.replace(rollback_path, destination_path)
+        raise
+    if os.path.exists(rollback_path):
+        try:
+            os.remove(rollback_path)
+        except OSError as exc:
+            logger.warning("Failed to remove extension rollback file %s: %s", rollback_path, exc)
+
+
 def _run_extension_install(name: str) -> None:
-    """后台线程：下载 -> 解压落盘(原子 rename) -> LOAD 验证。不向 stdout 输出任何内容。"""
+    """Download, verify a candidate offline, then atomically publish it."""
     gz_path: Optional[str] = None
+    candidate_path: Optional[str] = None
     try:
         url, dest_dir, dest_path = _resolve_target_path(name)
         os.makedirs(dest_dir, exist_ok=True)
@@ -323,15 +434,33 @@ def _run_extension_install(name: str) -> None:
 
         _set_install_state(name, status="verifying", progress=90)
 
-        tmp_path = dest_path + ".tmp"
-        with gzip.open(gz_path, "rb") as gz_file, open(tmp_path, "wb") as out_file:
-            out_file.write(gz_file.read())
-        os.replace(tmp_path, dest_path)
+        candidate_path = dest_path + ".candidate.duckdb_extension"
+        _extract_extension_archive(gz_path, candidate_path)
         os.remove(gz_path)
         gz_path = None
 
         with with_duckdb_connection() as con:
-            con.execute(f"LOAD {name}")
+            # Verify the exact downloaded artifact with autoinstall disabled. Loading
+            # by alias could silently fetch a second canonical file and mask bad paths.
+            with _autoinstall_toggle_lock:
+                previous = bool(
+                    con.execute(
+                        "SELECT current_setting('autoinstall_known_extensions')"
+                    ).fetchone()[0]
+                )
+                con.execute("SET autoinstall_known_extensions=false")
+                try:
+                    _verify_and_publish_extension(
+                        con,
+                        candidate_path,
+                        dest_path,
+                    )
+                    candidate_path = None
+                finally:
+                    con.execute(
+                        "SET autoinstall_known_extensions="
+                        f"{'true' if previous else 'false'}"
+                    )
 
         _set_install_state(name, status="done", progress=100, error=None)
         logger.info("DuckDB extension %s installed successfully", name)
@@ -343,11 +472,12 @@ def _run_extension_install(name: str) -> None:
             name,
             status="error",
             progress=current.get("progress", 0),
-            error=f"扩展 {name} 安装失败：{str(exc)[:200]}",
+            error=f"Extension {name} installation failed: {str(exc)[:200]}",
         )
     finally:
-        if gz_path and os.path.exists(gz_path):
-            try:
-                os.remove(gz_path)
-            except OSError:
-                pass
+        for temporary_path in (gz_path, candidate_path):
+            if temporary_path and os.path.exists(temporary_path):
+                try:
+                    os.remove(temporary_path)
+                except OSError:
+                    pass

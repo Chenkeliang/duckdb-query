@@ -13,6 +13,7 @@ from typing import List, Literal, Optional
 import duckdb
 from core.common.config_manager import config_manager
 from core.common.exceptions import ValidationError as APIValidationError
+from core.common.sql_capabilities import is_read_only_sql
 from core.database.duckdb_engine import with_duckdb_connection
 from core.database.duckdb_pool import interruptible_connection
 from core.database.federated_attach import (
@@ -39,21 +40,8 @@ router = APIRouter()
 
 
 def _ensure_read_only(sql: str) -> None:
-    """解析 SQL 并拒绝任何非 SELECT 语句（防止经导出端点执行写操作）。
-
-    用 DuckDB 解析器判定语句类型，替代易绕过/易误杀的关键字黑名单。
-    """
-    parser = duckdb.connect()
-    try:
-        statements = parser.extract_statements(sql)
-    except Exception as exc:
-        raise APIValidationError(f"Invalid SQL: {exc}")
-    finally:
-        parser.close()
-
-    if not statements or any(
-        stmt.type != duckdb.StatementType.SELECT for stmt in statements
-    ):
+    """Reject writes, multi-statements and session/external side effects."""
+    if not is_read_only_sql(sql):
         raise APIValidationError(
             "Only read-only SELECT queries are allowed for export"
         )

@@ -277,7 +277,8 @@ def test_url_info_unreachable_standard_error():
     assert response.status_code == 400
     body = response.json()
     assert body["success"] is False
-    assert body["error"]["code"] == "URL_INVALID"
+    assert body["error"]["code"] == "VALIDATION_ERROR"
+    assert body["error"]["details"]["code"] == "SSRF_BLOCKED"
     assert "detail" not in body
 
 

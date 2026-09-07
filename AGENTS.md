@@ -44,7 +44,7 @@
 | 表格/图表 | TanStack Table 8（DataGrid）+ ChartView（结果区图表、点击下钻） | |
 | 桌面壳 | Tauri 2.x（`@tauri-apps/api` ^2） | `frontend/src-tauri/` |
 | 后端框架 | FastAPI + Python（CI 3.11，本地 3.13） | |
-| 数据库 | DuckDB 1.5.3（本地）+ MySQL/PostgreSQL/SQLite/DuckDB 文件（联邦 ATTACH） | |
+| 数据库 | DuckDB v2.0.0 Preview（Python `1.6.0.dev379`）+ MySQL/PostgreSQL/SQLite/DuckDB 文件（联邦 ATTACH） | 新库 storage 固定 `v2.0.0`；旧库兼容读取但不自动迁移 |
 | AI | OpenAI 兼容 LLM 接入；统一 **Agent Engine + 多 Profile**（`data_qa` / `generate_sql` / `repair_sql` / `explain_sql` / `suggest_chart`，`mode` 判别），端点 `POST /api/ai/agent/{stream,run}`。`data_qa` 工具集 `search_tables` / `describe_tables` / `inspect_table` / `run_query`，终止动作 `final`（必须绑定本轮执行过的只读 SELECT，否则 `ungrounded_final`）与 `refuse`（content-only、不过 grounding）；联邦别名经 SQL guard 授权，支持 `alias.schema.table` | `api/routers/ai.py` + `core/services/ai_{agent,profiles,agent_tools,sql_guard}.py`，密钥 Fernet 加密 |
 | MCP | 独立子包 `mcp/duckquery_mcp`（Python ≥3.10） | 见 §9 |
 | 国际化 | react-i18next（zh / en 全量） | |
@@ -420,7 +420,7 @@ return error_json_response(status_code=400, code="VALIDATION_ERROR", message="..
 <!-- gitnexus:start -->
 # GitNexus — Code Intelligence
 
-This project is indexed by GitNexus as **duckdb-query** (14531 symbols, 28251 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
+This project is indexed by GitNexus as **duckdb-query** (15179 symbols, 29384 relationships, 300 execution flows). Use the GitNexus MCP tools to understand code, assess impact, and navigate safely.
 
 > If any GitNexus tool warns the index is stale, run `npx gitnexus analyze` in terminal first.
 

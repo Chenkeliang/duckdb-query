@@ -26,4 +26,17 @@ describe('SQLEditor callback freshness', () => {
     await waitFor(() => expect(latestOnChange).toHaveBeenCalledWith('SELECT 2'));
     expect(initialOnChange).not.toHaveBeenCalled();
   });
+
+  it('renders a CodeMirror error marker from a structured SQL location', async () => {
+    const { container } = render(
+      <SQLEditor
+        value="SELECT * FRM orders"
+        diagnostic={{ line: 1, column: 10, endColumn: 11, message: 'syntax error' }}
+      />
+    );
+
+    await waitFor(() => {
+      expect(container.querySelector('.cm-lintRange-error')).not.toBeNull();
+    });
+  });
 });

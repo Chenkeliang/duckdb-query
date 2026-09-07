@@ -98,8 +98,12 @@ export async function registerFile(file: File): Promise<{ table: string; rows: n
 }
 
 /** Arrow 类型名 → DuckDB 风格类型名(用于网格/图表的类型识别与 column_types)。 */
-function mapType(arrow: string): string {
-  const s = arrow.toLowerCase();
+export function mapArrowType(arrow: string): string {
+  const s = arrow.trim().toLowerCase();
+  if (s.startsWith('struct')) return 'STRUCT';
+  if (s.startsWith('map')) return 'MAP';
+  if (s.startsWith('fixedsizelist') || s.startsWith('list')) return 'ARRAY';
+  if (s.includes('binary')) return 'BLOB';
   if (s.includes('bool')) return 'BOOLEAN';
   if (s.includes('timestamp')) return 'TIMESTAMP';
   if (s.includes('date')) return 'DATE';
@@ -145,7 +149,7 @@ export async function runWasm(sql: string): Promise<QueryResponse> {
   const meta = result.schema.fields.map((f) => {
     const isDec = /decimal/i.test(String(f.type));
     const scale = isDec ? Number((f.type as unknown as { scale?: number }).scale ?? 0) : null;
-    return { name: f.name, duckdb_type: mapType(String(f.type)), scale };
+    return { name: f.name, duckdb_type: mapArrowType(String(f.type)), scale };
   });
   const data = result.toArray().map((row) => {
     const r = row as unknown as Record<string, unknown>;
@@ -173,6 +177,13 @@ export async function listWasmTables(): Promise<{ name: string }[]> {
     "SELECT table_name FROM information_schema.tables WHERE table_schema = 'main' ORDER BY table_name",
   );
   return r.toArray().map((row) => ({ name: String((row as unknown as { table_name: unknown }).table_name) }));
+}
+
+/** Actual embedded engine version; it is independent from the Python backend. */
+export async function getWasmEngineVersion(): Promise<string> {
+  const conn = await getConn();
+  const result = await conn.query("SELECT version() AS version");
+  return String((result.toArray()[0] as unknown as { version: unknown }).version);
 }
 
 /** 联邦查询(连 MySQL/Postgres)在浏览器内不可用。 */

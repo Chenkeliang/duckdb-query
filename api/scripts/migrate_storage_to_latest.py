@@ -1,8 +1,8 @@
 #!/usr/bin/env python3
 """
-将 main.db / system.db 迁移到 storage_compatibility_version=latest（支持 VARIANT 等 v1.5+）。
+将 main.db / system.db 迁移到显式 storage compatibility 版本。
 
-适用：表不多、数据量不大（脚本逐表 CREATE TABLE AS SELECT）。
+使用 DuckDB ``COPY FROM DATABASE`` 保留表、约束、索引、视图、序列与宏。
 
 用法（先停止 API 服务，避免文件锁）:
     cd api
@@ -11,6 +11,7 @@
 
 可选:
     --only main|system   只迁移指定库
+    --target-storage     目标格式（DuckQuery 2.0 默认 v2.0.0）
     --yes                跳过确认
 """
 
@@ -18,8 +19,10 @@ from __future__ import annotations
 
 import argparse
 import logging
+import os
 import shutil
 import sys
+import tempfile
 from datetime import datetime, timezone
 from pathlib import Path
 
@@ -28,12 +31,37 @@ sys.path.insert(0, str(Path(__file__).resolve().parent.parent))
 import duckdb
 
 from core.common.config_manager import config_manager
-from core.database.duckdb_storage import connect_duckdb_database
+from core.common.sql_identifiers import escape_string_literal, quote_identifier
+from core.database.duckdb_storage import DUCKDB_STORAGE_COMPATIBILITY_VERSION
 
 logging.basicConfig(
     level=logging.INFO, format="%(asctime)s - %(levelname)s - %(message)s"
 )
 logger = logging.getLogger(__name__)
+
+
+def backup_database_set(database_paths: list[Path]) -> Path:
+    """Snapshot the complete offline set before any swap; never overwrite a backup."""
+    if not database_paths or len({path.name for path in database_paths}) != len(database_paths):
+        raise ValueError("Database backup filenames must be distinct")
+    sources = []
+    for path in database_paths:
+        if not path.is_file() or path.is_symlink():
+            raise ValueError("All database files must exist before migration")
+        for suffix in ("", ".wal"):
+            source = Path(f"{path}{suffix}")
+            if source.is_symlink():
+                raise ValueError("Database backup sources must not be symbolic links")
+            if source.exists():
+                sources.append(source)
+    parent = database_paths[0].parent
+    required = sum(source.stat().st_size for source in sources) + 64 * 1024 * 1024
+    if shutil.disk_usage(parent).free < required:
+        raise OSError("Insufficient disk space for complete database backup")
+    directory = Path(tempfile.mkdtemp(prefix="backup_storage_migration_", dir=parent))
+    for source in sources:
+        shutil.copy2(source, directory / source.name)
+    return directory
 
 
 def _list_user_tables(conn: duckdb.DuckDBPyConnection) -> list[str]:
@@ -63,7 +91,7 @@ def _backup_db_files(db_path: Path, stamp: str) -> Path:
 
 
 def _file_storage_version(db_path: Path) -> str | None:
-    """从 duckdb_databases() 读取文件绑定的 storage_version（如 v1.0.0+ / v1.5.0+）。"""
+    """从 duckdb_databases() 读取文件绑定的 storage_version（如 v1.5.0+ / v2.0.0+）。"""
     con = duckdb.connect(str(db_path), read_only=True)
     try:
         rows = con.execute("SELECT * FROM duckdb_databases()").fetchall()
@@ -84,20 +112,33 @@ def _file_storage_version(db_path: Path) -> str | None:
     return None
 
 
-def _storage_supports_variant(storage_version: str | None) -> bool:
-    if not storage_version:
-        return False
-    return storage_version.startswith("v1.5")
-
-
-def _needs_migration(db_path: Path) -> bool:
+def _needs_migration(db_path: Path, target_storage: str) -> bool:
     if not db_path.exists():
         return False
     sv = _file_storage_version(db_path)
-    if _storage_supports_variant(sv):
-        logger.info("Storage version %s — no migration needed for %s", sv, db_path)
+    if target_storage != "latest" and sv and sv.startswith(target_storage):
+        logger.info("Storage version %s already matches %s for %s", sv, target_storage, db_path)
         return False
-    logger.info("Storage version %s — migration required for %s", sv, db_path)
+    logger.info("Storage version %s must migrate to %s for %s", sv, target_storage, db_path)
+    return True
+
+
+def _has_migration_space(db_path: Path) -> bool:
+    """Require room for both the migrating file and the rollback backup."""
+    wal_path = Path(f"{db_path}.wal")
+    source_bytes = db_path.stat().st_size + (
+        wal_path.stat().st_size if wal_path.exists() else 0
+    )
+    required_bytes = source_bytes * 2 + 64 * 1024 * 1024
+    free_bytes = shutil.disk_usage(db_path.parent).free
+    if free_bytes < required_bytes:
+        logger.error(
+            "Insufficient disk space for %s: need %d bytes, have %d bytes",
+            db_path,
+            required_bytes,
+            free_bytes,
+        )
+        return False
     return True
 
 
@@ -106,14 +147,18 @@ def migrate_database_file(
     *,
     dry_run: bool = False,
     stamp: str,
+    target_storage: str = DUCKDB_STORAGE_COMPATIBILITY_VERSION,
+    backup_created: bool = False,
 ) -> bool:
     if not db_path.exists():
         logger.info("Skip %s: file does not exist", db_path)
         return True
 
-    if not _needs_migration(db_path):
-        logger.info("Skip %s: already supports VARIANT / latest storage", db_path)
+    if not _needs_migration(db_path, target_storage):
+        logger.info("Skip %s: storage already matches target", db_path)
         return True
+    if not dry_run and not _has_migration_space(db_path):
+        return False
 
     old_conn = duckdb.connect(str(db_path), read_only=True)
     try:
@@ -129,20 +174,23 @@ def migrate_database_file(
     if new_path.exists():
         new_path.unlink()
 
-    new_conn = connect_duckdb_database(str(new_path))
+    new_conn = duckdb.connect(
+        str(new_path), config={"storage_compatibility_version": target_storage}
+    )
     attach_alias = "legacy_src"
     try:
-        if tables:
-            escaped = str(db_path).replace("'", "''")
-            new_conn.execute(f"ATTACH '{escaped}' AS {attach_alias} (READ_ONLY)")
-            for table in tables:
-                logger.info("Copying table %s ...", table)
-                new_conn.execute(
-                    f'CREATE TABLE "{table}" AS SELECT * FROM {attach_alias}."{table}"'
-                )
-            new_conn.execute(f"DETACH {attach_alias}")
-        else:
-            logger.info("No user tables; creating empty database with latest storage")
+        escaped = escape_string_literal(db_path)
+        new_conn.execute(f"ATTACH '{escaped}' AS {attach_alias} (READ_ONLY)")
+        logger.info("Copying database schema and data with native COPY FROM DATABASE")
+        target_catalog = str(new_conn.execute("SELECT current_database()").fetchone()[0])
+        new_conn.execute(
+            f"COPY FROM DATABASE {quote_identifier(attach_alias)} "
+            f"TO {quote_identifier(target_catalog)}"
+        )
+        from core.database.migration_validation import verify_migration
+        verify_migration(new_conn, attach_alias, target_catalog)
+        new_conn.execute(f"DETACH {attach_alias}")
+        new_conn.execute("CHECKPOINT")
     except Exception:
         logger.exception("Migration failed for %s", db_path)
         new_conn.close()
@@ -155,21 +203,44 @@ def migrate_database_file(
         except Exception:
             pass
 
-    _backup_db_files(db_path, stamp)
-    for suffix in ("", ".wal"):
-        live = Path(f"{db_path}{suffix}")
-        if live.exists():
-            live.unlink()
+    migrated_version = _file_storage_version(new_path)
+    if (
+        target_storage != "latest"
+        and (not migrated_version or not migrated_version.startswith(target_storage))
+    ):
+        logger.error(
+            "Migration verification failed for %s: expected %s, got %s",
+            db_path,
+            target_storage,
+            migrated_version,
+        )
+        new_path.unlink(missing_ok=True)
+        return False
 
-    shutil.move(str(new_path), str(db_path))
-    logger.info("Replaced %s with migrated database (storage latest)", db_path)
+    try:
+        if not backup_created:
+            _backup_db_files(db_path, stamp)
+        os.replace(new_path, db_path)
+        wal_path = Path(f"{db_path}.wal")
+        if wal_path.exists():
+            wal_path.unlink()
+    except Exception:
+        logger.exception("Atomic migration swap failed for %s", db_path)
+        new_path.unlink(missing_ok=True)
+        return False
+    logger.info("Replaced %s with migrated database (storage %s)", db_path, target_storage)
     return True
 
 
 def main() -> int:
-    parser = argparse.ArgumentParser(description="Migrate DuckDB files to storage latest")
+    parser = argparse.ArgumentParser(description="Migrate DuckDB files to a target storage version")
     parser.add_argument("--dry-run", action="store_true", help="Only list tables / checks")
     parser.add_argument("--yes", action="store_true", help="Skip confirmation prompt")
+    parser.add_argument(
+        "--target-storage",
+        default=DUCKDB_STORAGE_COMPATIBILITY_VERSION,
+        help="DuckDB storage compatibility version (DuckQuery 2.0 default: v2.0.0)",
+    )
     parser.add_argument(
         "--only",
         choices=("main", "system", "all"),
@@ -189,7 +260,8 @@ def main() -> int:
 
     if not args.dry_run and not args.yes:
         print(
-            "将备份并重建上述 .db 文件（storage latest）。请先停止 uvicorn/API。\n"
+            f"Will back up and rebuild these files with storage {args.target_storage}. "
+            "Stop uvicorn/API first.\n"
             "输入 yes 继续: ",
             end="",
             flush=True,
@@ -199,18 +271,28 @@ def main() -> int:
             return 1
 
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    if not args.dry_run:
+        backup_dir = backup_database_set([path for _, path in targets])
+        logger.info("Complete migration backup: %s", backup_dir)
     ok = True
     for label, db_path in targets:
         logger.info("=== Migrating %s (%s) ===", label, db_path)
-        if not migrate_database_file(db_path, dry_run=args.dry_run, stamp=stamp):
+        if not migrate_database_file(
+            db_path,
+            dry_run=args.dry_run,
+            stamp=stamp,
+            target_storage=args.target_storage,
+            backup_created=not args.dry_run,
+        ):
             ok = False
+            break
 
     if args.dry_run:
         logger.info("Dry run complete.")
     elif ok:
         logger.info(
-            "Migration complete. Restart the API. Backups under data/duckdb/backup_storage_migration_%s/",
-            stamp,
+            "Migration complete. Restart the API. Backup directory: %s",
+            backup_dir,
         )
     return 0 if ok else 1
 

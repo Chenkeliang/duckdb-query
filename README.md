@@ -17,7 +17,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Chenkeliang/duckdb-query/releases/latest"><strong>下载桌面版</strong></a>
+  <a href="https://github.com/Chenkeliang/duckdb-query/releases/latest"><strong>下载稳定版</strong></a>
+  · <a href="https://github.com/Chenkeliang/duckdb-query/releases">2.0 Preview 发布列表（发布后可下载）</a>
   · <a href="#立即开始">Docker 自托管</a>
   · <a href="README_en.md">English</a>
 </p>
@@ -29,6 +30,35 @@
 <p align="center">
   <img src="docs/assets/readme/hero-cross-source-zh.gif" alt="DuckQuery 查询工作台执行 DuckDB 本地表与 MySQL 表的跨源 JOIN" width="900">
 </p>
+
+## 最新版：v2.0.0（全面支持 DuckDB 2.0）
+
+本地 Docker 默认仅监听 `127.0.0.1`。需要共享访问时，在带认证的反向代理后部署；设置 `DUCKQUERY_BIND_HOST` 会改变监听范围，应用本身不提供多用户鉴权。URL 导入经过逐跳地址校验和流式大小限制；配置的 HTTP(S) 代理属于可信网络边界。
+
+资源预算默认最多 4 个用户库连接、4GB 溢写、256MiB 磁盘余量；引擎内存最多为检测到的物理/容器内存的 75%。设置 → DuckDB 数据库存储可查看预算、检查最近备份并打开恢复指引；桌面版可打开通过检查的备份目录。不会自动恢复数据库。
+
+> [!IMPORTANT]
+> v2.0.0 的 Python 后端使用 DuckDB `v2.0.0-alpha39998`（Python 包 `1.6.0.dev379`），新数据库明确采用 `v2.0.0` storage。这是 [DuckDB 官方 2.0 Alpha](https://duckdb.org/2026/09/02/try-duckdb-20-alpha)，官方尚未将其标记为 production-ready；本版本必须按大版本升级处理。
+
+本版新增与改进：
+
+- 手写 SQL 支持 `APPROX NEAREST`、递归 CTE `USING KEY`、`FETCH FIRST/NEXT`、VARIANT 与 JSON mutation 函数；
+- `APPROX NEAREST` 沿用工作台总 LIMIT，异步执行、保存、导出和 MCP 不会绕过行数选择；
+- 修复 DuckDB 2.0 动态 Pivot 绑定错误，并将解析错误位置直接标记到 SQL 编辑器；
+- 扩展管理区分 UI 名、`LOAD` 名与实际 artifact；MySQL / PostgreSQL 扩展可在关闭 autoinstall 后离线加载；
+- 内置且正常的 Excel 扩展不再重复展示，缺失时仍可从扩展页修复；
+- About 页分别展示应用版本、Python DuckDB 包、实际 engine 和 storage compatibility；浏览器 Demo 单独展示自己的 Wasm engine。
+
+升级注意事项：
+
+1. 升级前必须备份 `data/duckdb/main.db`、`system.db` 与对应 `.wal`；本版不会在启动时静默迁移旧文件。
+   检测到旧库时页面会显示大版本提示；可暂缓，并从“设置 → DuckDB 数据库存储”再次进入（不常驻顶部提示）。
+2. DuckDB 扩展二进制按 engine 版本隔离。标准包首次使用 MySQL / PostgreSQL / HTTPFS 时可能重新下载 2.0 对应扩展；离线包已内置对应版本。
+3. 新库直接使用 v2 storage；旧库可由 2.0 原样读取。显式迁移到 v2 后，DuckDB 1.5.3 不能直接打开，只能恢复升级前备份或导出/导入。
+4. 浏览器 Demo 使用独立 DuckDB-Wasm，并不等同于桌面版 / Docker 的 DuckDB 2.0 后端；界面会显示各自真实版本。
+5. 旧 lambda `x -> x + 1` 在 2.0 默认禁用，请改成 `lambda x: x + 1`。`CONNECT`、Triggers、DML-in-CTE、自定义扩展仓库和任意 `INSTALL/LOAD` SQL 仍未开放。
+
+完整说明：[v2.0.0 发布说明](docs/releases/v2.0.0.md) · [DuckDB 2.0 技术方案](docs/specs/duckdb-2-compatibility-and-capabilities.md)
 
 ## 适用场景
 

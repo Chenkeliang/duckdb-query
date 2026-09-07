@@ -103,6 +103,22 @@ def test_ensure_query_has_limit_appends_for_select():
     assert ensure_query_has_limit("SELECT * FROM t LIMIT 5", 100) == "SELECT * FROM t LIMIT 5"
 
 
+def test_fetch_first_is_an_explicit_outer_limit():
+    """Regression 2026-09-04: FETCH FIRST plus an appended LIMIT is invalid DuckDB SQL."""
+    import duckdb
+
+    sql = "SELECT * FROM range(20) FETCH FIRST 3 ROWS ONLY"
+    assert ensure_query_has_limit(sql, 10) == sql
+    assert len(duckdb.connect(":memory:").execute(sql).fetchall()) == 3
+
+
+def test_new_duckdb_select_syntax_uses_token_fallback_when_sqlglot_lags():
+    """DuckDB 2.0 APPROX NEAREST stays limited before sqlglot supports its grammar."""
+    sql = "SELECT * FROM vectors APPROX NEAREST USING embedding <-> [1, 2]"
+    assert ensure_query_has_limit(sql, 100).endswith("\nLIMIT 100")
+    assert apply_row_limit_choice(f"{sql} LIMIT 5", False) == sql
+
+
 def test_ensure_query_has_limit_sql_boundaries():
     """验收 #18/#20/#21:行尾注释、子查询用户 LIMIT、分号/CTE/UNION/ORDER BY——
     最外层判定走 sqlglot AST,不用末尾数字正则。全部真实执行验证。"""

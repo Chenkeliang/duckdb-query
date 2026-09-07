@@ -38,15 +38,20 @@
 
 ## 规格与提案
 
+本批全局审查的实施范围、行为变化与后续项见 [全局修复记录](specs/global-review-remediation.md)。
+
 | 文档 | 用途 |
 |------|------|
 | [`specs/pivot-table/`](specs/pivot-table/) | 透视表功能规格（design / requirements / tasks） |
+| [`specs/duckdb-2-compatibility-and-capabilities.md`](specs/duckdb-2-compatibility-and-capabilities.md) | DuckDB 2.0 兼容升级、SQL 能力、扩展与存储迁移方案 |
+| [`specs/duckdb-2-official-compatibility.md`](specs/duckdb-2-official-compatibility.md) | 官方 2.0 破坏性变化、项目处理与 GA 发布门槛 |
 | [`specs/proposals/drilldown-and-mcp-writeback.md`](specs/proposals/drilldown-and-mcp-writeback.md) | 提案（未实现）：下钻 / MCP write-back / 固定报表等 |
 
 ## 历史存档与发布
 
 | 资源 | 用途 |
 |------|------|
+| [`releases/v2.0.0.md`](releases/v2.0.0.md) · [`English`](releases/v2.0.0_en.md) | v2.0.0：DuckDB 2.0 大版本、兼容性、迁移说明与验证范围 |
 | [`history/`](history/README.md) | 2026-05 至今的实施计划 / 设计 / 审计（时间线索引） |
 | [`launch/LAUNCH_KIT.md`](launch/LAUNCH_KIT.md) | 冷启动分发材料（HN / Reddit / PH 文案） |
 | [`lint-rules/README.md`](lint-rules/README.md) | → 根目录 `lint-rules/` |

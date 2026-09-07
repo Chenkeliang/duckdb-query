@@ -12,6 +12,7 @@ import { QueryResultSettings } from './QueryResultSettings';
 import { DataGridSettings } from './DataGridSettings';
 import { EngineCompatSettings } from './EngineCompatSettings';
 import { AboutUpdateSettings } from './AboutUpdateSettings';
+import { StorageUpgradeSettings } from './StorageUpgradeSettings';
 
 // 目前无 props，保留占位类型以便后续扩展
 export type SettingsPageProps = Record<string, never>;
@@ -38,6 +39,9 @@ export function SettingsPage({}: SettingsPageProps) {
 
           {/* 引擎兼容性 */}
           <EngineCompatSettings />
+
+          {/* DuckDB storage 大版本迁移 */}
+          <StorageUpgradeSettings />
 
           {/* 缓存设置 */}
           <CacheSettings />

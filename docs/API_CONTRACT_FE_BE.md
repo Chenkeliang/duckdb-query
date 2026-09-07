@@ -1,5 +1,15 @@
 # 前后端 API 契约（真相表）
 
+## 资源与备份管理（2026-09-07）
+
+| 方法 | 路径 | data | 语义 |
+|---|---|---|---|
+| GET | `/api/resource-budget` | `memory_limit_bytes, memory_capacity_bytes, temp_limit_bytes, max_connections, min_free_disk_bytes` | 按启动配置计算的用户库预算；非整个进程 RSS 限额 |
+| GET | `/api/storage-upgrade/backup` | `available, directory, files[], error?` | 最近迁移备份成套文件只读可打开性检查，不恢复 |
+| POST | `/api/storage-upgrade/open-backup` | `opened` | 仅桌面，无路径参数；打开核验后的最近备份目录 |
+
+> 2026-09-07 读取边界：URL 导入与 `/api/url_info` 共用逐跳 HTTP(S) 地址校验；禁止 loopback、link-local、保留地址和 URL 凭据。URL 导入先流式暂存并按实际字节限制，再交给本地解析器，`prefer_native` 保留为兼容字段。普通上传同样按流式累计字节限制，超限返回 413 `FILE_TOO_LARGE`，失败清理候选文件。
+
 > **维护规则**：增删响应字段时先更新本表，再改 Pydantic / TypeScript 与调用方（与 [`AGENTS.md`](../AGENTS.md) §8.5 顺序一致）。  
 > **字段级实时真相**：所有端点均带 OpenAPI `tags`，运行中的 **Swagger `/docs`**（Docker: `:48001/docs`，本地: `:48001/docs`）和 `/openapi.json` 始终与代码同步；本表负责**高层导航 + 前端模块索引**，新增端点务必在此**登记一行**(否则就像 AI 端点那样漏掉)。  
 > **环境说明**：若网关或代理改写 JSON，以浏览器 Network 实际响应为准；本表以仓库内 FastAPI 路由与 `create_success_response` / `create_list_response` 为准。  
@@ -32,6 +42,7 @@
 | `queryExportApi.ts` | §9.1 | 查询结果服务端导出 |
 | `joinQueryApi.ts` | §9.2 | 结构化多表 JOIN：`performJoinQuery` |
 | `aiApi.ts` | §9.3 | AI 设置 / 供应商测试 / 报错医生 / 解释 / 问数 / 对话 / 图表推荐 |
+| `extensionsApi.ts` | §8.1 | DuckDB 可选扩展目录、安装与安装进度 |
 
 ## 1. 标准成功体
 
@@ -76,8 +87,8 @@
 
 | 方法 | 路径 | 成功体 | `data` 要点 | 前端入口 |
 |------|------|--------|-------------|----------|
-| POST | `/api/duckdb/execute` | 对象 | `executeDuckDBSQL`；`data`: `columns`, `column_types[]`（`{name, duckdb_type}`；来自 `DESCRIBE (<sql>)`，PRAGMA/EXPLAIN/多语句等不可 DESCRIBE 时由同一次执行的游标 description 类型兜底）, `data`, `row_count`, `preview_limit_applied?`；499 / 500 |
-| POST | `/api/duckdb/federated-query` | 对象 | `executeFederatedQuery`；同上含 `column_types`；额外 `optimized_sql`（半连接下推改写后 SQL）、`suggestions[]`（审计列时间界建议，**不自动改结果**）；404 `connection_id`；503 ATTACH；499 / 500 / **504 超时** |
+| POST | `/api/duckdb/execute` | 对象 | `executeDuckDBSQL`；`data`: `columns`, `column_types[]`（`{name, duckdb_type}`；来自 `DESCRIBE (<sql>)`，PRAGMA/EXPLAIN/多语句等不可 DESCRIBE 时由同一次执行的游标 description 类型兜底）, `data`, `row_count`, `preview_limit_applied?`；解析/绑定错误的标准错误 `details.sql_location?={line,column,end_column}`；499 / 500 |
+| POST | `/api/duckdb/federated-query` | 对象 | `executeFederatedQuery`；同上含 `column_types` 与 `details.sql_location?` 错误位置；额外 `optimized_sql`（半连接下推改写后 SQL）、`suggestions[]`（审计列时间界建议，**不自动改结果**）；404 `connection_id`；503 ATTACH；499 / 500 / **504 超时** |
 | POST | `/api/query/cancel/{request_id}` | 对象 | `cancelSyncQuery`；404 `QUERY_NOT_FOUND`（无活跃同步查询） |
 | POST | `/api/save_query_to_duckdb` | 对象 | 保存结果表元数据（依请求）；`apply_row_limit`（默认 `false`，兼容 `applyRowLimit`）为保存对话框的最终选择：`false`＝移除查询页面最外层 `LIMIT` 后全量保存（子查询 `LIMIT` 保留），`true`＝保留页面最外层 `LIMIT`，页面无最外层 `LIMIT` 时补默认 `max_query_rows` | `saveQueryToDuckDB` |
 | GET | `/api/duckdb/tables` | **列表** | `items[]`: `table_name`, `row_count`, `column_count`, `created_at`（应用时区 ISO，仅展示，可为 null）。顺序 = `system_table_registry.sort_seq` 倒序（稳定创建序登记表，新建/替换置顶，跨重启稳定；与 AI 目录同口径） | `getDuckDBTables` |
@@ -166,7 +177,7 @@
 | PUT | `/api/sql-favorites/{id}` | 对象 | `updateSqlFavorite`；404 `FAVORITE_NOT_FOUND` |
 | DELETE | `/api/sql-favorites/{id}` | 对象 | `deleteSqlFavorite`；404 `FAVORITE_NOT_FOUND` |
 | POST | `/api/sql-favorites/{id}/use` | 对象 | `incrementFavoriteUsage`；404 `FAVORITE_NOT_FOUND` |
-| GET | `/api/app-config/features` | 对象 | `getAppConfig`；含 `json_import_column_type`, `remote_storage_configured`（是否配置 `duckdb_remote_settings`）, `pivot_max_columns`（透视结果列数上限，默认 300；前端据此发 `column_value_limit`） |
+| GET | `/api/app-config/features` | 对象 | `getAppConfig`；含 `json_import_column_type`, `remote_storage_configured`（是否配置 `duckdb_remote_settings`）, `pivot_max_columns`（透视结果列数上限，默认 300；前端据此发 `column_value_limit`），以及只读版本边界 `duckdb_python_version` / `duckdb_engine_version` / `duckdb_storage_compatibility_version`（新库输出格式）/ `duckdb_main_storage_version` / `duckdb_system_storage_version`（现有文件实际格式）/ `duckdb_storage_upgrade_required` |
 | POST | `/api/columns/infer-cast` | 对象 | `inferColumnCast`（`columnAnalysisApi.ts`）；入参 `{table_name, column, filters?, attach_databases?}`；在筛选后真实数据上刻画一列作为数值 cast 目标：`{recommended: 'BIGINT'\|'DECIMAL(38,s)'\|null, total, numeric, non_numeric, max_int_digits, max_frac_digits, safe_decimal_cast, reason}`；DECIMAL scale 取自实际数据。`safe_decimal_cast`=是否可**安全自动量化**（`recommended` 非 null 时恒 true；语义非"数学上能否放进 DECIMAL(38)"——二进制浮点源即便数值能放进也为 false，量化有损）。`reason`∈ `null\|empty\|non_numeric\|binary_float\|scientific\|overflow`（不安全原因）：`binary_float`=源列本就是 FLOAT/DOUBLE（`CAST(AS VARCHAR)` 是最短往返串，量化会让 `19.99→19.98999999999999744` 失真，交 JOIN 分侧转换/用户显式选；此分支跳过 O(n) 文本扫描，但 `total`/`numeric` 仍以轻量 `count(*)`+`isfinite` 如实统计，`max_int_digits`/`max_frac_digits`=0）；`scientific`=含科学计数法文本无法可靠定标度；`overflow`=整数位+小数位超 38。任一不安全 → `recommended=null`，不静默丢数据。供透视文本聚合与 JOIN 类型冲突的数据感知安全推荐 |
 
 ## 8. 设置（`settingsShortcutsApi.ts`）
@@ -176,6 +187,27 @@
 | GET | `/api/settings/shortcuts` | 对象 | `fetchShortcutsConfig`（`shortcuts`, `defaults`）；500 `OPERATION_FAILED` |
 | PUT | `/api/settings/shortcuts/{action_id}` | 对象 | `updateShortcutSetting`；400 无效 `action_id`；500 `SHORTCUT_UPDATE_FAILED` |
 | POST | `/api/settings/shortcuts/reset` | 对象 | `resetShortcutsSetting`；400 无效 `action_id`；500 `SHORTCUT_RESET_FAILED` |
+
+## 8.1 DuckDB 扩展（`extensionsApi.ts`）
+
+| 方法 | 路径 | 成功体 | `data` 要点 | 前端入口 |
+|------|------|--------|-------------|----------|
+| GET | `/api/duckdb/extensions` | **列表** | `items[]`: `name`（稳定 UI/API 名）、`load_name`、`artifact_name`、`category`、`description`、`description_en`、`usage?`、`installed`、`loaded`、`extension_version?`、`installed_from?`、`bundled`、`installable`；安装/加载状态以 `duckdb_extensions()` 为准，`bundled` 不覆盖真实状态 | `listDuckDBExtensions` |
+| POST | `/api/duckdb/extensions/{name}/install` | 对象 | 后台安装；仅目录中 `installable=true` 的扩展可用；进行中请求幂等 | `installDuckDBExtension` |
+| GET | `/api/duckdb/extensions/install/{name}` | 对象 | `status=idle\|downloading\|verifying\|done\|error`、`progress`、`error?` | `getDuckDBExtensionInstallStatus` |
+
+扩展页隐藏已正确安装的内置扩展；若内置 artifact 缺失则显示并允许在线修复。`vss` 是可选 HNSW 索引加速，不是手写 `APPROX NEAREST` 的依赖。
+
+## 8.2 DuckDB storage 大版本升级（`storageUpgradeApi.ts`）
+
+| 方法 | 路径 | 成功体 | `data` 要点 | 前端入口 |
+|------|------|--------|-------------|----------|
+| GET | `/api/storage-upgrade` | 对象 | `target_storage`、`required`、`pending_restart`、`main`/`system={version,size_bytes}`、`required_bytes`、`free_bytes`、`active_queries`、`backup_directory?`、`last_report?` | `getStorageUpgradeStatus` |
+| POST | `/api/storage-upgrade/schedule` | 对象 | 必须同时传 `confirm_backup=true`、`confirm_no_downgrade=true`；仅登记离线迁移标记，不在活跃连接上替换数据库；返回 `pending_restart=true` | `scheduleStorageUpgrade` |
+
+迁移实际备份使用唯一目录，最终位置以 `last_report.backup_directory` 为准，不依赖计划目录名。替换任一库前先备份完整 main/system 与 WAL；每次报告同时保存到该备份目录。快照失败时不迁移，并保留上一可用备份引用。迁移不是跨文件原子事务，失败后仍可能处于混合版本；恢复必须使用同一备份集合。
+
+待迁移标记在下次启动、任何 DuckDB 连接池建立之前处理：空间检查 → native `COPY FROM DATABASE` → 校验 → 备份 → 原子替换。失败保留原库并写迁移报告。
 
 ## 9. 集合运算（`setOperationsApi.ts`）
 

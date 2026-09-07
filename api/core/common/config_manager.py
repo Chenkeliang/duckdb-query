@@ -92,6 +92,13 @@ class AppConfig:
     duckdb_temp_directory: str = None
     """DuckDB 临时文件目录，None 时使用系统默认"""
 
+    duckdb_max_temp_directory_size: str = "4GB"
+    """用户数据库的 DuckDB 溢写磁盘上限。"""
+    max_concurrent_queries: int = 4
+    """用户数据库连接池的并发上限（系统库独立）。"""
+    min_free_disk_bytes: int = 256 * 1024 * 1024
+    """取得用户库连接前必须保留的空闲磁盘字节。"""
+
     duckdb_home_directory: str = None
     """DuckDB 主目录，用于存储配置和扩展，None 时使用系统默认"""
 

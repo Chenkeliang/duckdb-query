@@ -6,6 +6,9 @@ import os
 import traceback
 from datetime import datetime
 from contextlib import asynccontextmanager
+from core.database.storage_upgrade import process_pending_storage_upgrade
+
+process_pending_storage_upgrade()
 from core.security.security import security_validator
 from core.common.config_manager import config_manager
 from core.common.exceptions import setup_exception_handlers
@@ -119,7 +122,7 @@ async def app_lifespan(app: FastAPI):
 app = FastAPI(
     title="DuckQuery · DuckDB Query API",
     description="API for DuckDB ingestion, federated SQL, JOIN/pivot/set-operation builders, and async analytics.",
-    version="2.1.0",
+    version="2.0.0",
     lifespan=app_lifespan,
 )
 

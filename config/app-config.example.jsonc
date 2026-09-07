@@ -55,6 +55,9 @@
 
   // 内存上限 / Memory limit（支持 KB/MB/GB）。默认 "8GB"。
   "duckdb_memory_limit": "8GB",
+  "duckdb_max_temp_directory_size": "4GB",
+  "max_concurrent_queries": 4,
+  "min_free_disk_bytes": 268435456,
 
   // 并行线程数 / Parallel threads. 省略则跟随 CPU 核心数（默认，推荐）。
   // "duckdb_threads": 8,

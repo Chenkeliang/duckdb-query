@@ -376,15 +376,21 @@ def _try_generate_native_pivot(
     else:
         # Dynamic PIVOT: 函数式 PIVOT(... FOR col) 语法必须带 IN 列表，省略 IN 是语法错误；
         # 动态取全部去重值须用简写语法 PIVOT base ON col USING agg
-        pivot_select = (
-            f"SELECT * FROM (PIVOT base ON {col_dim} USING {', '.join(agg_items)})"
-        )
+        pivot_select = f"PIVOT base ON {col_dim} USING {', '.join(agg_items)}"
         strategy = "native:dynamic"
 
     base_cte = f"WITH base AS (\n{_strip_trailing_semicolon(base_sql)}\n)"
     pivot_alias = "pivot_result"
-    pivot_cte = f"{pivot_alias} AS (\n{pivot_select}\n)"
-    final_sql = f"{base_cte},\n{pivot_cte}\nSELECT * FROM {pivot_alias};"
+    if has_explicit_values:
+        pivot_cte = f"{pivot_alias} AS (\n{pivot_select}\n)"
+        final_sql = f"{base_cte},\n{pivot_cte}\nSELECT * FROM {pivot_alias};"
+    else:
+        # DuckDB 2.0 expands dynamic PIVOT through an internal ENUM and rejects it
+        # when nested inside a second CTE ("Table with name base does not exist").
+        # Keep the base CTE, but make PIVOT the outer statement. This shape executes
+        # on both 1.5.x and 2.0 and still permits a caller-owned outer LIMIT.
+        pivot_cte = ""
+        final_sql = f"{base_cte}\n{pivot_select};"
 
     return {
         "final_sql": final_sql,

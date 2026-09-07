@@ -12,10 +12,10 @@ export const duckDBDialect = SQLDialect.define({
   specialVar: '',
   keywords:
     PostgreSQL.spec.keywords +
-    ' copy export import pivot unpivot qualify sample tablesample attach detach',
+    ' copy export import pivot unpivot qualify sample tablesample attach detach approx nearest similarity fetch first next only using key',
   types:
     PostgreSQL.spec.types +
-    ' hugeint utinyint usmallint uinteger ubigint',
+    ' hugeint utinyint usmallint uinteger ubigint variant geometry',
   builtin:
-    'read_csv read_parquet read_json read_json_auto json_extract typeof list_value struct_pack ST_Point ST_AsText ST_GeomFromText ST_Intersects ST_Within ST_Distance',
+    'read_csv read_parquet read_json read_json_auto json_extract json_set json_insert json_replace json_merge_patch typeof list_value struct_pack variant_type variant_keys variant_contains variant_get ST_Point ST_AsText ST_GeomFromText ST_Intersects ST_Within ST_Distance',
 });

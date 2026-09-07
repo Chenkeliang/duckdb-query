@@ -220,11 +220,11 @@ def test_data_qa_explore_then_final_executes(orders):
 
 
 def test_data_qa_runtime_error_observation_then_self_repair(events):
-    """回归 scenario 21:模型首用复合谓词 JSON `->>` 触发执行期 ConversionException,
-    Engine 把它作为失败 observation 回喂(而非 internal_error 终止),模型据错改用
-    json_extract_string 自修复,最终返回正确数字 2 且最终 SQL 独立执行 = 真值。"""
+    """Regression 2026-09-04: a data-dependent conversion error must become an
+    observation, then a repaired query must execute on both DuckDB 1.5 and 2.0.
+    """
     bad = (f"SELECT count(*) AS n FROM {events} "
-           f"WHERE event_type='purchase' AND properties->>'device'='iOS'")
+           f"WHERE CAST(json_extract_string(properties,'$.device') AS INTEGER)=1")
     good = (f"SELECT count(*) AS n FROM {events} "
             f"WHERE event_type='purchase' AND json_extract_string(properties,'$.device')='iOS'")
     llm = FakeLLM([
@@ -240,7 +240,7 @@ def test_data_qa_runtime_error_observation_then_self_repair(events):
     assert ans is not None and ans["termination_reason"] == "completed"
     assert "2" in ans["result"]["content"]
     tool_done = [e for e in events_out if e["event"] == "tool_completed"]
-    assert tool_done[0]["ok"] is False  # 首个 ->> 查询作失败 observation 回喂
+    assert tool_done[0]["ok"] is False  # data-dependent conversion failure is observed
     assert tool_done[1]["ok"] is True   # 自修复后成功
     assert ctx.sql_calls_used == 2      # 两次探查都消耗预算
     with with_duckdb_connection() as con:

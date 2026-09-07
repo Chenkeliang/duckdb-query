@@ -75,16 +75,18 @@ def test_generate_download_file_executes_structured_copy_format(
         generate_download_file(task_id, format, target_path=str(target))
 
         if format == "json":
-            assert json.loads(target.read_text(encoding="utf-8")) == [
+            rows = json.loads(target.read_text(encoding="utf-8"))
+            assert sorted(rows, key=lambda row: row["id"]) == [
                 {"id": 1, "name": "中文"},
                 {"id": 2, "name": None},
             ]
         else:
-            with with_duckdb_connection() as con:
-                rows = con.execute(
-                    "SELECT id, name FROM read_xlsx(?) ORDER BY id", [str(target)]
-                ).fetchall()
-            assert rows == [(1.0, "中文"), (2.0, None)]
+                with with_duckdb_connection() as con:
+                    rows = con.execute(
+                        "SELECT id, name FROM read_xlsx(?, all_varchar=true) ORDER BY id",
+                        [str(target)],
+                    ).fetchall()
+                assert rows == [("1", "中文"), ("2", None)]
     finally:
         with with_duckdb_connection() as con:
             con.execute(f'DROP TABLE IF EXISTS "{table_name}"')

@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useEffect, useState } from 'react';
 import { useTranslation } from 'react-i18next';
 import { FlaskConical, X } from 'lucide-react';
 import { IS_DEMO } from './isDemo';
@@ -7,6 +7,18 @@ import { IS_DEMO } from './isDemo';
 export function DemoBanner() {
   const { t } = useTranslation('common');
   const [open, setOpen] = useState(true);
+  const [engineVersion, setEngineVersion] = useState<string | null>(null);
+  useEffect(() => {
+    if (!IS_DEMO) return;
+    let active = true;
+    void import('./wasmEngine')
+      .then(({ getWasmEngineVersion }) => getWasmEngineVersion())
+      .then((version) => {
+        if (active) setEngineVersion(version);
+      })
+      .catch(() => undefined);
+    return () => { active = false; };
+  }, []);
   if (!IS_DEMO || !open) return null;
   return (
     <div className="flex items-center gap-2 border-b border-primary/20 bg-primary/10 px-4 py-1.5 text-xs text-foreground">
@@ -17,6 +29,11 @@ export function DemoBanner() {
           '浏览器内 Demo(DuckDB-Wasm)· 已预置示例表,可直接写 SQL / JOIN / 出图。连数据库与 AI 需自托管版。',
         )}
       </span>
+      {engineVersion && (
+        <span className="shrink-0 font-mono text-muted-foreground">
+          {t('demo.engineVersion', '内核 {{version}}', { version: engineVersion })}
+        </span>
+      )}
       <a
         href="https://github.com/Chenkeliang/duckdb-query"
         target="_blank"

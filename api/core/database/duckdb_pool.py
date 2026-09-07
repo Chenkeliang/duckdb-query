@@ -193,9 +193,14 @@ class DuckDBConnectionPool:
                 connection.execute("SET threads=8")
                 connection.execute(f"SET temp_directory='{temp_dir}'")
 
+        from core.database.resource_budget import apply_resource_budget
+        apply_resource_budget(connection, app_config)
+
     @contextmanager
     def get_connection(self):
         """获取连接的上下文管理器"""
+        from core.database.resource_budget import ensure_disk_reserve
+        ensure_disk_reserve(config_manager.get_duckdb_paths(), config_manager.get_app_config().min_free_disk_bytes)
         conn_id = None
         try:
             conn_id = self._acquire_connection()
@@ -467,9 +472,11 @@ def get_connection_pool() -> DuckDBConnectionPool:
 
         app_config = config_manager.get_app_config()
 
+        from core.database.resource_budget import get_resource_budget
+        connection_limit = get_resource_budget(app_config)["max_connections"]
         _connection_pool = DuckDBConnectionPool(
-            min_connections=app_config.pool_min_connections,
-            max_connections=app_config.pool_max_connections,
+            min_connections=min(app_config.pool_min_connections, connection_limit),
+            max_connections=connection_limit,
             connection_timeout=app_config.pool_connection_timeout,
             idle_timeout=app_config.pool_idle_timeout,
             max_retries=app_config.pool_max_retries,

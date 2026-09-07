@@ -1,4 +1,4 @@
-"""VARIANT JSON 入湖测试（需 duckdb==1.5.3）"""
+"""VARIANT JSON ingestion tests (DuckDB 1.5+)."""
 
 import json
 import os

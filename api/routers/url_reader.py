@@ -7,15 +7,11 @@ import os
 import time
 import logging
 from typing import Dict, Optional
+from urllib.parse import urlsplit, urlunsplit, urljoin
 from core.common.config_manager import config_manager
 from core.database.duckdb_engine import with_duckdb_connection
 from core.data.import_mode import normalize_import_mode, resolve_import_mode
-from core.services.file_ingestion_service import (
-    build_file_metadata,
-    ingest_tabular_file,
-    resolve_unique_table_name,
-    save_file_metadata,
-)
+from core.services.file_ingestion_service import ingest_tabular_file
 from core.common.exceptions import BaseAPIException, ValidationError as APIValidationError
 from utils.response_helpers import (
     create_success_response,
@@ -30,6 +26,48 @@ router = APIRouter()
 
 # DuckDB 原生 read_* 能直接通过 httpfs 读取的文件类型
 NATIVE_REMOTE_TYPES = {"csv", "json", "jsonl", "parquet", "pq"}
+
+
+class _PinnedAddressAdapter(requests.adapters.HTTPAdapter):
+    """Keep direct connections on validated DNS addresses, including TLS SNI."""
+
+    def get_connection_with_tls_context(self, request, verify, proxies=None, cert=None):
+        address = _assert_public_url(request.url)
+        # An explicitly configured proxy is a trusted network boundary: it resolves
+        # destination DNS itself. Local validation and redirect checks still apply.
+        if requests.utils.select_proxy(request.url, proxies or {}):
+            return super().get_connection_with_tls_context(request, verify, proxies, cert)
+        host, tls = self.build_connection_pool_key_attributes(request, verify, cert)
+        original_host = host["host"]
+        host["host"] = address
+        if host["scheme"] == "https":
+            tls["server_hostname"] = original_host
+            tls["assert_hostname"] = original_host
+        return self.poolmanager.connection_from_host(**host, pool_kwargs=tls)
+
+
+def _send_checked_request(method: str, url: str, timeout: float):
+    """Create a streaming response with validated direct DNS and trusted proxy support."""
+    session = requests.Session()
+    session.mount("http://", _PinnedAddressAdapter())
+    session.mount("https://", _PinnedAddressAdapter())
+    parsed = urlsplit(url)
+    try:
+        response = session.request(
+            method.upper(), url, timeout=timeout, allow_redirects=False, stream=True,
+            proxies=_requests_proxies(), headers={"Host": parsed.netloc},
+        )
+    except BaseException:
+        session.close()
+        raise
+    original_close = response.close
+
+    def close():
+        original_close()
+        session.close()
+
+    response.close = close
+    return response
 
 
 def _requests_proxies() -> Optional[Dict[str, str]]:
@@ -55,7 +93,7 @@ class URLReadRequest(BaseModel):
     prefer_native: bool = True
 
 
-def _assert_public_url(url: str) -> None:
+def _assert_public_url(url: str) -> str:
     """拒绝指向内部地址的 URL（loopback / link-local 云元数据 / 多播 / 保留段）。
 
     自托管工具默认仍允许常规局域网私网段（10/172.16/192.168），仅拦截
@@ -65,8 +103,9 @@ def _assert_public_url(url: str) -> None:
     import socket
     from urllib.parse import urlparse
 
-    host = urlparse(url).hostname
-    if not host:
+    parsed = urlparse(url)
+    host = parsed.hostname
+    if parsed.scheme not in {"http", "https"} or not host or parsed.username or parsed.password:
         raise APIValidationError(
             "Invalid URL host",
             details={"url": url, "code": "SSRF_BLOCKED"},
@@ -81,6 +120,7 @@ def _assert_public_url(url: str) -> None:
 
     for info in infos:
         ip = ipaddress.ip_address(info[4][0])
+        ip = getattr(ip, "ipv4_mapped", None) or ip
         if (
             ip.is_loopback
             or ip.is_link_local
@@ -92,6 +132,30 @@ def _assert_public_url(url: str) -> None:
                 f"Access to internal address is not allowed: {ip}",
                 details={"url": url, "code": "SSRF_BLOCKED"},
             )
+    if not infos:
+        raise APIValidationError("URL host resolved to no addresses")
+    return infos[0][4][0]
+
+
+def _checked_request(method: str, url: str, timeout: float):
+    """Validate every redirect before sending a bounded HTTP request."""
+    for _ in range(6):
+        _assert_public_url(url)
+        response = _send_checked_request(method, url, timeout)
+        if response.status_code in {301, 302, 303, 307, 308}:
+            location = response.headers.get("Location")
+            response.close()
+            if not location:
+                raise APIValidationError("Redirect is missing Location")
+            url = urljoin(url, location)
+            continue
+        try:
+            response.raise_for_status()
+        except BaseException:
+            response.close()
+            raise
+        return response
+    raise APIValidationError("Too many URL redirects")
 
 
 def normalize_remote_url(url: str) -> str:
@@ -99,10 +163,12 @@ def normalize_remote_url(url: str) -> str:
     url_str = str(url)
 
     # 检查是否是GitHub blob URL
-    if "github.com" in url_str and "/blob/" in url_str:
+    parsed = urlsplit(url_str)
+    if parsed.hostname == "github.com" and "/blob/" in parsed.path:
         # 将 github.com/user/repo/blob/branch/path 转换为 raw.githubusercontent.com/user/repo/branch/path
-        url_str = url_str.replace("github.com", "raw.githubusercontent.com")
-        url_str = url_str.replace("/blob/", "/")
+        url_str = urlunsplit(parsed._replace(
+            netloc="raw.githubusercontent.com", path=parsed.path.replace("/blob/", "/", 1)
+        ))
 
     return url_str
 
@@ -130,13 +196,8 @@ def read_from_url(request: URLReadRequest):
         else:
             # 没有明确扩展名时，尝试通过 HEAD 请求检测 Content-Type
             try:
-                head_response = requests.head(
-                    converted_url,
-                    timeout=app_config.url_reader_head_timeout,
-                    allow_redirects=True,
-                    proxies=_requests_proxies(),
-                )
-                content_type = head_response.headers.get("content-type", "").lower()
+                with _checked_request("head", converted_url, app_config.url_reader_head_timeout) as head_response:
+                    content_type = head_response.headers.get("content-type", "").lower()
                 
                 if "json" in content_type:
                     file_type = "json"
@@ -150,12 +211,19 @@ def read_from_url(request: URLReadRequest):
                     # 默认尝试 CSV
                     file_type = "csv"
                     logger.info(f"Unable to infer file type from Content-Type, using default CSV: {content_type}")
+            except BaseAPIException:
+                raise
             except Exception as head_err:
                 logger.warning(f"HEAD request failed, using default CSV: {head_err}")
                 file_type = "csv"
         import_mode = resolve_import_mode(
             request.import_mode or "auto", file_type=file_type
         )
+        if file_type not in {"csv", "json", "jsonl", "parquet", "pq", "excel", "xlsx", "xls"}:
+            raise APIValidationError("Unsupported remote file type")
+        suffix = file_type
+        if file_type == "excel":
+            suffix = "xls" if urlsplit(converted_url).path.lower().endswith(".xls") else "xlsx"
 
         reader_options = None
         if file_type == "csv":
@@ -167,88 +235,35 @@ def read_from_url(request: URLReadRequest):
             if request.encoding:
                 reader_options["ENCODING"] = request.encoding
 
-        metadata = None
-        native_attempted = bool(request.prefer_native) and file_type in NATIVE_REMOTE_TYPES
+        # HTTP input is staged before acquiring a database connection.
+        try:
+            response = _checked_request("get", converted_url, app_config.url_reader_timeout)
+        except requests.RequestException as download_error:
+            raise APIValidationError("Unable to download remote file") from download_error
+
+        with response, tempfile.NamedTemporaryFile(delete=False, suffix=f".{suffix}") as temp_file:
+            temp_file_path = temp_file.name
+            downloaded = 0
+            for chunk in response.iter_content(chunk_size=1024 * 1024):
+                downloaded += len(chunk)
+                if downloaded > app_config.max_file_size:
+                    raise BaseAPIException("Remote file exceeds upload limit", 413, "FILE_TOO_LARGE")
+                temp_file.write(chunk)
 
         with with_duckdb_connection() as conn:
-            table_name = resolve_unique_table_name(
-                conn, request.table_alias, user_provided=True
+            ingest_result = ingest_tabular_file(
+                conn, temp_file_path, file_type, request.table_alias,
+                import_mode=import_mode,
+                filename_for_meta=f"url_{request.table_alias}",
+                persist_path=f"url://{converted_url}",
+                reader_options=reader_options,
             )
-            if native_attempted:
-                try:
-                    from core.data.file_datasource_manager import (
-                        create_table_from_file,
-                    )
-
-                    metadata = create_table_from_file(
-                        conn,
-                        table_name,
-                        converted_url,
-                        file_type,
-                        reader_options=reader_options,
-                        import_mode=import_mode,
-                    )
-                except Exception as exc:
-                    logger.warning(
-                        "DuckDB/httpfs read failed, preparing fallback: url=%s, err=%s",
-                        converted_url,
-                        exc,
-                    )
-
-            if metadata is None:
-                if converted_url.lower().startswith("s3://"):
-                    raise APIValidationError(
-                        "S3 URL requires httpfs and duckdb_remote_settings; "
-                        "HTTP download fallback is disabled for s3:// URLs",
-                        details={"url": converted_url, "code": "REMOTE_READ_FAILED"},
-                    )
-                try:
-                    response = requests.get(
-                        converted_url,
-                        timeout=app_config.url_reader_timeout,
-                        proxies=_requests_proxies(),
-                    )
-                    response.raise_for_status()
-                except requests.RequestException as download_error:
-                    raise APIValidationError(
-                        f"Unable to download file: {str(download_error)}",
-                        details={"url": converted_url},
-                    ) from download_error
-
-                with tempfile.NamedTemporaryFile(
-                    delete=False, suffix=f".{file_type}"
-                ) as temp_file:
-                    temp_file.write(response.content)
-                    temp_file_path = temp_file.name
-
-                ingest_result = ingest_tabular_file(
-                    conn,
-                    temp_file_path,
-                    file_type,
-                    request.table_alias,
-                    import_mode=import_mode,
-                    filename_for_meta=f"url_{request.table_alias}",
-                    persist_path=f"url://{converted_url}",
-                    reader_options=reader_options,
-                )
-                table_name = ingest_result.table_name
-                metadata = {
-                    "row_count": ingest_result.row_count,
-                    "column_count": ingest_result.column_count,
-                    "columns": ingest_result.columns,
-                    "column_profiles": ingest_result.column_profiles,
-                }
-            else:
-                table_metadata = build_file_metadata(
-                    source_id=table_name,
-                    filename=f"url_{table_name}",
-                    file_path=f"url://{converted_url}",
-                    file_type=file_type,
-                    table_metadata=metadata,
-                    extra={"source_url": converted_url},
-                )
-                save_file_metadata(table_metadata)
-                logger.debug("Successfully saved URL table metadata: %s", table_name)
+            table_name = ingest_result.table_name
+            metadata = {
+                "row_count": ingest_result.row_count,
+                "column_count": ingest_result.column_count,
+                "columns": ingest_result.columns,
+            }
 
         return create_success_response(
             data={
@@ -289,11 +304,9 @@ def get_url_info(url: str):
     """获取URL文件信息（不下载完整文件）"""
     try:
         app_config = config_manager.get_app_config()
-        response = requests.head(url, timeout=app_config.url_reader_head_timeout)
-        response.raise_for_status()
-
-        content_type = response.headers.get("content-type", "")
-        content_length = response.headers.get("content-length")
+        with _checked_request("head", url, app_config.url_reader_head_timeout) as response:
+            content_type = response.headers.get("content-type", "")
+            content_length = response.headers.get("content-length")
 
         # 检测文件类型
         url_lower = url.lower()
@@ -318,6 +331,8 @@ def get_url_info(url: str):
             message_code=MessageCode.URL_INFO_RETRIEVED,
         )
 
+    except BaseAPIException:
+        raise
     except requests.RequestException as e:
         return error_json_response(
             400,

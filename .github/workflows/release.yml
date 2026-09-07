@@ -1,13 +1,19 @@
 name: Release Desktop
 
-# Push a tag like v0.0.2 to build all three installers and attach them to a draft Release.
+# Push a tag like v2.0.0 to build all installers and attach them to a draft Release.
+# A matching docs/releases/<tag>.md is mandatory; the workflow fails closed if absent.
 on:
   push:
     tags: ["v*"]
   workflow_dispatch: {}
 
 jobs:
+  tests:
+    uses: ./.github/workflows/test.yml
+  quality:
+    uses: ./.github/workflows/lint.yml
   build:
+    needs: [tests, quality]
     permissions:
       contents: write
     strategy:
@@ -107,6 +113,10 @@ jobs:
         with:
           workspaces: "./frontend/src-tauri -> target"
 
+      - name: Load versioned release notes
+        id: release_notes
+        run: python .github/scripts/load_release_notes.py
+
       - name: Build & release with tauri-action
         uses: tauri-apps/tauri-action@v0
         env:
@@ -126,9 +136,9 @@ jobs:
           projectPath: frontend
           tagName: ${{ github.ref_type == 'tag' && github.ref_name || 'v__VERSION__' }}
           releaseName: "DuckQuery v__VERSION__"
-          releaseBody: "Desktop builds. See the README for first-run steps (macOS: 隐私与安全性 → 仍要打开; Windows: SmartScreen → 仍要运行)."
+          releaseBody: ${{ steps.release_notes.outputs.body }}
           releaseDraft: true
-          prerelease: false
+          prerelease: true
           args: --target ${{ matrix.rust_target }} --bundles ${{ matrix.bundles }}
 
       # ---- 离线全量包(第二资产,不进更新通道) ----

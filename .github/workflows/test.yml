@@ -1,6 +1,7 @@
 name: Tests
 
 on:
+  workflow_call:
   push:
     branches: [main, develop]
   pull_request:
@@ -54,6 +55,9 @@ jobs:
 
       - name: Run Vitest
         run: cd frontend && npm test
+
+      - name: Build production frontend
+        run: cd frontend && npm run build
 
   mcp-test:
     name: MCP Pytest

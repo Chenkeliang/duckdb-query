@@ -328,14 +328,22 @@ class TestListExtensions:
 
         excel_item = next(item for item in items if item["name"] == "excel")
         assert excel_item["bundled"] is True
-        assert excel_item["installed"] is True
+        # bundled is a distribution declaration, not a fabricated runtime state.
+        assert isinstance(excel_item["installed"], bool)
+        assert excel_item["installable"] is True
+        assert excel_item["artifact_name"] == "excel"
         assert excel_item["category"] == "datasource"
         assert excel_item["description"]
         assert excel_item["description_en"]
 
         sqlite_item = next(item for item in items if item["name"] == "sqlite_scanner")
         assert sqlite_item["bundled"] is False
+        assert sqlite_item["installable"] is True
         assert sqlite_item["category"] == "datasource"
+
+        mysql_item = next(item for item in items if item["name"] == "mysql")
+        assert mysql_item["load_name"] == "mysql"
+        assert mysql_item["artifact_name"] == "mysql_scanner"
 
 
 class TestInstallValidation:
@@ -351,12 +359,12 @@ class TestInstallValidation:
         assert response.status_code >= 400
         assert response.status_code < 500
 
-    def test_install_bundled_name_rejected(self):
-        response = client.post("/api/duckdb/extensions/excel/install")
-        assert response.status_code >= 400
-        assert response.status_code < 500
-        body = response.json()
-        assert body["success"] is False
+    def test_missing_bundled_extension_can_be_repaired(self):
+        """Bundled describes distribution intent; it must not disable repair."""
+        with patch.object(duckdb_extensions.threading, "Thread") as mock_thread:
+            response = client.post("/api/duckdb/extensions/excel/install")
+        assert response.status_code == 200
+        mock_thread.return_value.start.assert_called_once()
 
     def test_install_already_in_progress_is_idempotent(self):
         """已在安装中时，POST 幂等返回当前进度，不重新起线程"""
@@ -419,6 +427,18 @@ def _fake_duckdb_connection(ext_dir: str):
 class TestInstallProgressStateMachine:
     """安装线程的状态机：downloading -> verifying -> done / error（不真联网）"""
 
+    def test_mysql_uses_canonical_artifact_name_for_url_and_disk(self):
+        with tempfile.TemporaryDirectory() as ext_dir:
+            mock_con = _fake_duckdb_connection(ext_dir)
+            with patch(
+                "routers.duckdb_extensions.with_duckdb_connection"
+            ) as mock_pool:
+                bind_mock_duckdb_pool(mock_pool, mock_con)
+                url, _dest_dir, dest_path = duckdb_extensions._resolve_target_path("mysql")
+
+        assert url.endswith("/mysql_scanner.duckdb_extension.gz")
+        assert dest_path.endswith("/mysql_scanner.duckdb_extension")
+
     def test_install_reaches_done_with_mocked_download(self):
         fake_payload = gzip.compress(b"fake-duckdb-extension-bytes")
 
@@ -475,3 +495,81 @@ class TestInstallProgressStateMachine:
 
             status_response = client.get("/api/duckdb/extensions/install/vss")
             assert status_response.json()["data"]["status"] == "error"
+
+    def test_failed_verification_preserves_previous_artifact(self):
+        """Adversarial 2026-09-04: corrupt updates never replace a working binary."""
+        with tempfile.TemporaryDirectory() as ext_dir:
+            dest_dir = os.path.join(ext_dir, "v2.0.0", "osx_arm64")
+            os.makedirs(dest_dir)
+            dest_path = os.path.join(dest_dir, "fts.duckdb_extension")
+            with open(dest_path, "wb") as existing:
+                existing.write(b"known-good")
+
+            mock_con = _fake_duckdb_connection(ext_dir)
+            normal_execute = mock_con.execute.side_effect
+
+            def reject_candidate(sql, *args, **kwargs):
+                if str(sql).startswith("LOAD '"):
+                    raise RuntimeError("invalid extension signature")
+                return normal_execute(sql, *args, **kwargs)
+
+            mock_con.execute.side_effect = reject_candidate
+
+            def write_candidate(_url, gz_path, _name):
+                with open(gz_path, "wb") as archive:
+                    archive.write(gzip.compress(b"attacker-controlled"))
+
+            with patch(
+                "routers.duckdb_extensions._resolve_target_path",
+                return_value=("https://invalid/fts.gz", dest_dir, dest_path),
+            ), patch(
+                "routers.duckdb_extensions._download_extension_archive",
+                side_effect=write_candidate,
+            ), patch(
+                "routers.duckdb_extensions.with_duckdb_connection"
+            ) as mock_pool:
+                bind_mock_duckdb_pool(mock_pool, mock_con)
+                duckdb_extensions._run_extension_install("fts")
+
+            with open(dest_path, "rb") as existing:
+                assert existing.read() == b"known-good"
+            assert not os.path.exists(dest_path + ".candidate.duckdb_extension")
+            assert duckdb_extensions._get_install_state("fts")["status"] == "error"
+
+    def test_decompression_bomb_is_rejected_before_publish(self, monkeypatch):
+        """Adversarial 2026-09-04: compressed input cannot grow without a bound."""
+        monkeypatch.setattr(duckdb_extensions, "_MAX_EXTENSION_SIZE_BYTES", 4)
+        with tempfile.TemporaryDirectory() as ext_dir:
+            archive = os.path.join(ext_dir, "oversized.gz")
+            candidate = os.path.join(ext_dir, "candidate.duckdb_extension")
+            with open(archive, "wb") as output:
+                output.write(gzip.compress(b"12345"))
+
+            with pytest.raises(ValueError, match="maximum allowed size"):
+                duckdb_extensions._extract_extension_archive(archive, candidate)
+
+            assert not os.path.exists(os.path.join(ext_dir, "fts.duckdb_extension"))
+
+    def test_windows_locked_dll_flow_restores_previous_file_on_load_failure(self):
+        """Adversarial 2026-09-04: publish-before-LOAD remains rollback-safe on Windows."""
+        with tempfile.TemporaryDirectory() as ext_dir:
+            destination = os.path.join(ext_dir, "fts.duckdb_extension")
+            candidate = os.path.join(ext_dir, "candidate.duckdb_extension")
+            with open(destination, "wb") as output:
+                output.write(b"known-good")
+            with open(candidate, "wb") as output:
+                output.write(b"invalid-update")
+
+            connection = MagicMock()
+            connection.execute.side_effect = RuntimeError("invalid extension")
+            with pytest.raises(RuntimeError, match="invalid extension"):
+                duckdb_extensions._verify_and_publish_extension(
+                    connection,
+                    candidate,
+                    destination,
+                    replace_before_load=True,
+                )
+
+            with open(destination, "rb") as existing:
+                assert existing.read() == b"known-good"
+            assert not os.path.exists(destination + ".rollback")

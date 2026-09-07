@@ -21,6 +21,8 @@ from sqlglot import exp
 from core.common.enhanced_error_handler import get_error_handler
 from core.common.config_manager import config_manager
 from core.common.sql_identifiers import quote_identifier
+from core.common.sql_capabilities import is_read_only_sql
+from core.common.sql_error_location import parse_sql_error_location
 from core.common.timezone_utils import (
     format_storage_time_for_response,
     get_current_time_iso,
@@ -132,16 +134,22 @@ def _strip_sql_literals_upper(sql: str) -> str:
     return _SQL_CLEAN_RE.sub(" ", (sql or "").upper())
 
 
-def assert_no_dangerous_write(sql_upper_cleaned: str, save_as_table: Optional[str]) -> None:
-    """拒绝写操作;save_as_table 时放行 CREATE(其 CTAS 由服务端包装)。
-    入参须为已剥离字面量的大写 SQL。execute 与 federated 端点共用,避免任一路径漏拦。"""
-    if save_as_table:
+def assert_no_dangerous_write(sql: str, save_as_table: Optional[str]) -> None:
+    """Preserve direct CREATE TABLE while rejecting all other user side effects.
+
+    ``save_as_table`` only controls the server-owned CTAS wrapper; it never authorizes
+    side effects in the user SQL itself. Existing direct CREATE TABLE support remains;
+    CREATE SECRET/TRIGGER/EXTENSION REPOSITORY and session statements do not.
+    """
+    if is_read_only_sql(sql):
         return
-    for keyword in _DANGEROUS_KEYWORDS:
-        if keyword != "CREATE" and contains_keyword(sql_upper_cleaned, keyword):
-            raise APIValidationError(
-                f"{keyword} operation is not allowed. Only query operations are supported."
-            )
+    if not save_as_table:
+        created_table, _if_not_exists = _main_table_create_target(sql)
+        if created_table:
+            return
+    raise APIValidationError(
+        "Only queries and direct CREATE TABLE operations are supported on this endpoint."
+    )
 
 
 def _main_table_create_target(sql: str) -> tuple[Optional[str], bool]:
@@ -501,7 +509,7 @@ def execute_duckdb_query(
             )
 
         # 拒绝写操作(save_as_table 时放行 CREATE);与 federated 端点共用同一 helper
-        assert_no_dangerous_write(sql_upper_clean, request.save_as_table)
+        assert_no_dangerous_write(sql_query, request.save_as_table)
 
         # 预览模式:最外层缺用户 LIMIT 时补系统默认(INSTALL/LOAD/ATTACH 等语句不接 LIMIT)。
         # 判定走 has_top_level_limit(sqlglot AST):仅子查询里的 LIMIT 属于用户业务 SQL,
@@ -577,11 +585,15 @@ def execute_duckdb_query(
     except Exception as e:
         logger.error(f"DuckDB query execution failed: {str(e)}")
         logger.error(f"Stack trace: {traceback.format_exc()}")
+        details = {"query_id": query_id}
+        sql_location = parse_sql_error_location(str(e), sql_query)
+        if sql_location:
+            details["sql_location"] = sql_location
         return error_json_response(
             500,
             MessageCode.QUERY_FAILED,
             f"Query execution failed: {str(e)}",
-            details={"query_id": query_id},
+            details=details,
         )
 
 
@@ -821,9 +833,7 @@ def execute_federated_query(
 
     # 写拦截:此端点独立于 /execute,历史上漏了这道门,MCP federated_query
     # 可借多语句/CTE 绕过只读判定送达写操作(Codex P0-4)。与 /execute 同 helper。
-    assert_no_dangerous_write(
-        _strip_sql_literals_upper(request.sql), request.save_as_table
-    )
+    assert_no_dangerous_write(request.sql, request.save_as_table)
 
     # 预先准备 ATTACH 配置（在连接外验证，避免占用连接时间）。
     # 与透视/集合共用 resolve_attach_configs：此处曾另写一份(多了 db_ 前缀归一化),
@@ -1012,9 +1022,13 @@ def execute_federated_query(
     except Exception as e:
         logger.error(f"Federated query execution failed: {str(e)}")
         logger.error(f"Stack trace: {traceback.format_exc()}")
+        details = {"query_id": query_id}
+        sql_location = parse_sql_error_location(str(e), sql_query)
+        if sql_location:
+            details["sql_location"] = sql_location
         return error_json_response(
             500,
             MessageCode.QUERY_FAILED,
             f"Federated query failed: {str(e)}",
-            details={"query_id": query_id},
+            details=details,
         )

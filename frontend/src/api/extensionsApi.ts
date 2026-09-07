@@ -10,12 +10,19 @@ export type ExtensionCategory = 'datasource' | 'capability';
 
 export interface DuckDBExtensionItem {
   name: string;
+  load_name: string;
+  artifact_name: string;
   category: ExtensionCategory;
+  source: string;
   description: string;
   description_en: string;
   usage: string | null;
   installed: boolean;
+  loaded: boolean;
+  extension_version: string | null;
+  installed_from: string | null;
   bundled: boolean;
+  installable: boolean;
 }
 
 export type ExtensionInstallPhase = 'idle' | 'downloading' | 'verifying' | 'done' | 'error';

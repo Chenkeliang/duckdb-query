@@ -177,9 +177,9 @@ def test_run_query_guard_rejection_counts(ctx):
 
 
 def test_run_query_execution_error_is_observation_not_exception(ctx):
-    """执行期 DuckDB 错误(EXPLAIN 通过、con.execute/fetchmany 才炸)必须作为失败
-    observation 回喂,绝不逃逸成循环的 internal_error。回归 scenario 21:复合谓词下
-    JSON `->>` 触发运行期 ConversionException,Engine 需据此让模型自修复。"""
+    """A data-dependent execution error that EXPLAIN cannot detect must be returned
+    as an observation instead of escaping as an internal agent error.
+    """
     name = f"agent_ev_{uuid.uuid4().hex[:8]}"
     with with_duckdb_connection() as con:
         con.execute(f"CREATE TABLE {name}(event_type VARCHAR, properties JSON)")
@@ -190,7 +190,7 @@ def test_run_query_execution_error_is_observation_not_exception(ctx):
     try:
         bad = (
             "SELECT count(*) AS n FROM " + name
-            + " WHERE event_type='purchase' AND properties->>'device'='iOS'"
+            + " WHERE CAST(json_extract_string(properties,'$.device') AS INTEGER)=1"
         )
         result = asyncio.run(ai_agent_tools.run_query_async(ctx, RunQueryArgs(sql=bad), 3))
         assert result.ok is False  # 失败 observation,而非抛异常

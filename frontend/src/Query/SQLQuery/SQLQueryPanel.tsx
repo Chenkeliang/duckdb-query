@@ -8,7 +8,7 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AlertTriangle } from 'lucide-react';
-import { SQLEditor } from './SQLEditor';
+import { SQLEditor, type SQLErrorDiagnostic } from './SQLEditor';
 import { SQLToolbar } from './SQLToolbar';
 import { useSQLEditor } from './hooks/useSQLEditor';
 import { useDuckDBTables } from '@/hooks/useDuckDBTables';
@@ -36,6 +36,20 @@ import { formatSQLDataGrip } from '@/utils/sqlFormatter';
 import { useAiStatus } from '@/hooks/useAiStatus';
 import { ChatToggleButton } from './ai/AiChatDrawer';
 import { agentChatBus, useAgentChatBus } from './ai/agentChatBus';
+import type { ApiError } from '@/api';
+
+function diagnosticFromApiError(error: unknown): SQLErrorDiagnostic | null {
+  const location = (error as ApiError | undefined)?.details?.sql_location;
+  if (!location || typeof location !== 'object') return null;
+  const raw = location as Record<string, unknown>;
+  if (typeof raw.line !== 'number' || typeof raw.column !== 'number') return null;
+  return {
+    line: raw.line,
+    column: raw.column,
+    endColumn: typeof raw.end_column === 'number' ? raw.end_column : undefined,
+    message: error instanceof Error ? error.message : 'SQL error',
+  };
+}
 
 export interface SQLQueryPanelProps {
   /** 初始 SQL */
@@ -102,6 +116,7 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
     displaySql: string;
     baseSql: string;
   } | null>(null);
+  const [sqlDiagnostic, setSqlDiagnostic] = useState<SQLErrorDiagnostic | null>(null);
 
   // Global History
   const { addToHistory } = useGlobalHistory();
@@ -317,7 +332,7 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
         ) {
           withStatementType = keyword;
         }
-        if (keyword === 'LIMIT') {
+        if (keyword === 'LIMIT' || keyword === 'FETCH') {
           hasTopLevelLimit = true;
         }
       } else if (
@@ -348,6 +363,7 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
   }, [maxQueryRows, systemLimitedSql]);
 
   const handleSQLChange = useCallback((nextSql: string) => {
+    setSqlDiagnostic(null);
     if (systemLimitedSql) {
       const tokens = tokenizeSQL(nextSql);
       let depth = 0;
@@ -458,6 +474,7 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
       }
       const startTime = Date.now();
       try {
+        setSqlDiagnostic(null);
         // 构建执行时的 TableSource，包含联邦查询信息
         const executeSource: TableSource = requiresFederatedQuery
           ? {
@@ -477,6 +494,7 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
         // 重置警告状态
         setDismissedWarning(false);
       } catch (err) {
+        setSqlDiagnostic(diagnosticFromApiError(err));
         console.error('SQL execution failed:', err);
         addToHistory({
           type: 'sql',
@@ -597,6 +615,7 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
           columns={autocompleteColumns}
           columnNameHints={flatColumnNames}
           defaultTable={completionDefaultTable}
+          diagnostic={sqlDiagnostic}
           autoFocus
         />
       </div>

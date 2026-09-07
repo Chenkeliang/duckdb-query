@@ -154,15 +154,9 @@ async def upload_file(
         except ValueError as exc:
             raise APIValidationError(str(exc), details={"field": "import_mode"}) from exc
 
-        # 读取文件内容
-        file_content = await file.read()
-        file_size = len(file_content)
-
-        # 重置文件指针
-        await file.seek(0)
-
         # 保存临时文件用于安全验证
         temp_file_path = await save_upload_file(file)
+        file_size = os.path.getsize(temp_file_path)
 
         # 安全验证
         validation_result = security_validator.validate_file_upload(
@@ -204,9 +198,7 @@ async def upload_file(
         os.makedirs(temp_dir, exist_ok=True)
 
         # 保存文件
-        save_path = os.path.join(temp_dir, file.filename)
-        with open(save_path, "wb") as f:
-            f.write(file_content)
+        save_path = temp_file_path
 
         # 获取文件预览信息
         from core.data.file_utils import get_file_preview

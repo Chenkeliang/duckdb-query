@@ -354,9 +354,10 @@ class TestPivotQueryModeGeneration:
         assert "PIVOT" in result.final_sql
 
     def test_dynamic_pivot_sql_actually_executes(self):
-        """回归: 动态透视曾生成 PIVOT(agg FOR col)（缺 IN 列表，DuckDB 语法错误）。
-        动态列必须用简写语法 PIVOT base ON col USING agg。字符串断言拦不住语法错，
-        故直接在真实 DuckDB 上执行生成的 SQL 验证。"""
+        """Regression 2026-09-04: dynamic PIVOT nested in a second CTE fails on
+        DuckDB 2.0. PIVOT must be the outer statement; execute real SQL because
+        string assertions cannot catch parser/binder drift.
+        """
         import duckdb
 
         config = PivotQueryConfig(table_name="sales", filters=[])
@@ -376,6 +377,8 @@ class TestPivotQueryModeGeneration:
             result = generate_pivot_query_sql(config, pivot_config=pivot_config)
 
         assert result.metadata.get("strategy") == "native:dynamic"
+        assert "pivot_result AS" not in result.final_sql
+        assert result.final_sql.lstrip().startswith("WITH base AS")
         conn = duckdb.connect()
         conn.execute(
             "CREATE TABLE sales(region VARCHAR, year VARCHAR, revenue INT);"

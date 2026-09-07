@@ -36,7 +36,10 @@ cp config/app-config.example.jsonc config/app-config.jsonc
 
 | 配置项 | 类型 | 默认值 | 说明 |
 |--------|------|--------|------|
-| `duckdb_memory_limit` | string | `"8GB"` | DuckDB 最大可用内存 |
+| `duckdb_memory_limit` | string | `"8GB"` | DuckDB 缓冲预算，上限为物理/标准 cgroup 内存的 75%；不是进程 RSS 硬限制 |
+| `duckdb_max_temp_directory_size` | string | `"4GB"` | DuckDB 溢写上限，不含导入、导出与备份文件 |
+| `max_concurrent_queries` | integer | `4` | 用户数据库连接池上限，同时受 `pool_max_connections` 限制 |
+| `min_free_disk_bytes` | integer | `268435456` | 获取用户数据库连接前检查剩余磁盘，不等同于预留磁盘 |
 | `duckdb_threads` | integer | CPU 核心数 | 并行查询线程数（省略则跟随 `os.cpu_count()`） |
 | `duckdb_temp_directory` | string | `null` | 自定义临时目录 |
 | `duckdb_extensions` | string[] | `["excel", "json", "parquet", "httpfs", "mysql", "postgres"]` | 自动加载的扩展 |
@@ -214,29 +217,29 @@ JOIN / 集合运算的预览、LIMIT、BY NAME 语义见 [QUERY_BEHAVIOR_ZH.md](
 |--------|------|--------|------|
 | `json_import_column_type` | string | `"auto"` | `auto`：DuckDB 推断类型；`variant`：各列 `VARIANT`（上传 `import_mode=variant` 优先） |
 
-**DuckDB 存储格式**：应用连接 `main.db` / `system.db` 时使用 `storage_compatibility_version=latest`（见 `api/core/database/duckdb_storage.py`），新库为 v1.5.x 存储，可持久化 `VARIANT` 列。
+**DuckDB 存储格式**：DuckQuery 2.0 新建 `main.db` / `system.db` 时固定使用 `storage_compatibility_version=v2.0.0`（见 `api/core/database/duckdb_storage.py`），不会在未来升级 DuckDB 2.1 时继续漂移。DuckDB 2.0 可以原样读取旧库，但不会在启动时静默迁移；显式迁移后的 v2 文件不能由 DuckDB 1.5.3 直接打开。
 
-### 从旧版 main.db 迁移到 latest（表/数据不多时）
+### 从旧版 main.db 迁移到 v2.0.0
 
 旧库多为 `v1.0.0+` / `v1.4.x` 存储，**不能**直接写入 `VARIANT` 表，需一次性迁移：
 
 1. **停止** API（`uvicorn` / 容器），避免 `.db` 被占用。
-2. 确认 Python 包为 **`duckdb==1.5.3`**（`cd api && pip install -r requirements.txt`）。
+2. 确认 Python 包为 **`duckdb==1.6.0.dev379`**、实际 engine 为 `v2.0.0-alpha39998`（`cd api && pip install -r requirements.txt`）。
 3. 预览：
    ```bash
    cd api
-   python scripts/migrate_storage_to_latest.py --dry-run
+   python scripts/migrate_storage_to_latest.py --dry-run --target-storage v2.0.0
    ```
 4. 执行（会备份到 `data/duckdb/backup_storage_migration_<时间戳>/` 后替换库文件）：
    ```bash
-   python scripts/migrate_storage_to_latest.py
+   python scripts/migrate_storage_to_latest.py --target-storage v2.0.0
    ```
-   或跳过交互：`python scripts/migrate_storage_to_latest.py --yes`
+   或跳过交互：`python scripts/migrate_storage_to_latest.py --yes --target-storage v2.0.0`。迁移后降级只能恢复脚本生成的备份，不能让 DuckDB 1.5.3 直接打开 v2 文件。
 5. **重启** 服务；在 UI 上传 JSON 或设置 `json_import_column_type=variant` 验证。
 
 仅迁移主库或系统库：`--only main` / `--only system`。
 
-迁移逻辑：只读打开旧库 → 用 `latest` 建新文件 → 逐表 `CREATE TABLE AS SELECT` → 备份旧文件并替换。
+迁移逻辑：检查可用空间 → 只读 ATTACH 旧库 → 用目标 storage 建新文件 → 原生 `COPY FROM DATABASE` 保留表、约束、索引、视图、序列与宏 → 校验版本 → 备份旧文件并原子替换。
 
 ---
 
@@ -249,6 +252,6 @@ JOIN / 集合运算的预览、LIMIT、BY NAME 语义见 [QUERY_BEHAVIOR_ZH.md](
 | `DUCKDB_REMOTE_SETTINGS` | JSON 字符串，合并进 `duckdb_remote_settings`（S3/OSS 密钥，勿写入镜像） |
 | `duckdb_extensions` | 默认含 `httpfs`；镜像构建预装 `mysql`、`postgres`、`httpfs`、`spatial` 等 |
 
-**说明**：DuckDB **httpfs** 是否走系统代理取决于 DuckDB 1.5.3 运行时行为，须在目标环境用 `s3://` 或 HTTPS URL 实测。应用层仅保证 Python `requests` 回退路径读代理。
+**说明**：DuckDB **httpfs** 是否走系统代理取决于当前 DuckDB 2.0 Preview 运行时行为，须在目标环境用 `s3://` 或 HTTPS URL 实测。应用层仅保证 Python `requests` 回退路径读代理。
 
 S3 数据路径走网络与 `duckdb_remote_settings`，**不**依赖 `server_data_mounts` 宿主机目录挂载。
