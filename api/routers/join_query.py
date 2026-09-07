@@ -896,6 +896,7 @@ def save_query_to_duckdb(request: dict = Body(...)):
         # 默认移除最外层 LIMIT 后全量保存,勾选则保留已有 LIMIT 或补系统默认值。
         logger.info("Re-executing SQL to persist (apply_row_limit=%s)", apply_row_limit)
 
+        query_id = f"save:{uuid.uuid4()}"
         try:
             # reject_empty=True: 空结果只清理内部临时表、绝不触碰 table_alias 下
             # 已有的数据——同名重存(overwrite)时新查询意外返回 0 行,不能把旧的
@@ -904,6 +905,7 @@ def save_query_to_duckdb(request: dict = Body(...)):
                 apply_row_limit_choice(sql_query, apply_row_limit),
                 table_alias,
                 attach_list,
+                query_id=query_id,
                 reject_empty=True,
             )
         except Exception as exec_error:
@@ -918,6 +920,8 @@ def save_query_to_duckdb(request: dict = Body(...)):
                 ),
                 details={"sql": sql_query, "attach_databases": attach_list},
             )
+        finally:
+            connection_registry.forget_publication(query_id)
 
         row_count = metadata_snapshot["row_count"]
         if row_count == 0:

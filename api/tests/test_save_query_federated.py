@@ -132,6 +132,56 @@ class TestSaveQueryToDuckDBExplicitAttach:
 
 
 class TestSaveQueryToDuckDBAutoDerivedAttach:
+    def test_save_dialog_watchdog_preserves_existing_target(self, monkeypatch):
+        """Regression 2026-09-07: ordinary save uses a monitored execution ID."""
+        from core.database import federated_attach
+
+        table_name = "save_dialog_timeout_target"
+
+        class ImmediateTimer:
+            def __init__(self, _delay, callback):
+                self.callback = callback
+
+            def start(self):
+                self.callback()
+
+            def cancel(self):
+                return None
+
+        monkeypatch.setattr(
+            federated_attach.threading,
+            "Timer",
+            ImmediateTimer,
+        )
+        try:
+            with with_duckdb_connection() as connection:
+                connection.execute(
+                    f'CREATE OR REPLACE TABLE "{table_name}" AS SELECT 99 AS value'
+                )
+
+            response = client.post(
+                "/api/save_query_to_duckdb",
+                json={
+                    "sql": "SELECT 42 AS value",
+                    "table_alias": table_name,
+                    "datasource": {"id": "duckdb_internal", "type": "duckdb"},
+                },
+            )
+
+            assert response.status_code == 500
+            assert "exceeded" in response.json()["error"]["message"]
+            with with_duckdb_connection() as connection:
+                assert connection.execute(
+                    f'SELECT value FROM "{table_name}"'
+                ).fetchall() == [(99,)]
+                assert not any(
+                    name.startswith("__stage_")
+                    for (name,) in connection.execute("SHOW TABLES").fetchall()
+                )
+        finally:
+            with with_duckdb_connection() as connection:
+                connection.execute(f'DROP TABLE IF EXISTS "{table_name}"')
+
     """不显式传 attach_databases，仅凭 datasource.type 自动推导（join_query.py 新增分支）"""
 
     def test_duckdb_datasource_without_explicit_attach(self, duckdb_file):
@@ -205,6 +255,8 @@ class TestSaveQueryToDuckDBAutoDerivedAttach:
                 assert table_name == "imported_mysql_auto"
                 assert attach_list is not None and len(attach_list) == 1
                 assert attach_list[0]["connection_id"] == connection_id
+                assert mock_persist.call_args.kwargs["query_id"].startswith("save:")
+                assert mock_persist.call_args.kwargs["reject_empty"] is True
         finally:
             _unregister_connection(connection_id)
             with with_duckdb_connection() as con:

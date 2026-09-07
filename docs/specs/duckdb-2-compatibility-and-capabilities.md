@@ -55,7 +55,7 @@ DuckDB 2.0 原样读取，不在启动时静默改写。显式迁移后不支持
 
 | 验证项 | 结果 |
 |---|---|
-| 2.0 alpha / Python 3.13（默认依赖） | 1360 passed，6 skipped |
+| 2.0 alpha / Python 3.13（默认依赖） | 1361 passed，6 skipped |
 | 2.0 alpha / Python 3.11 | CI 默认任务（待远端运行） |
 | 前端全量（改造后） | 1261 passed，1 skipped |
 | MCP 全量 | 77 passed，1 skipped |

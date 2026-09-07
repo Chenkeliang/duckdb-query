@@ -14,7 +14,7 @@
 - 查询租约启用并恢复 `errors_as_json`，错误位置从执行 SQL 映射回原 SQL 的 UTF-16 坐标，并用 SQL 摘要/请求 ID 绑定；编辑后的旧诊断失效。
 - MySQL 与 PostgreSQL 取消器按 attempt 注册和释放；PostgreSQL 使用剩余服务端预算及任务专属 `application_name`，真实 `pg_cancel_backend` 用例通过。
 - 本地、联邦异步、内联与集合保存使用 staging/事务发布；注册前取消、提交竞态、失败与导出取消均保留旧结果并清理候选产物。
-- 验收：后端 **1360 passed / 6 skipped**，前端 **1261 passed / 1 skipped**，MCP **77 passed / 1 skipped**，真实 MySQL 8.4 / PostgreSQL 18.4 矩阵 **3 passed**，pylint **10.00/10**。
+- 验收：后端 **1361 passed / 6 skipped**，前端 **1261 passed / 1 skipped**，MCP **77 passed / 1 skipped**，真实 MySQL 8.4 / PostgreSQL 18.4 矩阵 **3 passed**，pylint **10.00/10**。
 
 ## 1. Objective
 
