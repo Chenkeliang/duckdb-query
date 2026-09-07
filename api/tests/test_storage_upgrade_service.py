@@ -4,6 +4,7 @@ from pathlib import Path
 from types import SimpleNamespace
 from unittest.mock import patch
 
+import pytest
 from fastapi.testclient import TestClient
 
 from core.database import storage_upgrade
@@ -45,6 +46,9 @@ def test_restart_processes_both_databases_and_records_report(monkeypatch, tmp_pa
     storage_upgrade.schedule_storage_upgrade()
 
     with patch(
+        "scripts.migrate_storage_to_latest.migration_candidates",
+        return_value=[paths.database_path, paths.system_database_path],
+    ), patch(
         "scripts.migrate_storage_to_latest.migrate_database_file",
         return_value=True,
     ) as migrate:
@@ -127,8 +131,8 @@ def test_mixed_versions_have_complete_backup_before_first_swap(monkeypatch, tmp_
     assert (directory / "migration-report.json").exists()
 
 
-def test_second_database_failure_retry_keeps_both_backup_sets(monkeypatch, tmp_path):
-    """2026-09-07: retry cannot overwrite the original complete recovery set."""
+def test_second_database_failure_rolls_back_set_before_retry(monkeypatch, tmp_path):
+    """2026-09-07: a second-file failure restores both files before retry."""
     _, paths = _configure(monkeypatch, tmp_path)
     for path in (paths.database_path, paths.system_database_path):
         path.write_bytes(b"original")
@@ -139,18 +143,26 @@ def test_second_database_failure_retry_keeps_both_backup_sets(monkeypatch, tmp_p
             return True
         return False
     storage_upgrade.schedule_storage_upgrade()
-    with patch("scripts.migrate_storage_to_latest.migrate_database_file", side_effect=migrate):
+    with patch(
+        "scripts.migrate_storage_to_latest.migration_candidates",
+        return_value=[paths.database_path, paths.system_database_path],
+    ), patch("scripts.migrate_storage_to_latest.migrate_database_file", side_effect=migrate):
         first = storage_upgrade.process_pending_storage_upgrade()
     assert first["status"] == "failed"
+    assert first["rolled_back"] is True
+    assert paths.database_path.read_bytes() == b"original"
     first_dir = Path(first["backup_directory"])
     storage_upgrade.schedule_storage_upgrade()
-    with patch("scripts.migrate_storage_to_latest.migrate_database_file", return_value=True):
+    with patch(
+        "scripts.migrate_storage_to_latest.migration_candidates",
+        return_value=[paths.database_path, paths.system_database_path],
+    ), patch("scripts.migrate_storage_to_latest.migrate_database_file", return_value=True):
         second = storage_upgrade.process_pending_storage_upgrade()
     assert second["status"] == "success"
     assert second["backup_directory"] != first["backup_directory"]
     assert (first_dir / "main.db").read_bytes() == b"original"
     assert (first_dir / "system.db.wal").read_bytes() == b"wal"
-    assert (Path(second["backup_directory"]) / "main.db").read_bytes() == b"upgraded"
+    assert (Path(second["backup_directory"]) / "main.db").read_bytes() == b"original"
 
 
 def test_backup_failure_prevents_any_swap(monkeypatch, tmp_path):
@@ -159,10 +171,79 @@ def test_backup_failure_prevents_any_swap(monkeypatch, tmp_path):
     paths.database_path.write_bytes(b"original")
     paths.system_database_path.write_bytes(b"original")
     storage_upgrade.schedule_storage_upgrade()
-    with patch("scripts.migrate_storage_to_latest.shutil.copy2", side_effect=OSError("disk full")), patch(
+    with patch(
+        "scripts.migrate_storage_to_latest.migration_candidates",
+        return_value=[paths.database_path, paths.system_database_path],
+    ), patch("scripts.migrate_storage_to_latest.shutil.copy2", side_effect=OSError("disk full")), patch(
         "scripts.migrate_storage_to_latest.migrate_database_file"
     ) as migrate:
         report = storage_upgrade.process_pending_storage_upgrade()
     assert report["status"] == "failed"
     migrate.assert_not_called()
     assert paths.database_path.read_bytes() == b"original"
+
+
+def test_restart_noop_does_not_create_another_backup(monkeypatch, tmp_path):
+    """2026-09-07: an already-v2 pair must not consume another full backup."""
+    import duckdb
+    _, paths = _configure(monkeypatch, tmp_path)
+    for path in (paths.database_path, paths.system_database_path):
+        with duckdb.connect(str(path), config={"storage_compatibility_version": "v2.0.0"}) as conn:
+            conn.execute("CREATE TABLE t AS SELECT 1 AS n")
+    storage_upgrade.schedule_storage_upgrade()
+    with patch("scripts.migrate_storage_to_latest.backup_database_set") as backup:
+        report = storage_upgrade.process_pending_storage_upgrade()
+    assert report["status"] == "success"
+    backup.assert_not_called()
+
+
+def test_manual_recovery_marker_blocks_future_startup(monkeypatch, tmp_path):
+    """2026-09-07: an unrecovered swap failure cannot be ignored on next launch."""
+    config_dir, _ = _configure(monkeypatch, tmp_path)
+    storage_upgrade.config_manager.atomic_write_json(
+        config_dir / "storage-upgrade-report.json",
+        {"status": "failed", "manual_recovery_required": True, "backup_directory": "/backup"},
+    )
+    with pytest.raises(RuntimeError, match="manual database recovery"):
+        storage_upgrade.require_storage_upgrade_ready()
+
+
+def test_recovery_marker_is_retried_and_cleared_on_next_start(monkeypatch, tmp_path):
+    """2026-09-07: a later successful restore clears the durable startup marker."""
+    from scripts.migrate_storage_to_latest import MigrationRecoveryError
+    _, paths = _configure(monkeypatch, tmp_path)
+    for path in (paths.database_path, paths.system_database_path):
+        path.write_bytes(b"original")
+    storage_upgrade.schedule_storage_upgrade()
+    with patch(
+        "scripts.migrate_storage_to_latest.migration_candidates",
+        return_value=[paths.database_path],
+    ), patch(
+        "scripts.migrate_storage_to_latest.migrate_database_file",
+        side_effect=MigrationRecoveryError("manual recovery required"),
+    ):
+        report = storage_upgrade.process_pending_storage_upgrade()
+    assert report["status"] == "failed"
+    assert report["manual_recovery_required"] is True
+    recovered = storage_upgrade.require_storage_upgrade_ready()
+    assert recovered["interruption_recovered"] is True
+    assert recovered["rolled_back"] is True
+    assert not list(paths.database_path.parent.glob(".*.storage-migration.json"))
+
+
+def test_persistent_recovery_failure_blocks_startup_and_keeps_markers(monkeypatch, tmp_path):
+    """2026-09-07: startup cannot open a pair that automatic recovery cannot restore."""
+    from scripts import migrate_storage_to_latest as migration
+    _, paths = _configure(monkeypatch, tmp_path)
+    backup = paths.database_path.parent / "backup_storage_migration_blocked"
+    backup.mkdir()
+    for path in (paths.database_path, paths.system_database_path):
+        path.write_bytes(b"new-db")
+        (backup / path.name).write_bytes(b"old-db")
+    migration.prepare_migration_set(
+        [paths.database_path, paths.system_database_path], backup, "v2.0.0"
+    )
+    with patch.object(migration, "_restore_database_pair", side_effect=OSError("locked")):
+        with pytest.raises(RuntimeError, match="manual database recovery"):
+            storage_upgrade.require_storage_upgrade_ready()
+    assert migration._marker_path(paths.database_path).exists()

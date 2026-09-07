@@ -1,6 +1,7 @@
 import { describe, it, expect } from 'vitest';
 import {
     buildPivotQueryPayload,
+    buildPivotTableRef,
     buildLocalAggExpr,
     canUseServerPivotPath,
     getPivotQueryKey,
@@ -127,6 +128,32 @@ describe('pending value cast blocks generation', () => {
 
 describe('buildPivotQueryPayload', () => {
     const duckdbTable = { name: 'sales', source: 'duckdb' as const };
+
+    it('keeps an external DuckDB catalog in the server payload (issue #37)', () => {
+        const table = {
+            name: 'yunlian',
+            source: 'external' as const,
+            connection: { id: 'analysis', name: 'Analysis DuckDB', type: 'duckdb' as const },
+        };
+        const ref = buildPivotTableRef(table);
+        expect(ref.tableName).toBe('duckdb_analysis_duckdb.yunlian');
+        expect(ref.attachDatabases).toEqual([
+            { alias: 'duckdb_analysis_duckdb', connectionId: 'analysis' },
+        ]);
+        const payload = buildPivotQueryPayload({
+            table,
+            rows: ['region'],
+            columns: ['year'],
+            values: [{ column: 'amount', aggregation: AggregationFunction.SUM }],
+            maxQueryRows: 500,
+            pivotMaxColumns: 300,
+        });
+        expect(payload?.config.table_name).toBe('duckdb_analysis_duckdb.yunlian');
+        expect(payload?.attachDatabases).toEqual(ref.attachDatabases);
+
+        expect(buildPivotTableRef({ ...table, name: 'yun lian' }).tableName)
+            .toBe('duckdb_analysis_duckdb."yun lian"');
+    });
 
     it('canUseServerPivotPath requires rows and values', () => {
         expect(canUseServerPivotPath(duckdbTable, ['region'], [])).toBe(false);

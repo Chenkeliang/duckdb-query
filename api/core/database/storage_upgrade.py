@@ -115,31 +115,79 @@ def process_pending_storage_upgrade() -> dict[str, Any] | None:
     try:
         if target != DUCKDB_STORAGE_COMPATIBILITY_VERSION or not stamp:
             raise ValueError("Storage upgrade request target is invalid or stale")
-        from scripts.migrate_storage_to_latest import backup_database_set, migrate_database_file
+        from scripts.migrate_storage_to_latest import (
+            MigrationRecoveryError,
+            backup_database_set,
+            clear_migration_markers,
+            migrate_database_file,
+            migration_candidates,
+            prepare_migration_set,
+            restore_migration_set,
+        )
 
         paths = config_manager.get_duckdb_paths(ensure_dirs=False)
-        backup = backup_database_set([paths.database_path, paths.system_database_path])
-        report["backup_directory"] = str(backup)
-        success = True
-        for name, path in (
+        database_items = (
             ("main", paths.database_path),
             ("system", paths.system_database_path),
-        ):
+        )
+        candidates = set(migration_candidates(
+            [path for _, path in database_items], target
+        ))
+        if candidates:
+            backup = backup_database_set([path for _, path in database_items])
+            report["backup_directory"] = str(backup)
+            prepare_migration_set(
+                [path for _, path in database_items], backup, target
+            )
+        success = True
+        for name, path in database_items:
+            if path not in candidates:
+                report["databases"][name] = {"success": True, "migrated": False}
+                continue
             migrated = migrate_database_file(
                 path,
                 stamp=stamp,
                 target_storage=target,
-                backup_created=True,
+                backup_directory=backup,
+                migration_set_prepared=True,
             )
-            report["databases"][name] = {"success": migrated}
+            report["databases"][name] = {"success": migrated, "migrated": migrated}
             success = success and migrated
             if not success:
                 break
+        if backup is not None:
+            if success:
+                clear_migration_markers([path for _, path in database_items])
+            else:
+                restore_migration_set(
+                    [path for _, path in database_items], backup
+                )
+                report["rolled_back"] = True
         report["status"] = "success" if success else "failed"
     except Exception as exc:  # pylint: disable=broad-exception-caught
         logger.exception("Pending storage upgrade failed")
+        failure = exc
+        manual_recovery = False
+        try:
+            from scripts.migrate_storage_to_latest import (
+                MigrationRecoveryError,
+                restore_migration_set,
+            )
+            if backup is not None and not isinstance(failure, MigrationRecoveryError):
+                paths = config_manager.get_duckdb_paths(ensure_dirs=False)
+                try:
+                    restore_migration_set(
+                        [paths.database_path, paths.system_database_path], backup
+                    )
+                    report["rolled_back"] = True
+                except MigrationRecoveryError as recovery_error:
+                    failure = recovery_error
+            manual_recovery = isinstance(failure, MigrationRecoveryError)
+        except ImportError:
+            pass
         report["status"] = "failed"
-        report["error"] = str(exc)[:500]
+        report["error"] = str(failure)[:500]
+        report["manual_recovery_required"] = manual_recovery
     report["completed_at"] = datetime.now(timezone.utc).isoformat()
     if backup is not None:
         config_manager.atomic_write_json(backup / "migration-report.json", report)
@@ -148,4 +196,52 @@ def process_pending_storage_upgrade() -> dict[str, Any] | None:
         os.remove(request_path)
     except FileNotFoundError:
         pass
+    return report
+
+
+def require_storage_upgrade_ready() -> dict[str, Any] | None:
+    """Process a request and block startup after an unrecovered file-pair failure."""
+    from scripts.migrate_storage_to_latest import (
+        MigrationRecoveryError,
+        recover_incomplete_migration_set,
+    )
+    paths = config_manager.get_duckdb_paths(ensure_dirs=False)
+    try:
+        recovered_backup = recover_incomplete_migration_set([
+            paths.database_path, paths.system_database_path
+        ])
+    except MigrationRecoveryError as exc:
+        failed = {
+            "status": "failed",
+            "manual_recovery_required": True,
+            "error": str(exc)[:500],
+            "completed_at": datetime.now(timezone.utc).isoformat(),
+        }
+        config_manager.atomic_write_json(_report_path(), failed)
+        try:
+            os.remove(_request_path())
+        except FileNotFoundError:
+            pass
+        raise RuntimeError("Storage migration requires manual database recovery") from exc
+    if recovered_backup is not None:
+        recovered = {
+            "status": "failed",
+            "rolled_back": True,
+            "interruption_recovered": True,
+            "backup_directory": str(recovered_backup),
+            "completed_at": datetime.now(timezone.utc).isoformat(),
+        }
+        config_manager.atomic_write_json(_report_path(), recovered)
+        try:
+            os.remove(_request_path())
+        except FileNotFoundError:
+            pass
+        return recovered
+    report = process_pending_storage_upgrade()
+    effective = report or _read_json(_report_path())
+    if effective and effective.get("manual_recovery_required"):
+        backup = effective.get("backup_directory") or "the recorded migration backup"
+        raise RuntimeError(
+            f"Storage migration requires manual database recovery from {backup}"
+        )
     return report

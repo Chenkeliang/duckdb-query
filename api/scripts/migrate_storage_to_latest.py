@@ -18,8 +18,10 @@
 from __future__ import annotations
 
 import argparse
+import json
 import logging
 import os
+import re
 import shutil
 import sys
 import tempfile
@@ -40,18 +42,93 @@ logging.basicConfig(
 logger = logging.getLogger(__name__)
 
 
+class MigrationRecoveryError(RuntimeError):
+    """The database/WAL pair could not be restored after a failed swap."""
+
+
+def _marker_path(db_path: Path) -> Path:
+    return db_path.with_name(f".{db_path.name}.storage-migration.json")
+
+
+def _fsync_directory(directory: Path) -> None:
+    """Durably persist directory entry changes where the platform supports it."""
+    if os.name == "nt" or not hasattr(os, "O_DIRECTORY"):
+        return
+    descriptor = os.open(directory, os.O_RDONLY | os.O_DIRECTORY)
+    try:
+        os.fsync(descriptor)
+    finally:
+        os.close(descriptor)
+
+
+def _fsync_file(path: Path) -> None:
+    with path.open("rb") as handle:
+        os.fsync(handle.fileno())
+
+
+def _write_marker(path: Path, payload: dict) -> None:
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{path.name}.write-", dir=path.parent
+    )
+    temporary = Path(temporary_name)
+    try:
+        with os.fdopen(descriptor, "w", encoding="utf-8") as handle:
+            json.dump(payload, handle, sort_keys=True)
+            handle.flush()
+            os.fsync(handle.fileno())
+        os.replace(temporary, path)
+        _fsync_directory(path.parent)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _remove_marker(path: Path) -> None:
+    path.unlink(missing_ok=True)
+    _fsync_directory(path.parent)
+
+
+def _validate_database_set(database_paths: list[Path]) -> list[Path]:
+    """Validate the same complete input set for dry-run, backup and execution."""
+    paths = [Path(path) for path in database_paths]
+    if not paths or len({path.name for path in paths}) != len(paths):
+        raise ValueError("Database backup filenames must be distinct")
+    for path in paths:
+        if not path.is_file() or path.is_symlink():
+            raise ValueError(f"Database file is missing or unsafe: {path}")
+        wal = Path(f"{path}.wal")
+        if wal.is_symlink():
+            raise ValueError(f"Database WAL must not be a symbolic link: {wal}")
+    return paths
+
+
+def _validate_backup_directory(backup_directory: Path, database_paths: list[Path]) -> Path:
+    """Accept only a migration backup beside the first configured database."""
+    backup = Path(backup_directory)
+    if (
+        not re.fullmatch(r"backup_storage_migration_[A-Za-z0-9_-]+", backup.name)
+        or backup.is_symlink()
+        or not backup.is_dir()
+        or backup.resolve().parent != Path(database_paths[0]).resolve().parent
+    ):
+        raise ValueError("Migration backup directory is outside the expected location")
+    return backup
+
+
+def migration_candidates(database_paths: list[Path], target_storage: str) -> list[Path]:
+    """Return validated files that actually require migration."""
+    return [
+        path for path in _validate_database_set(database_paths)
+        if _needs_migration(path, target_storage)
+    ]
+
+
 def backup_database_set(database_paths: list[Path]) -> Path:
     """Snapshot the complete offline set before any swap; never overwrite a backup."""
-    if not database_paths or len({path.name for path in database_paths}) != len(database_paths):
-        raise ValueError("Database backup filenames must be distinct")
+    database_paths = _validate_database_set(database_paths)
     sources = []
     for path in database_paths:
-        if not path.is_file() or path.is_symlink():
-            raise ValueError("All database files must exist before migration")
         for suffix in ("", ".wal"):
             source = Path(f"{path}{suffix}")
-            if source.is_symlink():
-                raise ValueError("Database backup sources must not be symbolic links")
             if source.exists():
                 sources.append(source)
     parent = database_paths[0].parent
@@ -60,7 +137,10 @@ def backup_database_set(database_paths: list[Path]) -> Path:
         raise OSError("Insufficient disk space for complete database backup")
     directory = Path(tempfile.mkdtemp(prefix="backup_storage_migration_", dir=parent))
     for source in sources:
-        shutil.copy2(source, directory / source.name)
+        destination = directory / source.name
+        shutil.copy2(source, destination)
+        _fsync_file(destination)
+    _fsync_directory(directory)
     return directory
 
 
@@ -86,7 +166,9 @@ def _backup_db_files(db_path: Path, stamp: str) -> Path:
         if src.exists():
             dest = backup_dir / src.name
             shutil.copy2(src, dest)
+            _fsync_file(dest)
             logger.info("Backed up %s -> %s", src, dest)
+    _fsync_directory(backup_dir)
     return backup_dir
 
 
@@ -123,13 +205,13 @@ def _needs_migration(db_path: Path, target_storage: str) -> bool:
     return True
 
 
-def _has_migration_space(db_path: Path) -> bool:
-    """Require room for both the migrating file and the rollback backup."""
+def _has_migration_space(db_path: Path, *, backup_created: bool = False) -> bool:
+    """Require candidate space, plus backup space only before a backup exists."""
     wal_path = Path(f"{db_path}.wal")
     source_bytes = db_path.stat().st_size + (
         wal_path.stat().st_size if wal_path.exists() else 0
     )
-    required_bytes = source_bytes * 2 + 64 * 1024 * 1024
+    required_bytes = source_bytes * (1 if backup_created else 2) + 64 * 1024 * 1024
     free_bytes = shutil.disk_usage(db_path.parent).free
     if free_bytes < required_bytes:
         logger.error(
@@ -142,13 +224,161 @@ def _has_migration_space(db_path: Path) -> bool:
     return True
 
 
+def _atomic_restore_file(source: Path, destination: Path) -> None:
+    """Copy a backup beside its destination, then atomically replace the target."""
+    descriptor, temporary_name = tempfile.mkstemp(
+        prefix=f".{destination.name}.restore-", dir=destination.parent
+    )
+    os.close(descriptor)
+    temporary = Path(temporary_name)
+    try:
+        shutil.copy2(source, temporary)
+        _fsync_file(temporary)
+        os.replace(temporary, destination)
+        _fsync_directory(destination.parent)
+    finally:
+        temporary.unlink(missing_ok=True)
+
+
+def _restore_database_pair(db_path: Path, backup_directory: Path) -> None:
+    """Restore the exact database/WAL generation captured before migration."""
+    backup_db = backup_directory / db_path.name
+    if not backup_db.is_file():
+        raise FileNotFoundError(f"Migration backup is missing database file: {backup_db}")
+    backup_wal = backup_directory / f"{db_path.name}.wal"
+    wal_path = Path(f"{db_path}.wal")
+    _atomic_restore_file(backup_db, db_path)
+    if backup_wal.is_file():
+        _atomic_restore_file(backup_wal, wal_path)
+    else:
+        wal_path.unlink(missing_ok=True)
+
+
+def prepare_migration_set(
+    database_paths: list[Path], backup_directory: Path, target_storage: str
+) -> None:
+    """Durably record a complete rollback set before the first formal swap."""
+    paths = _validate_database_set(database_paths)
+    backup_directory = _validate_backup_directory(backup_directory, paths)
+    for path in paths:
+        backup_db = backup_directory / path.name
+        if not backup_db.is_file():
+            raise FileNotFoundError(f"Migration backup is missing database file: {backup_db}")
+    payload = {
+        "backup_directory": str(backup_directory.resolve()),
+        "target_storage": target_storage,
+        "database_paths": [str(path.resolve()) for path in paths],
+        "stage": "prepared",
+    }
+    for path in paths:
+        _write_marker(_marker_path(path), payload)
+
+
+def clear_migration_markers(database_paths: list[Path]) -> None:
+    """Commit a successful set by durably removing all recovery intents."""
+    for path in database_paths:
+        _remove_marker(_marker_path(Path(path)))
+
+
+def restore_migration_set(database_paths: list[Path], backup_directory: Path) -> None:
+    """Restore every database/WAL pair in a prepared set, leaving markers on failure."""
+    paths = [Path(path) for path in database_paths]
+    try:
+        for path in paths:
+            _restore_database_pair(path, backup_directory)
+    except Exception as exc:
+        raise MigrationRecoveryError(
+            f"Database set recovery failed; restore manually from {backup_directory}"
+        ) from exc
+    clear_migration_markers(paths)
+
+
+def recover_incomplete_migration_set(database_paths: list[Path]) -> Path | None:
+    """Recover a set left between durable prepare and commit after process death."""
+    paths = [Path(path) for path in database_paths]
+    configured_by_resolved = {str(path.resolve()): path for path in paths}
+    marker_paths = [_marker_path(path) for path in paths]
+    existing = [path for path in marker_paths if path.is_file()]
+    if not existing:
+        return None
+    try:
+        markers = [json.loads(path.read_text(encoding="utf-8")) for path in existing]
+        marker = markers[0]
+        recorded_values = [str(Path(value).resolve()) for value in marker["database_paths"]]
+        if (
+            not recorded_values
+            or len(set(recorded_values)) != len(recorded_values)
+            or not set(recorded_values).issubset(configured_by_resolved)
+        ):
+            raise ValueError("Migration recovery marker contains an unauthorized database path")
+        recorded_paths = [configured_by_resolved[value] for value in recorded_values]
+        backup_directory = _validate_backup_directory(
+            Path(str(marker["backup_directory"])), recorded_paths
+        )
+        expected_payload = (
+            str(backup_directory.resolve()),
+            tuple(recorded_values),
+        )
+        for candidate in markers[1:]:
+            candidate_payload = (
+                str(Path(candidate["backup_directory"]).resolve()),
+                tuple(str(Path(value).resolve()) for value in candidate["database_paths"]),
+            )
+            if candidate_payload != expected_payload:
+                raise ValueError("Migration recovery markers disagree on the rollback set")
+        restore_migration_set(recorded_paths, backup_directory)
+        return backup_directory
+    except MigrationRecoveryError:
+        raise
+    except Exception as exc:
+        raise MigrationRecoveryError("Migration recovery marker is invalid") from exc
+
+
+def _swap_database_pair(
+    db_path: Path,
+    new_path: Path,
+    backup_directory: Path,
+    *,
+    migration_set_prepared: bool = False,
+    target_storage: str = DUCKDB_STORAGE_COMPATIBILITY_VERSION,
+) -> None:
+    """Install a candidate and restore the original pair if WAL cleanup fails."""
+    backup_db = backup_directory / db_path.name
+    if not backup_db.is_file():
+        raise FileNotFoundError(f"Migration backup is missing database file: {backup_db}")
+    if not migration_set_prepared:
+        prepare_migration_set([db_path], backup_directory, target_storage)
+    replaced = False
+    try:
+        os.replace(new_path, db_path)
+        replaced = True
+        _fsync_file(db_path)
+        _fsync_directory(db_path.parent)
+        Path(f"{db_path}.wal").unlink(missing_ok=True)
+        _fsync_directory(db_path.parent)
+    except Exception as swap_error:
+        if replaced:
+            try:
+                _restore_database_pair(db_path, backup_directory)
+            except Exception as restore_error:
+                raise MigrationRecoveryError(
+                    f"Database pair recovery failed; restore manually from {backup_directory}"
+                ) from restore_error
+        if not migration_set_prepared:
+            clear_migration_markers([db_path])
+        raise swap_error
+    if not migration_set_prepared:
+        clear_migration_markers([db_path])
+
+
 def migrate_database_file(
     db_path: Path,
     *,
     dry_run: bool = False,
     stamp: str,
     target_storage: str = DUCKDB_STORAGE_COMPATIBILITY_VERSION,
-    backup_created: bool = False,
+    backup_directory: Path | None = None,
+    migration_set_prepared: bool = False,
 ) -> bool:
     if not db_path.exists():
         logger.info("Skip %s: file does not exist", db_path)
@@ -157,7 +387,9 @@ def migrate_database_file(
     if not _needs_migration(db_path, target_storage):
         logger.info("Skip %s: storage already matches target", db_path)
         return True
-    if not dry_run and not _has_migration_space(db_path):
+    if not dry_run and not _has_migration_space(
+        db_path, backup_created=backup_directory is not None
+    ):
         return False
 
     old_conn = duckdb.connect(str(db_path), read_only=True)
@@ -218,12 +450,16 @@ def migrate_database_file(
         return False
 
     try:
-        if not backup_created:
-            _backup_db_files(db_path, stamp)
-        os.replace(new_path, db_path)
-        wal_path = Path(f"{db_path}.wal")
-        if wal_path.exists():
-            wal_path.unlink()
+        rollback_backup = backup_directory or _backup_db_files(db_path, stamp)
+        _swap_database_pair(
+            db_path,
+            new_path,
+            rollback_backup,
+            migration_set_prepared=migration_set_prepared,
+            target_storage=target_storage,
+        )
+    except MigrationRecoveryError:
+        raise
     except Exception:
         logger.exception("Atomic migration swap failed for %s", db_path)
         new_path.unlink(missing_ok=True)
@@ -271,21 +507,60 @@ def main() -> int:
             return 1
 
     stamp = datetime.now(timezone.utc).strftime("%Y%m%dT%H%M%SZ")
+    all_paths = [path for _, path in targets]
+    try:
+        recovered = recover_incomplete_migration_set(all_paths)
+    except MigrationRecoveryError as exc:
+        logger.critical("Previous migration recovery failed: %s", exc)
+        return 2
+    if recovered is not None:
+        logger.warning("Recovered an interrupted migration from %s before retry", recovered)
+    try:
+        candidates = set(migration_candidates(all_paths, args.target_storage))
+    except (OSError, ValueError, duckdb.Error) as exc:
+        logger.error("Migration preflight failed: %s", exc)
+        return 1
+    if not candidates:
+        logger.info("All selected database files already use storage %s", args.target_storage)
+        return 0
+    backup_dir = None
     if not args.dry_run:
-        backup_dir = backup_database_set([path for _, path in targets])
+        backup_dir = backup_database_set(all_paths)
         logger.info("Complete migration backup: %s", backup_dir)
+        prepare_migration_set(all_paths, backup_dir, args.target_storage)
     ok = True
-    for label, db_path in targets:
-        logger.info("=== Migrating %s (%s) ===", label, db_path)
-        if not migrate_database_file(
-            db_path,
-            dry_run=args.dry_run,
-            stamp=stamp,
-            target_storage=args.target_storage,
-            backup_created=not args.dry_run,
-        ):
-            ok = False
-            break
+    try:
+        for label, db_path in targets:
+            if db_path not in candidates:
+                logger.info("=== Skipping %s: already at target storage ===", label)
+                continue
+            logger.info("=== Migrating %s (%s) ===", label, db_path)
+            if not migrate_database_file(
+                db_path,
+                dry_run=args.dry_run,
+                stamp=stamp,
+                target_storage=args.target_storage,
+                backup_directory=backup_dir,
+                migration_set_prepared=not args.dry_run,
+            ):
+                ok = False
+                break
+    except MigrationRecoveryError:
+        logger.exception("Migration stopped after an unrecovered swap failure")
+        ok = False
+
+    if not args.dry_run and backup_dir is not None:
+        if ok:
+            clear_migration_markers(all_paths)
+        else:
+            try:
+                restore_migration_set(all_paths, backup_dir)
+                logger.error("Migration failed; restored the complete original database set")
+            except MigrationRecoveryError:
+                logger.exception(
+                    "Automatic set recovery failed; startup will remain blocked by migration markers"
+                )
+                return 2
 
     if args.dry_run:
         logger.info("Dry run complete.")

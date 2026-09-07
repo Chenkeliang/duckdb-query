@@ -27,8 +27,8 @@ import { generatePivotQuery, toAttachDatabasesPayload, inferColumnCast, getApiEr
 import { getTableName, normalizeSelectedTable } from "@/utils/tableUtils";
 import {
     quoteIdent,
-    getDialectFromSource,
     getSourceFromSelectedTable,
+    type SqlDialect,
 } from "@/utils/sqlUtils";
 import { sqlStringLiteral } from "@/utils/sqlLiteral";
 import {
@@ -214,7 +214,7 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
     }, [isGenerateError, generateError]);
 
     const buildLocalWhereClause = React.useCallback(
-        (dialect: ReturnType<typeof getDialectFromSource>): string | null => {
+        (dialect: SqlDialect): string | null => {
             if (apiFilters.length === 0) return null;
             const clauses = apiFilters.map((f) => {
                 const col = quoteIdent(f.column, dialect);
@@ -236,14 +236,11 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
     const generateLocalSQL = React.useCallback((): string | null => {
         if (!selectedTable || rows.length === 0 || values.length === 0) return null;
 
-        const source = getSourceFromSelectedTable(selectedTable);
-        const dialect = getDialectFromSource(source);
-        const normalized = normalizeSelectedTable(selectedTable);
+        // 本地路径同样在 DuckDB 上执行；表引用必须包含 ATTACH catalog，且只能
+        // 使用 DuckDB 标识符规则。此前按源方言重拼 schema.table，丢了连接别名。
+        const dialect: SqlDialect = "duckdb";
+        const { tableName: fullTableName } = buildPivotTableRef(selectedTable);
         const whereClause = buildLocalWhereClause(dialect);
-
-        const fullTableName = normalized.schema
-            ? `${quoteIdent(normalized.schema, dialect)}.${quoteIdent(normalized.name, dialect)}`
-            : quoteIdent(normalized.name, dialect);
 
         const rowColumns = rows.map((r) => quoteIdent(r, dialect));
         // 本地 SQL 最终在 DuckDB 执行(本机/联邦 ATTACH 皆然),cast 恒用 TRY_CAST(见 buildLocalAggExpr)。
@@ -502,6 +499,7 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
                           }
                         : undefined
                 }
+                attachDatabases={tableSource?.attachDatabases}
                 onSuccess={() => setAsyncDialogOpen(false)}
             />
 
