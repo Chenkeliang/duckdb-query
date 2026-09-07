@@ -377,27 +377,36 @@ def execute_sql_and_persist(
             staging_sql = (
                 f'CREATE OR REPLACE TABLE {quoted_staging} AS ({cleaned_sql})'
             )
-            try:
-                conn.execute(staging_sql)
-            except Exception as staging_error:
-                if not (
-                    attach_configs
-                    and _is_read_only_query(cleaned_sql)
-                    and _is_federated_connection_lost(staging_error)
-                ):
-                    raise
-                logger.warning(
-                    "Federated MySQL connection lost while persisting (%s); "
-                    "clearing cache and retrying once",
-                    staging_error,
-                )
-                conn.execute("CALL mysql_clear_cache()")
-                conn.execute(staging_sql)
-            try:
-                snapshot = build_table_metadata_snapshot(conn, staging_name)
-            except Exception:
-                conn.execute(f'DROP TABLE IF EXISTS {quoted_staging}')
-                raise
+            snapshot = None
+            for attempt in range(2):
+                try:
+                    # Each retry gets a fresh remote cancellation lease.  The
+                    # scope rolls its transaction back before cache clearing,
+                    # so a failed CTAS cannot leak an aborted transaction or
+                    # staging table into the next attempt.
+                    with mysql_remote_cancellation_scope(
+                        conn, query_id, attach_configs
+                    ):
+                        conn.execute(staging_sql)
+                        snapshot = build_table_metadata_snapshot(conn, staging_name)
+                    break
+                except Exception as staging_error:
+                    conn.execute(f'DROP TABLE IF EXISTS {quoted_staging}')
+                    if not (
+                        attempt == 0
+                        and attach_configs
+                        and _is_read_only_query(cleaned_sql)
+                        and _is_federated_connection_lost(staging_error)
+                    ):
+                        raise
+                    logger.warning(
+                        "Federated MySQL connection lost while persisting (%s); "
+                        "clearing cache and retrying once",
+                        staging_error,
+                    )
+                    conn.execute("CALL mysql_clear_cache()")
+            if snapshot is None:
+                raise RuntimeError("Query staging completed without metadata")
             if reject_empty and snapshot["row_count"] == 0:
                 conn.execute(f'DROP TABLE IF EXISTS {quoted_staging}')
             else:

@@ -248,6 +248,87 @@ def test_persist_retries_read_only_ctas_after_mysql_connection_lost(monkeypatch)
     assert clear_cache_calls == 1
 
 
+def test_persist_rebinds_remote_cancellation_for_each_retry_attempt(monkeypatch):
+    """Regression 2026-09-07: async/save retries must retire the failed
+    MySQL session cancellation lease before a new CTAS attempt starts."""
+    from core.database import federated_attach
+    from core.data import file_datasource_manager
+
+    connection = MagicMock()
+    events = []
+    create_attempts = 0
+
+    def execute(sql):
+        nonlocal create_attempts
+        if sql.startswith('CREATE OR REPLACE TABLE "__stage_'):
+            create_attempts += 1
+            events.append(f"ctas-{create_attempts}")
+            if create_attempts == 1:
+                raise duckdb_mod.IOException("IO Error: Server has gone away")
+        elif sql == "CALL mysql_clear_cache()":
+            events.append("clear-cache")
+        return MagicMock()
+
+    connection.execute.side_effect = execute
+
+    @contextmanager
+    def connection_scope(_query_id, _sql):
+        yield connection
+
+    @contextmanager
+    def cancellation_scope(_connection, query_id, _configs):
+        events.append(f"cancel-enter:{query_id}")
+        try:
+            yield
+        except Exception:
+            events.append("cancel-rollback")
+            raise
+        else:
+            events.append("cancel-commit")
+
+    monkeypatch.setattr(
+        federated_attach,
+        "resolve_attach_configs",
+        lambda _attached: [("mysql_prod", {"type": "mysql"})],
+    )
+    monkeypatch.setattr(
+        federated_attach, "interruptible_connection", connection_scope
+    )
+    monkeypatch.setattr(
+        federated_attach, "mysql_remote_cancellation_scope", cancellation_scope
+    )
+    monkeypatch.setattr(
+        federated_attach,
+        "attach_databases_on_connection",
+        lambda *_args: ["mysql_prod"],
+    )
+    monkeypatch.setattr(
+        federated_attach, "detach_databases_on_connection", lambda *_args: None
+    )
+    monkeypatch.setattr(
+        file_datasource_manager,
+        "build_table_metadata_snapshot",
+        lambda *_args: {"row_count": 1},
+    )
+
+    federated_attach.execute_sql_and_persist(
+        "SELECT * FROM mysql_prod.orders",
+        "saved_result",
+        [{"alias": "mysql_prod"}],
+        query_id="async:retry",
+    )
+
+    assert events[:6] == [
+        "cancel-enter:async:retry",
+        "ctas-1",
+        "cancel-rollback",
+        "clear-cache",
+        "cancel-enter:async:retry",
+        "ctas-2",
+    ]
+    assert events[6] == "cancel-commit"
+
+
 def test_persist_restores_duckdb_threads_after_mysql_ctas_failure(monkeypatch):
     """历史回归（2026-07-28）：多表 MySQL CTAS 临时串行，失败后也恢复线程数。"""
     from core.database import federated_attach
