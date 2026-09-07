@@ -46,6 +46,7 @@ import SavedConnectionsList from "./DataSource/SavedConnectionsList";
 import DataPasteCard from "./DataSource/DataPasteCard";
 import QueryWorkbenchPage from "./QueryWorkbenchPage";
 import { CommandPalette } from "./components/CommandPalette";
+import { MajorVersionNotice } from "./components/MajorVersionNotice";
 import { ShortcutProvider, useKeyboardShortcuts } from "./Settings/shortcuts";
 
 import Logo from "./assets/duckq-logo.svg";
@@ -592,6 +593,7 @@ const AppInner: React.FC = () => {
         }
         header={headerNode}
       >
+        <MajorVersionNotice />
         <DemoBanner />
         {renderContent()}
       </PageShell>

@@ -25,6 +25,12 @@ export interface AppConfig {
   federatedQueryTimeout: number; // ms
   jsonImportColumnType: string;
   remoteStorageConfigured: boolean;
+  duckdbPythonVersion: string;
+  duckdbEngineVersion: string;
+  duckdbStorageCompatibilityVersion: string;
+  duckdbMainStorageVersion: string;
+  duckdbSystemStorageVersion: string;
+  duckdbStorageUpgradeRequired: boolean;
 }
 
 // Query Key
@@ -41,6 +47,12 @@ const DEFAULT_CONFIG: AppConfig = {
   federatedQueryTimeout: 300000, // 5 minutes
   jsonImportColumnType: 'auto',
   remoteStorageConfigured: false,
+  duckdbPythonVersion: '',
+  duckdbEngineVersion: '',
+  duckdbStorageCompatibilityVersion: '',
+  duckdbMainStorageVersion: '',
+  duckdbSystemStorageVersion: '',
+  duckdbStorageUpgradeRequired: false,
 };
 
 // 获取应用配置的 API 函数
@@ -57,6 +69,15 @@ async function fetchAppConfig(): Promise<AppConfig> {
     federatedQueryTimeout: (result.config.federated_query_timeout || 300) * 1000,
     jsonImportColumnType: result.config.json_import_column_type || 'auto',
     remoteStorageConfigured: Boolean(result.config.remote_storage_configured),
+    duckdbPythonVersion: result.config.duckdb_python_version || '',
+    duckdbEngineVersion: result.config.duckdb_engine_version || '',
+    duckdbStorageCompatibilityVersion:
+      result.config.duckdb_storage_compatibility_version || '',
+    duckdbMainStorageVersion: result.config.duckdb_main_storage_version || '',
+    duckdbSystemStorageVersion: result.config.duckdb_system_storage_version || '',
+    duckdbStorageUpgradeRequired: Boolean(
+      result.config.duckdb_storage_upgrade_required
+    ),
   };
 
   // 更新 API Client 的超时设置
@@ -92,6 +113,12 @@ export function useAppConfig() {
     maxFileSizeDisplay: config.maxFileSizeDisplay,
     jsonImportColumnType: config.jsonImportColumnType,
     remoteStorageConfigured: config.remoteStorageConfigured,
+    duckdbPythonVersion: config.duckdbPythonVersion,
+    duckdbEngineVersion: config.duckdbEngineVersion,
+    duckdbStorageCompatibilityVersion: config.duckdbStorageCompatibilityVersion,
+    duckdbMainStorageVersion: config.duckdbMainStorageVersion,
+    duckdbSystemStorageVersion: config.duckdbSystemStorageVersion,
+    duckdbStorageUpgradeRequired: config.duckdbStorageUpgradeRequired,
     isLoading: query.isLoading,
     isError: query.isError,
     error: query.error,

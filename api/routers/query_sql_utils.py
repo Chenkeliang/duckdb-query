@@ -7,6 +7,11 @@ import re
 
 import sqlglot
 from sqlglot import exp
+from core.common.sql_capabilities import (
+    remove_top_level_row_limit,
+    statement_accepts_row_limit,
+    top_level_row_limit_kind,
+)
 
 logger = logging.getLogger(__name__)
 _sqlglot_logger = logging.getLogger("sqlglot")
@@ -40,7 +45,7 @@ def _remove_top_level_limit(sql: str) -> str:
     try:
         tree = sqlglot.parse_one(stripped, read="duckdb")
     except Exception:  # pylint: disable=broad-except
-        return sql.strip()
+        return remove_top_level_row_limit(sql)
     finally:
         _sqlglot_logger.setLevel(prev_level)
 
@@ -116,7 +121,7 @@ def statement_accepts_limit(query: str) -> bool:
     try:
         tree = sqlglot.parse_one(stripped, read="duckdb")
     except Exception:
-        return False
+        return statement_accepts_row_limit(stripped)
     finally:
         _sqlglot_logger.setLevel(prev_level)
     return isinstance(tree, _LIMIT_ACCEPTING_TYPES)
@@ -136,7 +141,7 @@ def has_top_level_limit(query: str) -> bool:
     try:
         tree = sqlglot.parse_one(stripped, read="duckdb")
     except Exception:  # pylint: disable=broad-except
-        return True
+        return top_level_row_limit_kind(stripped) is not None
     finally:
         _sqlglot_logger.setLevel(prev_level)
     if tree is None:

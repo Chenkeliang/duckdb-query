@@ -144,7 +144,7 @@
 
 ### 刷新模型（源码对齐：并发能力已存在，无需新基建）
 
-后端已有 `DuckDBConnectionPool`（`duckdb_pool.py`，2~10 连接；`duckdb==1.5.3`，
+后端已有 `DuckDBConnectionPool`（`duckdb_pool.py`，2~10 连接；DuckDB 2.0 Preview，
 同进程同路径经实例缓存共享同一数据库实例，等价 cursor 并发读）——
 本地表查询天然可并发，**不需要**再造 cursor 池。
 

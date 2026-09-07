@@ -1,4 +1,4 @@
-"""DuckDB 文件连接：统一 storage_compatibility_version（支持 VARIANT 等 v1.5+ 类型）。"""
+"""DuckDB file connections pinned to the DuckQuery major-version format."""
 
 from __future__ import annotations
 
@@ -9,8 +9,9 @@ import duckdb
 
 logger = logging.getLogger(__name__)
 
-# 与 DuckDB 文档一致：'latest' 使用当前客户端支持的最新存储格式（v1.5.x → storage 68）
-DUCKDB_STORAGE_COMPATIBILITY_VERSION = "latest"
+# Pin the major format explicitly: a future DuckDB 2.1 dependency update must not
+# silently rewrite newly created files to another storage generation.
+DUCKDB_STORAGE_COMPATIBILITY_VERSION = "v2.0.0"
 
 
 def duckdb_connect_config() -> Dict[str, str]:
@@ -22,7 +23,7 @@ def connect_duckdb_database(
     *,
     read_only: bool = False,
 ) -> duckdb.DuckDBPyConnection:
-    """打开持久化 DuckDB 文件（新库将按 latest 存储格式创建）。"""
+    """Open a persistent DuckDB file; new files use the v2.0.0 storage format."""
     kwargs: Dict[str, Any] = {
         "database": db_path,
         "config": duckdb_connect_config(),

@@ -20,11 +20,17 @@ import {
 import { Button } from '@/components/ui/button';
 import { isTauri } from '@/desktop/openExternal';
 import { checkForUpdate, promptUpdate } from '@/desktop/UpdateChecker';
+import { useAppConfig } from '@/hooks/useAppConfig';
 
 export function AboutUpdateSettings() {
   const { t } = useTranslation('common');
   const [version, setVersion] = React.useState<string | null>(null);
   const [checking, setChecking] = React.useState(false);
+  const {
+    duckdbPythonVersion,
+    duckdbEngineVersion,
+    duckdbStorageCompatibilityVersion,
+  } = useAppConfig();
 
   const onDesktop = isTauri();
 
@@ -73,14 +79,37 @@ export function AboutUpdateSettings() {
         </CardDescription>
       </CardHeader>
       <CardContent>
-        <div className="flex items-center justify-between">
-          <div className="text-sm">
+        <div className="flex items-center justify-between gap-4">
+          <div className="space-y-1 text-sm">
+            <div>
             <span className="text-muted-foreground">
               {t('settings.about.currentVersion', '当前版本')}
             </span>
             <span className="ml-2 font-mono">
               {version ? `v${version}` : '—'}
             </span>
+            </div>
+            <div>
+              <span className="text-muted-foreground">
+                {t('settings.about.duckdbVersion', 'DuckDB 内核')}
+              </span>
+              <span className="ml-2 font-mono">{duckdbEngineVersion || '—'}</span>
+              {duckdbPythonVersion && (
+                <span className="ml-2 text-xs text-muted-foreground">
+                  {t('settings.about.pythonPackageVersion', 'Python {{version}}', {
+                    version: duckdbPythonVersion,
+                  })}
+                </span>
+              )}
+            </div>
+            <div>
+              <span className="text-muted-foreground">
+                {t('settings.about.storageCompatibility', '存储兼容格式')}
+              </span>
+              <span className="ml-2 font-mono">
+                {duckdbStorageCompatibilityVersion || '—'}
+              </span>
+            </div>
           </div>
           <Button variant="outline" size="sm" onClick={handleCheck} disabled={checking}>
             <RefreshCw className={`h-4 w-4 mr-2 ${checking ? 'animate-spin' : ''}`} />

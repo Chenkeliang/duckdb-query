@@ -29,17 +29,9 @@ def _seed_extensions(bundled_dir: str, user_ext_dir) -> None:
     到这个可写目录并缓存。
     包内只读,故必须用可写用户目录,否则签名后的 .app 里 DuckDB 无法写缓存/装扩展。
     """
-    import shutil
-    from pathlib import Path
+    from core.database.extension_seed import seed_extension_tree
 
-    src = Path(bundled_dir)
-    if not src.is_dir():
-        return
-    for ext_file in src.rglob("*.duckdb_extension"):
-        dst = user_ext_dir / ext_file.relative_to(src)
-        if not dst.exists():
-            dst.parent.mkdir(parents=True, exist_ok=True)
-            shutil.copy2(ext_file, dst)
+    seed_extension_tree(bundled_dir, user_ext_dir)
 
 
 def apply_desktop_env() -> None:
@@ -155,6 +147,12 @@ def main() -> None:
     _wd.mkdir(parents=True, exist_ok=True)
     os.chdir(_wd)
     stage = _make_stage_logger(_wd / "startup.log")
+    stage("checking pending storage migration...")
+    from core.database.storage_upgrade import process_pending_storage_upgrade
+
+    migration_report = process_pending_storage_upgrade()
+    if migration_report:
+        stage(f"storage migration finished: {migration_report.get('status')}")
     stage("env ready (extensions seeded)")
     start_parent_watchdog()
     sock = bind_loopback_socket()

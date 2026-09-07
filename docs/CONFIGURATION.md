@@ -36,7 +36,10 @@ cp config/app-config.example.jsonc config/app-config.jsonc
 
 | Key | Type | Default | Description |
 |-----|------|---------|-------------|
-| `duckdb_memory_limit` | string | `"8GB"` | Maximum memory DuckDB can use |
+| `duckdb_memory_limit` | string | `"8GB"` | DuckDB buffer budget capped at 75% of physical/standard cgroup memory; not a process RSS cap |
+| `duckdb_max_temp_directory_size` | string | `"4GB"` | DuckDB spill limit; excludes imports, exports and backups |
+| `max_concurrent_queries` | integer | `4` | User database pool cap, also bounded by `pool_max_connections` |
+| `min_free_disk_bytes` | integer | `268435456` | Free-space check before acquiring a user database connection; not a disk reservation |
 | `duckdb_threads` | integer | CPU cores | Number of parallel query threads (follows `os.cpu_count()` when omitted) |
 | `duckdb_temp_directory` | string | `null` | Custom temp directory for DuckDB |
 | `duckdb_extensions` | string[] | `["excel", "json", "parquet", "httpfs", "mysql", "postgres"]` | Extensions to auto-load |
@@ -212,29 +215,29 @@ Environment variable: `DUCKDB_AUTO_EXPLAIN_THRESHOLD_MS`.
 |-----|------|---------|-------------|
 | `json_import_column_type` | string | `"auto"` | `auto`: DuckDB infers column types; `variant`: every column becomes `VARIANT` (upload-time `import_mode=variant` takes precedence) |
 
-**DuckDB storage format**: the app opens `main.db` / `system.db` with `storage_compatibility_version=latest` (see `api/core/database/duckdb_storage.py`); new databases use v1.5.x storage, which can persist `VARIANT` columns.
+**DuckDB storage format**: DuckQuery 2.0 creates `main.db` / `system.db` with `storage_compatibility_version=v2.0.0` (see `api/core/database/duckdb_storage.py`), preventing a future DuckDB 2.1 dependency update from silently changing the output format again. DuckDB 2.0 reads old files in place but never migrates them silently at startup; an explicitly migrated v2 file cannot be opened directly by DuckDB 1.5.3.
 
-### Migrating an older main.db to latest (small table/data volumes)
+### Migrating an older main.db to v2.0.0
 
 Older databases are typically on `v1.0.0+` / `v1.4.x` storage and **cannot** write `VARIANT` tables directly — a one-time migration is required:
 
 1. **Stop** the API (`uvicorn` / container) so the `.db` file isn't locked.
-2. Confirm the Python package is **`duckdb==1.5.3`** (`cd api && pip install -r requirements.txt`).
+2. Confirm the Python package is **`duckdb==1.6.0.dev379`** and the reported engine is `v2.0.0-alpha39998` (`cd api && pip install -r requirements.txt`).
 3. Preview:
    ```bash
    cd api
-   python scripts/migrate_storage_to_latest.py --dry-run
+   python scripts/migrate_storage_to_latest.py --dry-run --target-storage v2.0.0
    ```
 4. Run it (backs up to `data/duckdb/backup_storage_migration_<timestamp>/` before replacing the database file):
    ```bash
-   python scripts/migrate_storage_to_latest.py
+   python scripts/migrate_storage_to_latest.py --target-storage v2.0.0
    ```
-   Or skip the interactive prompt: `python scripts/migrate_storage_to_latest.py --yes`
+   Or skip the interactive prompt: `python scripts/migrate_storage_to_latest.py --yes --target-storage v2.0.0`. After migration, downgrade by restoring the generated backup; DuckDB 1.5.3 cannot directly open the v2 file.
 5. **Restart** the service, then verify by uploading JSON in the UI or setting `json_import_column_type=variant`.
 
 Migrate only the main or system database: `--only main` / `--only system`.
 
-Migration logic: open the old database read-only → create a new file on `latest` storage → `CREATE TABLE AS SELECT` per table → back up the old file and swap it in.
+Migration logic: check free space → attach the old database read-only → create a file at the selected storage level → use native `COPY FROM DATABASE` to retain tables, constraints, indexes, views, sequences, and macros → verify the version → back up the old file and atomically replace it.
 
 ---
 
@@ -247,6 +250,6 @@ Migration logic: open the old database read-only → create a new file on `lates
 | `DUCKDB_REMOTE_SETTINGS` | JSON string merged into `duckdb_remote_settings` (S3/OSS credentials — do not bake into the image) |
 | `duckdb_extensions` | Defaults include `httpfs`; the Docker image pre-installs `mysql`, `postgres`, `httpfs`, `spatial`, etc. |
 
-**Note**: whether DuckDB's **httpfs** extension honors the system proxy depends on DuckDB 1.5.3's runtime behavior — test it against `s3://` or HTTPS URLs in the target environment. The application layer only guarantees proxy support on the Python `requests` fallback path.
+**Note**: whether DuckDB's **httpfs** extension honors the system proxy depends on the current DuckDB 2.0 Preview runtime — test it against `s3://` or HTTPS URLs in the target environment. The application layer only guarantees proxy support on the Python `requests` fallback path.
 
 S3 data paths go over the network via `duckdb_remote_settings` and do **not** depend on `server_data_mounts` host directory mounts.

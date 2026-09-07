@@ -7,6 +7,7 @@
  */
 
 import * as React from 'react';
+import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { Blocks, Database, Sparkles } from 'lucide-react';
 
@@ -27,105 +28,94 @@ const POLL_INTERVAL_MS = 500;
 export function ExtensionsPage() {
   const { t, i18n } = useTranslation('common');
   const isZh = (i18n.language || 'zh').startsWith('zh');
-
-  const [items, setItems] = React.useState<DuckDBExtensionItem[] | null>(null);
-  const [progressByName, setProgressByName] = React.useState<
-    Record<string, ExtensionInstallStatus>
-  >({});
-  const pollersRef = React.useRef<Record<string, ReturnType<typeof setInterval>>>({});
-
-  const loadList = React.useCallback(() => {
-    listDuckDBExtensions()
-      .then(setItems)
-      .catch((e) => showErrorToast(t, e as Error, t('extensions.loadFailed', '获取扩展列表失败')));
-  }, [t]);
+  const queryClient = useQueryClient();
+  const [installingNames, setInstallingNames] = React.useState<string[]>([]);
+  const settledNames = React.useRef(new Set<string>());
+  const extensionsQuery = useQuery({
+    queryKey: ['duckdb-extensions'],
+    queryFn: listDuckDBExtensions,
+  });
+  const statusQueries = useQueries({
+    queries: installingNames.map((name) => ({
+      queryKey: ['duckdb-extension-install', name],
+      queryFn: () => getDuckDBExtensionInstallStatus(name),
+      refetchInterval: (query: { state: { data?: ExtensionInstallStatus } }) => {
+        const status = query.state.data?.status;
+        return status === 'done' || status === 'error' ? false : POLL_INTERVAL_MS;
+      },
+    })),
+  });
+  const progressByName = Object.fromEntries(
+    installingNames.map((name, index) => [
+      name,
+      statusQueries[index]?.data ?? { status: 'downloading', progress: 0, error: null },
+    ])
+  ) as Record<string, ExtensionInstallStatus>;
+  const installMutation = useMutation({
+    mutationFn: (name: string) => installDuckDBExtension(name),
+    onSuccess: (_data, name) => {
+      queryClient.removeQueries({ queryKey: ['duckdb-extension-install', name], exact: true });
+      settledNames.current.delete(name);
+      setInstallingNames((current) => current.includes(name) ? current : [...current, name]);
+    },
+  });
 
   React.useEffect(() => {
-    loadList();
-    // 仅挂载时加载一次
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, []);
-
-  // 卸载时清理所有轮询定时器，避免内存泄漏
-  React.useEffect(() => {
-    const pollers = pollersRef.current;
-    return () => {
-      Object.values(pollers).forEach(clearInterval);
-    };
-  }, []);
-
-  const clearProgress = (name: string) => {
-    setProgressByName((prev) => {
-      const next = { ...prev };
-      delete next[name];
-      return next;
-    });
-  };
-
-  const stopPolling = (name: string) => {
-    const timer = pollersRef.current[name];
-    if (timer) {
-      clearInterval(timer);
-      delete pollersRef.current[name];
+    if (extensionsQuery.error) {
+      showErrorToast(
+        t,
+        extensionsQuery.error as Error,
+        t('extensions.loadFailed', '获取扩展列表失败')
+      );
     }
-  };
+  }, [extensionsQuery.error, t]);
+
+  React.useEffect(() => {
+    installingNames.forEach((name, index) => {
+      const queryError = statusQueries[index]?.error;
+      if (queryError && !settledNames.current.has(name)) {
+        settledNames.current.add(name);
+        showErrorToast(
+          t,
+          queryError as Error,
+          t('extensions.installFailed', '{{name}} 安装失败', { name })
+        );
+        setInstallingNames((current) => current.filter((item) => item !== name));
+        return;
+      }
+      const status = statusQueries[index]?.data;
+      if (!status || settledNames.current.has(name)) return;
+      if (status.status === 'done') {
+        settledNames.current.add(name);
+        showSuccessToast(
+          t,
+          undefined,
+          t('extensions.installSuccess', '{{name}} 安装成功', { name })
+        );
+        void queryClient.invalidateQueries({ queryKey: ['duckdb-extensions'] });
+        setInstallingNames((current) => current.filter((item) => item !== name));
+      } else if (status.status === 'error') {
+        settledNames.current.add(name);
+        showErrorToast(
+          t,
+          undefined,
+          status.error || t('extensions.installFailed', '{{name}} 安装失败', { name })
+        );
+        setInstallingNames((current) => current.filter((item) => item !== name));
+      }
+    });
+  }, [installingNames, queryClient, statusQueries, t]);
 
   const handleInstall = async (item: DuckDBExtensionItem) => {
     try {
-      await installDuckDBExtension(item.name);
+      await installMutation.mutateAsync(item.name);
     } catch (e) {
       showErrorToast(
         t,
         e as Error,
         t('extensions.installFailed', '{{name}} 安装失败', { name: item.name })
       );
-      return;
     }
-
-    setProgressByName((prev) => ({
-      ...prev,
-      [item.name]: { status: 'downloading', progress: 0, error: null },
-    }));
-
-    stopPolling(item.name);
-    pollersRef.current[item.name] = setInterval(async () => {
-      try {
-        const status = await getDuckDBExtensionInstallStatus(item.name);
-
-        if (status.status === 'done') {
-          stopPolling(item.name);
-          clearProgress(item.name);
-          showSuccessToast(
-            t,
-            undefined,
-            t('extensions.installSuccess', '{{name}} 安装成功', { name: item.name })
-          );
-          loadList();
-          return;
-        }
-
-        if (status.status === 'error') {
-          stopPolling(item.name);
-          clearProgress(item.name);
-          showErrorToast(
-            t,
-            undefined,
-            status.error || t('extensions.installFailed', '{{name}} 安装失败', { name: item.name })
-          );
-          return;
-        }
-
-        setProgressByName((prev) => ({ ...prev, [item.name]: status }));
-      } catch (e) {
-        stopPolling(item.name);
-        clearProgress(item.name);
-        showErrorToast(
-          t,
-          e as Error,
-          t('extensions.installFailed', '{{name}} 安装失败', { name: item.name })
-        );
-      }
-    }, POLL_INTERVAL_MS);
   };
 
   const renderGroup = (
@@ -133,8 +123,9 @@ export function ExtensionsPage() {
     icon: React.ElementType,
     title: string
   ) => {
-    if (!items) return null;
-    const groupItems = items.filter((i) => i.category === category);
+    const groupItems = (extensionsQuery.data ?? []).filter(
+      (item) => !(item.bundled && item.installed) && item.category === category
+    );
     if (groupItems.length === 0) return null;
 
     const Icon = icon;
@@ -142,7 +133,7 @@ export function ExtensionsPage() {
       <Card>
         <CardHeader>
           <div className="flex items-center gap-2">
-            <Icon className="h-[18px] w-[18px] text-primary" />
+            <Icon className="h-4 w-4 text-primary" />
             <CardTitle className="text-base">{title}</CardTitle>
           </div>
         </CardHeader>
@@ -178,7 +169,7 @@ export function ExtensionsPage() {
         </p>
       </div>
 
-      {items === null ? (
+      {extensionsQuery.isPending ? (
         <div className="text-sm text-muted-foreground">{t('actions.loading')}</div>
       ) : (
         <>

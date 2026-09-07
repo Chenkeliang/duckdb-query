@@ -1,6 +1,6 @@
 # CSV / Excel 导入：精度问题与 UI 优化说明
 
-> 项目 DuckDB 版本：`api/requirements.txt` → `duckdb==1.5.3`；持久化库使用 `storage_compatibility_version=latest`（迁移见 `docs/CONFIGURATION_ZH.md` § JSON / VARIANT 入湖）  
+> 项目 DuckDB 版本：`api/requirements.txt` → `duckdb==1.6.0.dev379`（engine `v2.0.0-alpha39998`）；新建持久化库使用 `storage_compatibility_version=v2.0.0`（迁移见 `docs/CONFIGURATION_ZH.md` § JSON / VARIANT 入湖）
 > 官方参考：[CSV 自动检测](https://duckdb.org/docs/current/data/csv/auto_detection.html)、[Excel 扩展](https://duckdb.org/docs/current/core_extensions/excel)、[Excel 导入指南](https://duckdb.org/docs/current/guides/file_formats/excel_import)
 
 ---
@@ -15,7 +15,7 @@
 | Excel 预览 JSON | 前端看到科学计数法 | `normalize_dataframe_output` 对已是 float 的值按 JSON number 输出 |
 | 查询结果 | 大整数变字符串 | `jsonable_encoder` 对超过 JS `MAX_SAFE_INTEGER` 的整数转 str（**有意为之**，与导入类型无关） |
 
-DuckDB 1.5 推荐做法（按场景）：
+DuckDB 2.0 推荐做法（按场景）：
 
 1. **先全文本再转型号**：`read_csv(..., all_varchar=true)`，再在 SQL 里 `TRY_CAST`。  
 2. **覆盖嗅探类型**：`sniff_csv` → 对 ID 列使用 `types={'order_id': 'VARCHAR', ...}`（注意：`columns` 在 DuckDB 中表示**只读这些列**，不是改类型）。  

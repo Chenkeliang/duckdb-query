@@ -8,6 +8,7 @@ import { describe, it, expect, vi, beforeEach } from 'vitest';
 import { render, screen, within, waitFor } from '@testing-library/react';
 import userEvent from '@testing-library/user-event';
 import { I18nextProvider } from 'react-i18next';
+import { QueryClient, QueryClientProvider } from '@tanstack/react-query';
 import i18n from '@/i18n/config.js';
 
 import { ExtensionsPage } from '../ExtensionsPage';
@@ -30,50 +31,102 @@ vi.mock('sonner', () => ({
 const baseItems: DuckDBExtensionItem[] = [
   {
     name: 'excel',
+    load_name: 'excel',
+    artifact_name: 'excel',
     category: 'datasource',
+    source: 'official',
     description: 'Excel 读写',
     description_en: 'Excel read & write',
     usage: "SELECT * FROM 'path/to/file.xlsx'",
     installed: true,
+    loaded: false,
+    extension_version: 'test',
+    installed_from: 'core',
     bundled: true,
+    installable: true,
   },
   {
     name: 'mysql',
+    load_name: 'mysql',
+    artifact_name: 'mysql_scanner',
     category: 'datasource',
+    source: 'official',
     description: '连接 MySQL',
     description_en: 'Connect to MySQL',
     usage: null,
     installed: true,
-    bundled: true,
+    loaded: false,
+    extension_version: 'test',
+    installed_from: 'core',
+    bundled: false,
+    installable: true,
   },
   {
     name: 'sqlite_scanner',
+    load_name: 'sqlite_scanner',
+    artifact_name: 'sqlite_scanner',
     category: 'datasource',
+    source: 'official',
     description: '读写本地 SQLite 数据库文件',
     description_en: 'Read & write local SQLite database files',
     usage: "ATTACH 'path/to/data.db' AS sq (TYPE sqlite); SELECT * FROM sq.some_table",
     installed: false,
+    loaded: false,
+    extension_version: null,
+    installed_from: null,
     bundled: false,
+    installable: true,
   },
   {
     name: 'vss',
+    load_name: 'vss',
+    artifact_name: 'vss',
     category: 'capability',
+    source: 'official',
     description: '向量相似度检索(HNSW 索引)',
     description_en: 'Vector similarity search (HNSW)',
     usage: 'CREATE INDEX idx ON tbl USING HNSW (embedding)',
     installed: false,
+    loaded: false,
+    extension_version: null,
+    installed_from: null,
     bundled: false,
+    installable: true,
   },
 ];
 
-const renderPage = () =>
-  render(
-    <I18nextProvider i18n={i18n}>
-      <ExtensionsPage />
-    </I18nextProvider>
+const renderPage = () => {
+  const queryClient = new QueryClient({
+    defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
+  });
+  return render(
+    <QueryClientProvider client={queryClient}>
+      <I18nextProvider i18n={i18n}>
+        <ExtensionsPage />
+      </I18nextProvider>
+    </QueryClientProvider>
   );
+};
 
 describe('ExtensionsPage', () => {
+  it('does not reuse failed progress while a retry is fetching (2026-09-07 regression)', async () => {
+    installDuckDBExtension.mockResolvedValue(undefined);
+    let finishRetry!: (status: ExtensionInstallStatus) => void;
+    getDuckDBExtensionInstallStatus
+      .mockResolvedValueOnce({ status: 'error', progress: 0, error: 'first attempt failed' })
+      .mockImplementationOnce(() => new Promise<ExtensionInstallStatus>(resolve => { finishRetry = resolve; }));
+    renderPage();
+    const card = await screen.findByTestId('extension-card-sqlite_scanner');
+    await userEvent.click(within(card).getByRole('button', { name: '安装' }));
+    await waitFor(() => expect(getDuckDBExtensionInstallStatus).toHaveBeenCalledTimes(1));
+    await waitFor(() => expect(within(card).getByRole('button', { name: '安装' })).toBeEnabled());
+    await userEvent.click(within(card).getByRole('button', { name: '安装' }));
+    await waitFor(() => expect(getDuckDBExtensionInstallStatus).toHaveBeenCalledTimes(2));
+    expect(within(card).queryByRole('button', { name: '安装' })).not.toBeInTheDocument();
+    finishRetry({ status: 'done', progress: 100, error: null });
+    await waitFor(() => expect(listDuckDBExtensions).toHaveBeenCalledTimes(2));
+  });
+
   beforeEach(async () => {
     vi.clearAllMocks();
     await i18n.changeLanguage('zh');
@@ -83,20 +136,18 @@ describe('ExtensionsPage', () => {
   it('renders datasource and capability groups with catalog entries', async () => {
     renderPage();
 
-    expect(await screen.findByText('excel')).toBeInTheDocument();
+    expect(await screen.findByText('sqlite_scanner')).toBeInTheDocument();
+    expect(screen.queryByText('excel')).not.toBeInTheDocument();
     expect(screen.getByText('sqlite_scanner')).toBeInTheDocument();
     expect(screen.getByText('vss')).toBeInTheDocument();
     expect(screen.getByText('数据源')).toBeInTheDocument();
     expect(screen.getByText('能力增强')).toBeInTheDocument();
   });
 
-  it('shows a bundled badge for preseeded extensions', async () => {
+  it('hides bundled capabilities from the optional extension catalog', async () => {
     renderPage();
-    await screen.findByText('excel');
-
-    const excelCard = screen.getByTestId('extension-card-excel');
-    expect(within(excelCard).getByText('已预置')).toBeInTheDocument();
-    expect(within(excelCard).queryByRole('button', { name: '安装' })).not.toBeInTheDocument();
+    await screen.findByText('sqlite_scanner');
+    expect(screen.queryByTestId('extension-card-excel')).not.toBeInTheDocument();
   });
 
   it('shows an install button for non-bundled, non-installed extensions', async () => {

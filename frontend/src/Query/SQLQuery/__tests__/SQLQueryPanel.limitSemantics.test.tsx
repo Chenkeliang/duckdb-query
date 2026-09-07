@@ -78,12 +78,15 @@ vi.mock('../SQLEditor', () => ({
   SQLEditor: ({
     value,
     onChange,
+    diagnostic,
   }: {
     value: string;
     onChange: (value: string) => void;
+    diagnostic?: { line: number; column: number; message: string } | null;
   }) => (
     <>
       <div data-testid="sql-value">{value}</div>
+      {diagnostic && <div data-testid="sql-diagnostic">{diagnostic.message}</div>}
       <textarea
         aria-label="sql-editor"
         value={value}
@@ -162,6 +165,46 @@ describe('SQLQueryPanel page limit semantics', () => {
     expect(onExecute.mock.calls[0][2]).toEqual({
       baseSql: `SELECT * FROM orders LIMIT ${limit}`,
     });
+  });
+
+  it.each([
+    'SELECT * FROM orders FETCH FIRST 5 ROWS ONLY',
+    'SELECT * FROM orders OFFSET 2 ROWS FETCH NEXT 5 ROWS ONLY',
+  ])('preserves an explicit FETCH row limit: %s', async (sql) => {
+    const onExecute = createExecuteMock();
+    renderPanel({ initialSQL: sql, onExecute });
+
+    fireEvent.click(screen.getByRole('button', { name: 'execute' }));
+
+    await waitFor(() => expect(onExecute).toHaveBeenCalled());
+    expect(onExecute.mock.calls[0][0]).toBe(sql);
+    expect(onExecute.mock.calls[0][2]).toEqual({ baseSql: sql });
+  });
+
+  it('applies the visible total limit to APPROX NEAREST SQL', async () => {
+    const onExecute = createExecuteMock();
+    const sql = 'SELECT q.id FROM queries q INNER JOIN products p APPROX NEAREST 2 BY SIMILARITY array_cosine_similarity(q.embedding, p.embedding)';
+    renderPanel({ initialSQL: sql, onExecute });
+
+    fireEvent.click(screen.getByRole('button', { name: 'execute' }));
+
+    await waitFor(() => expect(onExecute).toHaveBeenCalled());
+    expect(onExecute.mock.calls[0][0]).toBe(`${sql} LIMIT 10000`);
+    expect(onExecute.mock.calls[0][2]).toEqual({ baseSql: sql });
+  });
+
+  it('passes structured DuckDB error locations to the editor', async () => {
+    const error = Object.assign(new Error('syntax error at FRM'), {
+      details: { sql_location: { line: 1, column: 10, end_column: 11 } },
+    });
+    const onExecute = vi.fn().mockRejectedValue(error);
+    renderPanel({ initialSQL: 'SELECT * FRM orders', onExecute });
+
+    fireEvent.click(screen.getByRole('button', { name: 'execute' }));
+
+    expect(await screen.findByTestId('sql-diagnostic')).toHaveTextContent(
+      'syntax error at FRM'
+    );
   });
 
   it('adds a visible preview LIMIT but retains limit-free baseSql', async () => {

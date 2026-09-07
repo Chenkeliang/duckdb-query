@@ -254,6 +254,18 @@ export {
     type ExtensionInstallStatus,
 } from './extensionsApi';
 
+// ==================== DuckDB Storage Upgrade API ====================
+export {
+    getStorageUpgradeStatus,
+    scheduleStorageUpgrade,
+    type StorageDatabaseStatus,
+    type StorageUpgradeReport,
+    type StorageUpgradeStatus,
+} from './storageUpgradeApi';
+
+export { inspectStorageBackup, openStorageBackup, getResourceBudget,
+    type BackupInspection, type ResourceBudget } from './storageUpgradeApi';
+
 // ==================== Query Result Export API ====================
 export {
     exportQueryResults,

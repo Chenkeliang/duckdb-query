@@ -14,10 +14,17 @@ import { completionKeymap } from '@codemirror/autocomplete';
 import { getSqlEditorIsDarkMode, sqlEditorThemeExtensions } from './sqlEditorTheme';
 import { createSqlEditorLayoutTheme } from './sqlEditorLayoutTheme';
 import { useSqlEditorDarkMode } from './useSqlEditorDarkMode';
-import { lintKeymap } from '@codemirror/lint';
+import { lintKeymap, setDiagnostics } from '@codemirror/lint';
 import { searchKeymap, highlightSelectionMatches } from '@codemirror/search';
 import { cn } from '@/lib/utils';
 import { buildSqlAutocompletion, triggerCompletionIfFocused } from './sqlColumnCompletion';
+
+export interface SQLErrorDiagnostic {
+  line: number;
+  column: number;
+  endColumn?: number;
+  message: string;
+}
 
 export interface SQLEditorProps {
   /** SQL 内容 */
@@ -46,6 +53,8 @@ export interface SQLEditorProps {
   defaultTable?: string;
   /** 是否自动聚焦 */
   autoFocus?: boolean;
+  /** DuckDB 返回的一处一基 SQL 错误位置 */
+  diagnostic?: SQLErrorDiagnostic | null;
 }
 
 /**
@@ -65,6 +74,7 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
   columnNameHints = [],
   defaultTable,
   autoFocus = false,
+  diagnostic = null,
 }) => {
   const { t } = useTranslation('common');
   const isDarkMode = useSqlEditorDarkMode();
@@ -237,6 +247,29 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
       });
     }
   }, [value]);
+
+  useEffect(() => {
+    const view = editorRef.current;
+    if (!view) return;
+    if (!diagnostic) {
+      view.dispatch(setDiagnostics(view.state, []));
+      return;
+    }
+    const lineNumber = Math.min(
+      Math.max(1, diagnostic.line),
+      view.state.doc.lines
+    );
+    const line = view.state.doc.line(lineNumber);
+    const from = Math.min(line.to, line.from + Math.max(0, diagnostic.column - 1));
+    const requestedEnd = diagnostic.endColumn ?? diagnostic.column + 1;
+    const to = Math.min(line.to, Math.max(from, line.from + requestedEnd - 1));
+    view.dispatch(setDiagnostics(view.state, [{
+      from,
+      to,
+      severity: 'error',
+      message: diagnostic.message,
+    }]));
+  }, [diagnostic, value]);
 
   useEffect(() => {
     const view = editorRef.current;

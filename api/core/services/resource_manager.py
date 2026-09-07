@@ -5,6 +5,7 @@ import shutil
 import threading
 import time
 import uuid
+import asyncio
 from pathlib import Path
 
 from fastapi import BackgroundTasks
@@ -22,13 +23,25 @@ def _temp_dir() -> Path:
 
 
 async def save_upload_file(upload_file) -> str:
-    """Saves an uploaded file to a temporary directory and returns the path."""
-    # 生成SQL兼容的文件ID，使用下划线替代连字符
-    file_id = str(uuid.uuid4()).replace('-', '_')
-    file_path = _temp_dir() / f"{file_id}_{upload_file.filename}"
-    with open(file_path, "wb") as buffer:
-        buffer.write(await upload_file.read())
-    return str(file_path)
+    """Stream an upload into a unique file; enforce limits before writing each chunk."""
+    from core.common.config_manager import config_manager
+    from core.common.exceptions import BaseAPIException
+    from utils.safe_filename import safe_filename_base
+
+    limit = config_manager.get_app_config().max_file_size
+    file_path = _temp_dir() / f"{uuid.uuid4().hex}_{safe_filename_base(upload_file.filename) or 'upload'}"
+    size = 0
+    try:
+        with open(file_path, "xb") as buffer:
+            while chunk := await upload_file.read(1024 * 1024):
+                size += len(chunk)
+                if size > limit:
+                    raise BaseAPIException("File exceeds upload limit", 413, "FILE_TOO_LARGE")
+                await asyncio.to_thread(buffer.write, chunk)
+        return str(file_path)
+    except BaseException:
+        file_path.unlink(missing_ok=True)
+        raise
 
 
 def _delete_path(file_path: str) -> None:

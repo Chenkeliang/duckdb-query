@@ -22,6 +22,13 @@ vi.mock('@/desktop/UpdateChecker', () => ({
   checkForUpdate: mocks.checkForUpdate,
   promptUpdate: mocks.promptUpdate,
 }));
+vi.mock('@/hooks/useAppConfig', () => ({
+  useAppConfig: () => ({
+    duckdbPythonVersion: '1.6.0.dev379',
+    duckdbEngineVersion: 'v2.0.0-alpha39998',
+    duckdbStorageCompatibilityVersion: 'v2.0.0',
+  }),
+}));
 vi.mock('sonner', () => ({
   toast: { success: mocks.toastSuccess, error: mocks.toastError },
 }));
@@ -43,6 +50,8 @@ describe('AboutUpdateSettings', () => {
   it('展示当前版本号', async () => {
     render(<AboutUpdateSettings />);
     await waitFor(() => expect(screen.getByText('v1.1.1')).toBeInTheDocument());
+    expect(screen.getByText('v2.0.0-alpha39998')).toBeInTheDocument();
+    expect(screen.getByText('v2.0.0')).toBeInTheDocument();
   });
 
   it('检查到新版本 → 走 promptUpdate(与启动检查同链路)', async () => {

@@ -1,6 +1,7 @@
 name: Code Quality Check
 
 on:
+  workflow_call:
   push:
     branches: [ main, develop ]
   pull_request:
@@ -23,9 +24,7 @@ jobs:
           cache-dependency-path: frontend/package-lock.json
       
       - name: Install dependencies
-        run: |
-          cd lint-rules/eslint && npm install && npm link
-          cd ../../frontend && npm install && npm link eslint-plugin-duckquery
+        run: cd frontend && npm ci
       
       - name: Run ESLint
         run: cd frontend && npm run lint

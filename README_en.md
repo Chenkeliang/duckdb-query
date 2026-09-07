@@ -17,7 +17,8 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/Chenkeliang/duckdb-query/releases/latest"><strong>Download Desktop</strong></a>
+  <a href="https://github.com/Chenkeliang/duckdb-query/releases/latest"><strong>Download Stable</strong></a>
+  · <a href="https://github.com/Chenkeliang/duckdb-query/releases">2.0 Preview releases (download when published)</a>
   · <a href="#get-started">Docker Self-hosting</a>
   · <a href="README.md">中文</a>
 </p>
@@ -29,6 +30,35 @@
 <p align="center">
   <img src="docs/assets/readme/hero-cross-source-en.gif" alt="DuckQuery workbench running a cross-source JOIN between a local DuckDB table and MySQL" width="900">
 </p>
+
+## Latest: v2.0.0 (full DuckDB 2.0 support)
+
+Local Docker binds to `127.0.0.1` by default. For shared access, deploy behind an authenticated reverse proxy; `DUCKQUERY_BIND_HOST` changes the bind address, and the app itself does not provide multi-user authentication. URL imports validate each redirect and enforce streaming size limits; configured HTTP(S) proxies are trusted network boundaries.
+
+Default budgets allow up to 4 user-database connections, 4GB spill and a 256MiB disk reserve; engine memory is capped at 75% of detected physical/container memory. Settings → DuckDB database storage shows budgets, checks the latest backup and explains recovery; desktop users can open the validated backup folder. Database restoration is never automatic.
+
+> [!IMPORTANT]
+> The v2.0.0 Python backend uses DuckDB `v2.0.0-alpha39998` (Python package `1.6.0.dev379`), and new databases explicitly use `v2.0.0` storage. This is [DuckDB's official 2.0 Alpha](https://duckdb.org/2026/09/02/try-duckdb-20-alpha), which DuckDB does not yet mark as production-ready; treat this as a major-version upgrade.
+
+What this release adds:
+
+- handwritten SQL support for `APPROX NEAREST`, recursive CTE `USING KEY`, `FETCH FIRST/NEXT`, VARIANT, and JSON mutation functions;
+- the workbench total-row LIMIT also protects `APPROX NEAREST` across async execution, persistence, export, and MCP;
+- a DuckDB 2.0 dynamic-Pivot fix and structured parser locations rendered directly in the SQL editor;
+- extension metadata that separates UI, `LOAD`, and artifact names; MySQL/PostgreSQL artifacts are verified with autoinstall disabled;
+- healthy bundled Excel is hidden from the optional-extension page, while a missing artifact remains repairable;
+- explicit app, Python package, engine, and storage versions in About; the browser demo reports its independent Wasm engine.
+
+Upgrade notes:
+
+1. Back up `data/duckdb/main.db`, `system.db`, and their `.wal` files before upgrading. This release never migrates old files silently at startup.
+   When older files are detected, the major-version dialog can be deferred and reopened from Settings → DuckDB database storage; no persistent top banner is shown.
+2. DuckDB extension binaries are engine-version-specific. Standard builds may download the matching 2.0 MySQL/PostgreSQL/HTTPFS artifacts on first use; offline builds bundle them.
+3. New databases use v2 storage; DuckDB 2.0 can read old files in place. Once explicitly migrated, a v2 file cannot be opened directly by DuckDB 1.5.3—restore the backup or use export/import to downgrade.
+4. The browser demo embeds a separate DuckDB-Wasm engine and does not share the desktop/Docker 2.0 capability set; each UI reports its real engine version.
+5. Legacy lambda syntax `x -> x + 1` is disabled by default; use `lambda x: x + 1`. `CONNECT`, triggers, DML-in-CTE, custom extension repositories, and arbitrary `INSTALL/LOAD` SQL remain disabled.
+
+Full details: [v2.0.0 Release Notes](docs/releases/v2.0.0_en.md) · [DuckDB 2.0 technical design](docs/specs/duckdb-2-compatibility-and-capabilities.md)
 
 ## Where It Fits
 

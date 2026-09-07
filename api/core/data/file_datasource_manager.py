@@ -385,6 +385,8 @@ def create_table_from_file_path_typed(
 
     try:
         if normalized_type in {"xlsx", "xls", "excel"}:
+            from core.data.archive_limits import validate_excel_archive
+            validate_excel_archive(file_path)
             from core.data.import_mode import (
                 normalize_import_mode,
                 should_promote_column_types,

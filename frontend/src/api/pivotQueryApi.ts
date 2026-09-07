@@ -166,6 +166,12 @@ export interface AppConfigResponse {
     federated_query_timeout?: number;
     json_import_column_type?: string;
     remote_storage_configured?: boolean;
+    duckdb_python_version?: string;
+    duckdb_engine_version?: string;
+    duckdb_storage_compatibility_version?: string;
+    duckdb_main_storage_version?: string;
+    duckdb_system_storage_version?: string;
+    duckdb_storage_upgrade_required?: boolean;
 }
 
 export async function getAppConfig(): Promise<{

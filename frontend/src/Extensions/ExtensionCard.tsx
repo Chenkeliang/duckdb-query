@@ -56,13 +56,13 @@ export function ExtensionCard({ item, progress, isZh, onInstall, t }: ExtensionC
         {item.usage && (
           <div>
             <div className="mb-1 flex items-center justify-between">
-              <span className="text-[11px] font-medium text-muted-foreground">
+              <span className="text-xs font-medium text-muted-foreground">
                 {t('extensions.usage', '用法')}
               </span>
               <Button
                 size="icon"
                 variant="ghost"
-                className="h-5 w-5"
+                className="h-6 w-6"
                 onClick={handleCopy}
                 aria-label={t('extensions.copy', '复制')}
                 title={t('extensions.copy', '复制')}
@@ -87,7 +87,7 @@ export function ExtensionCard({ item, progress, isZh, onInstall, t }: ExtensionC
                 {progress.progress}%
               </span>
             </div>
-          ) : !item.bundled && !item.installed ? (
+          ) : item.installable && !item.installed ? (
             <Button size="sm" className="w-full" onClick={onInstall}>
               {t('extensions.install', '安装')}
             </Button>

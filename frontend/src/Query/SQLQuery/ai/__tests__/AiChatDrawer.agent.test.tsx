@@ -56,6 +56,22 @@ function renderDrawer(onInsertSQL = vi.fn()) {
 }
 
 describe('AiChatDrawer agent mode', () => {
+  it('wraps unbroken message fields without clipping content (2026-09-07 overflow regression)', async () => {
+    const field = 'sale_amount/user_paid_amount/receivables_amount';
+    mocks.streamAgent.mockImplementation(async (_body, { onEvent }) => {
+      onEvent({ event: 'answer', run_id: 'r1', result: { content: field, sql: null, evidence: [] }, termination_reason: 'completed' });
+      onEvent({ event: 'done', run_id: 'r1', session_id: null, usage: { llm_calls: 1, tool_calls: 0, sql_calls: 0, elapsed_ms: 1 } });
+    });
+    renderDrawer();
+    fireEvent.change(screen.getByPlaceholderText(/问数据智能体/), { target: { value: field } });
+    fireEvent.keyDown(screen.getByPlaceholderText(/问数据智能体/), { key: 'Enter' });
+    await waitFor(() => expect(screen.getAllByText(field)).toHaveLength(2));
+    for (const message of screen.getAllByText(field)) {
+      expect(message.parentElement).toHaveClass('min-w-0', 'max-w-full', 'wrap-anywhere');
+      expect(message.parentElement).not.toHaveClass('overflow-hidden');
+    }
+  });
+
   it('renders steps and final answer from the event stream, insert works', async () => {
     mocks.streamAgent.mockImplementation(async (_body, { onEvent }) => {
       onEvent({ event: 'run_started', run_id: 'r1', session_id: null, limits: { steps: 6, sql_calls: 3, seconds: 90, llm_calls: 7 } });

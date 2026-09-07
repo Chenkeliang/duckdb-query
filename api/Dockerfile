@@ -26,8 +26,9 @@ COPY --from=builder /app/wheels /wheels
 COPY --from=builder /app/requirements.txt .
 RUN pip install --no-cache-dir /wheels/*
 
-# Pre-install DuckDB extensions for faster startup (联邦查询扩展预安装)
-RUN python -c "import duckdb; c=duckdb.connect(); c.execute('INSTALL mysql'); c.execute('INSTALL postgres'); c.execute('INSTALL excel'); c.execute('INSTALL json'); c.execute('INSTALL parquet'); c.execute('INSTALL httpfs'); c.execute('INSTALL spatial'); print('DuckDB extensions pre-installed successfully')"
+# Pre-install into an immutable image directory. The entrypoint seeds these files
+# into the writable extension directory used by the non-root runtime user.
+RUN mkdir -p /opt/duckquery/extensions && python -c "import duckdb; c=duckdb.connect(); c.execute(\"SET extension_directory='/opt/duckquery/extensions'\"); c.execute('INSTALL mysql'); c.execute('INSTALL postgres'); c.execute('INSTALL excel'); c.execute('INSTALL httpfs'); c.execute('INSTALL spatial'); print('DuckDB extensions pre-installed successfully')"
 
 # Copy the application code
 COPY api .
@@ -39,8 +40,11 @@ RUN mkdir -p temp_files exports data logs /app/data/duckdb /app/data/uploads /ap
 # Set environment variables
 ENV PYTHONPATH=/app
 ENV PYTHONUNBUFFERED=1
+ENV APP_ROOT=/app
+ENV CONFIG_DIR=/app/config
 # 默认挂载目录（可在 docker-compose 中覆盖）Default server-mounted data directory
 ENV SERVER_DATA_ROOT=/app/server_mounts
+ENV DUCKDB_EXTENSION_DIRECTORY=/app/data/duckdb/extensions
 
 # Switch to the non-privileged user
 USER app
@@ -53,4 +57,5 @@ HEALTHCHECK --interval=30s --timeout=10s --start-period=40s --retries=3 \
     CMD curl -f http://localhost:8000/health || exit 1
 
 # The command to run the application in production
+ENTRYPOINT ["python", "docker_entrypoint.py"]
 CMD ["uvicorn", "main:app", "--host", "0.0.0.0", "--port", "8000"]

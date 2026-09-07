@@ -39,6 +39,21 @@ def test_duckdb_execute_empty_sql_validation():
     assert body["error"]["code"] == "VALIDATION_ERROR"
 
 
+def test_duckdb_execute_includes_structured_sql_error_location():
+    """Regression 2026-09-04: the editor must not parse human error text itself."""
+    response = client.post(
+        "/api/duckdb/execute",
+        json={"sql": "SELECT 1 + missing", "is_preview": True},
+    )
+    assert response.status_code == 500
+    body = response.json()
+    assert body["error"]["details"]["sql_location"] == {
+        "line": 1,
+        "column": 12,
+        "end_column": 13,
+    }
+
+
 def test_federated_query_missing_connection_envelope():
     with patch("routers.duckdb_query.db_manager") as mock_db_manager:
         mock_db_manager.get_connection.return_value = None

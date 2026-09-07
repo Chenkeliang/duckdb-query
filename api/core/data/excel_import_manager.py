@@ -155,6 +155,8 @@ def inspect_excel_sheets(
     file_path: str, preview_rows: int = 20
 ) -> List[Dict[str, Any]]:
     """检查 Excel 文件的工作表信息，支持 .xlsx 和 .xls 格式"""
+    from core.data.archive_limits import validate_excel_archive
+    validate_excel_archive(file_path)
     file_ext = os.path.splitext(file_path)[1].lower()
 
     if file_ext == ".xls":
@@ -420,6 +422,8 @@ def load_excel_sheet_rows(
     实验性 XML 修复（与既有行为一致）。单元格保持 Python 原生类型，由下游
     rows_ingest 以忠实文本入库 + 促升引擎定型（与 CSV 同一铁律语义）。
     """
+    from core.data.archive_limits import validate_excel_archive
+    validate_excel_archive(file_path)
     file_ext = os.path.splitext(file_path)[1].lower()
 
     if file_ext == ".xls":
