@@ -207,6 +207,27 @@ describe('SQLQueryPanel page limit semantics', () => {
     );
   });
 
+  it('does not attach a late diagnostic after the SQL has changed', async () => {
+    let rejectExecute: ((error: Error) => void) | undefined;
+    const onExecute = vi.fn(
+      () => new Promise<void>((_resolve, reject) => { rejectExecute = reject; })
+    );
+    renderPanel({ initialSQL: 'SELECT * FRM orders', onExecute });
+
+    fireEvent.click(screen.getByRole('button', { name: 'execute' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'sql-editor' }), {
+      target: { value: 'SELECT * FROM orders' },
+    });
+    rejectExecute?.(
+      Object.assign(new Error('old syntax error'), {
+        details: { sql_location: { line: 1, column: 10, end_column: 13 } },
+      })
+    );
+
+    await waitFor(() => expect(onExecute).toHaveBeenCalledOnce());
+    expect(screen.queryByTestId('sql-diagnostic')).not.toBeInTheDocument();
+  });
+
   it('adds a visible preview LIMIT but retains limit-free baseSql', async () => {
     const onExecute = createExecuteMock();
     renderPanel({ initialSQL: 'SELECT * FROM orders', onExecute });

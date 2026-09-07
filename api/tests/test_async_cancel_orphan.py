@@ -64,7 +64,38 @@ class TestDiscardPersistedResult:
 
 
 class TestCancelDuringPersistRace:
-    def test_orphan_cleaned_when_cancel_lands_before_complete(self, monkeypatch):
+    def test_cancel_between_checkpoint_and_connection_registration_stops_query(
+        self,
+        monkeypatch,
+    ):
+        """Regression 2026-09-07: registration handoff cannot lose cancellation."""
+        from core.database import federated_attach
+
+        table = "cancel_before_registration_tbl"
+        task_id = task_manager.create_task("SELECT 42 AS n", task_type="query")
+        original_persist = federated_attach.execute_sql_and_persist
+
+        def racing_persist(*args, **kwargs):
+            assert task_manager.request_cancellation(
+                task_id,
+                "cancelled immediately before connection registration",
+            )
+            return original_persist(*args, **kwargs)
+
+        monkeypatch.setattr(
+            federated_attach,
+            "execute_sql_and_persist",
+            racing_persist,
+        )
+        try:
+            execute_async_query(task_id, "SELECT 42 AS n", custom_table_name=table)
+
+            assert not _table_exists(table)
+            assert task_manager.get_task(task_id).status == TaskStatus.CANCELLED
+        finally:
+            _cleanup(table)
+
+    def test_late_cancel_after_publication_is_rejected_and_result_kept(self, monkeypatch):
         table = "orphan_race_result_tbl"
         try:
             task_id = task_manager.create_task("SELECT 42 AS answer", task_type="query")
@@ -83,13 +114,47 @@ class TestCancelDuringPersistRace:
 
             execute_async_query(task_id, "SELECT 42 AS answer", custom_table_name=table)
 
-            # 表和 datasource 记录都必须被清理，任务落定为 cancelled（而不是留 CANCELLING
-            # 等 60s 看门狗）
-            assert not _table_exists(table), "orphaned result table was not dropped"
-            assert file_datasource_manager.get_file_datasource(table) is None, \
-                "orphaned datasource record was not deleted"
+            # Publication is the linearization point. The late request is
+            # rejected, completion succeeds, and the committed result remains.
+            assert _table_exists(table)
+            assert file_datasource_manager.get_file_datasource(table) is not None
             final = task_manager.get_task(task_id)
-            assert final is not None and final.status == TaskStatus.CANCELLED
+            assert final is not None and final.status == TaskStatus.SUCCESS
+        finally:
+            _cleanup(table)
+
+    def test_cancel_before_publication_preserves_overwritten_target(self, monkeypatch):
+        """Regression 2026-09-07: cancellation never drops the previous target."""
+        from core.database import federated_attach
+
+        table = "cancel_preserves_previous_tbl"
+        try:
+            with get_connection_pool().get_connection() as con:
+                con.execute(f'CREATE OR REPLACE TABLE "{table}" AS SELECT 7 AS n')
+            task_id = task_manager.create_task("SELECT 42 AS n", task_type="query")
+
+            def cancel_publish(*_args, **_kwargs):
+                raise duckdb.InterruptException("cancelled before publication")
+
+            monkeypatch.setattr(
+                federated_attach,
+                "publish_query_staging_table",
+                cancel_publish,
+            )
+            execute_async_query(
+                task_id,
+                "SELECT 42 AS n",
+                custom_table_name=table,
+                overwrite=True,
+            )
+
+            with get_connection_pool().get_connection() as con:
+                assert con.execute(f'SELECT n FROM "{table}"').fetchall() == [(7,)]
+                assert not any(
+                    name.startswith("__stage_")
+                    for (name,) in con.execute("SHOW TABLES").fetchall()
+                )
+            assert task_manager.get_task(task_id).status == TaskStatus.CANCELLED
         finally:
             _cleanup(table)
 

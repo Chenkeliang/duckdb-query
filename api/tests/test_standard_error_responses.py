@@ -154,13 +154,13 @@ def test_sql_favorite_not_found_standard_error():
     assert "detail" not in body
 
 
-def test_query_cancel_not_found_standard_error():
-    """POST /api/query/cancel/{id} 无活跃查询须 404 QUERY_NOT_FOUND。"""
+def test_query_cancel_before_registration_is_idempotently_accepted():
+    """Regression 2026-09-07: an early cancel is queued instead of lost."""
     response = client.post("/api/query/cancel/nonexistent-request-id-xyz")
-    assert response.status_code == 404
+    assert response.status_code == 200
     body = response.json()
-    assert body["success"] is False
-    assert body["error"]["code"] == "QUERY_NOT_FOUND"
+    assert body["success"] is True
+    assert body["messageCode"] == "QUERY_CANCELLED"
     assert "detail" not in body
 
 

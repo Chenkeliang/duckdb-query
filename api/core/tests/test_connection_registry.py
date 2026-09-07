@@ -110,6 +110,22 @@ class TestConnectionRegistry(unittest.TestCase):
         self.assertTrue(self.registry.interrupt_with_remote(task_id))
         remote_interrupt.assert_called_once_with()
 
+    def test_interrupt_can_queue_before_connection_registration(self):
+        """Regression 2026-09-07: early sync cancel applies before first SQL."""
+        connection = MagicMock()
+        task_id = "sync:early-cancel"
+
+        self.assertTrue(
+            self.registry.interrupt_with_remote(
+                task_id,
+                pending_if_missing=True,
+            )
+        )
+        self.registry.register(task_id, connection, "SELECT expensive()")
+
+        self.assertTrue(self.registry.is_cancel_requested(task_id))
+        connection.interrupt.assert_not_called()
+
     def test_get_active_count(self):
         """测试获取活跃连接数"""
         self.assertEqual(self.registry.get_active_count(), 0)

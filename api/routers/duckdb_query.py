@@ -22,7 +22,11 @@ from core.common.enhanced_error_handler import get_error_handler
 from core.common.config_manager import config_manager
 from core.common.sql_identifiers import quote_identifier
 from core.common.sql_capabilities import is_read_only_sql
-from core.common.sql_error_location import parse_sql_error_location
+from core.common.sql_error_location import (
+    build_sql_error_details,
+    duckdb_error_message,
+    structured_duckdb_errors,
+)
 from core.common.timezone_utils import (
     format_storage_time_for_response,
     get_current_time_iso,
@@ -49,7 +53,7 @@ from core.database.federated_attach import (
     create_query_staging_table,
     detach_databases_on_connection,
     drop_query_staging_table,
-    mysql_remote_cancellation_scope,
+    remote_cancellation_scope,
     publish_query_staging_table,
     resolve_attach_configs,
     single_threaded_mysql_persistence,
@@ -559,32 +563,34 @@ def execute_duckdb_query(
         # 使用可中断连接执行查询（如果有 query_id）
         if query_id:
             with interruptible_connection(query_id, sql_query) as conn:
-                (result_columns, result_records, _cursor_types, query_column_types,
-                 saved_table, save_error) = _run_query_maybe_save(
-                    conn,
-                    sql_query,
-                    request.save_as_table,
-                    limit,
-                    original_sql=request.sql,
-                    query_id=query_id,
-                )
-                execution_time = _log_query_metrics_in_conn(
-                    conn, sql_query, start_time, len(result_records)
-                )
+                with structured_duckdb_errors(conn):
+                    (result_columns, result_records, _cursor_types, query_column_types,
+                     saved_table, save_error) = _run_query_maybe_save(
+                        conn,
+                        sql_query,
+                        request.save_as_table,
+                        limit,
+                        original_sql=request.sql,
+                        query_id=query_id,
+                    )
+                    execution_time = _log_query_metrics_in_conn(
+                        conn, sql_query, start_time, len(result_records)
+                    )
         else:
             with with_duckdb_connection() as con:
-                (result_columns, result_records, _cursor_types, query_column_types,
-                 saved_table, save_error) = _run_query_maybe_save(
-                    con,
-                    sql_query,
-                    request.save_as_table,
-                    limit,
-                    original_sql=request.sql,
-                    query_id=query_id,
-                )
-                execution_time = _log_query_metrics_in_conn(
-                    con, sql_query, start_time, len(result_records)
-                )
+                with structured_duckdb_errors(con):
+                    (result_columns, result_records, _cursor_types, query_column_types,
+                     saved_table, save_error) = _run_query_maybe_save(
+                        con,
+                        sql_query,
+                        request.save_as_table,
+                        limit,
+                        original_sql=request.sql,
+                        query_id=query_id,
+                    )
+                    execution_time = _log_query_metrics_in_conn(
+                        con, sql_query, start_time, len(result_records)
+                    )
 
         # 构建响应
         response_payload = {
@@ -620,16 +626,19 @@ def execute_duckdb_query(
     except BaseAPIException:
         raise
     except Exception as e:
-        logger.error(f"DuckDB query execution failed: {str(e)}")
+        safe_message = duckdb_error_message(e)
+        logger.error("DuckDB query execution failed: %s", safe_message)
         logger.error(f"Stack trace: {traceback.format_exc()}")
-        details = {"query_id": query_id}
-        sql_location = parse_sql_error_location(str(e), sql_query)
-        if sql_location:
-            details["sql_location"] = sql_location
+        details = build_sql_error_details(
+            e,
+            request.sql,
+            sql_query,
+            query_id,
+        )
         return error_json_response(
             500,
             MessageCode.QUERY_FAILED,
-            f"Query execution failed: {str(e)}",
+            f"Query execution failed: {safe_message}",
             details=details,
         )
 
@@ -867,6 +876,8 @@ def execute_federated_query(
     attached_aliases = []
     warnings = []
     query_id = f"sync:{x_request_id}" if x_request_id else None
+    timeout_s = int(config_manager.get_app_config().federated_query_timeout or 300)
+    deadline = time.monotonic() + timeout_s
 
     # 写拦截:此端点独立于 /execute,历史上漏了这道门,MCP federated_query
     # 可借多语句/CTE 绕过只读判定送达写操作(Codex P0-4)。与 /execute 同 helper。
@@ -903,7 +914,12 @@ def execute_federated_query(
         # 1. ATTACH 所有外部数据库（连接池复用时会容忍已挂载别名）
         if attach_configs:
             configure_mysql_fresh_connections(conn, attach_configs)
-            attached_aliases = attach_databases_on_connection(conn, attach_configs)
+            attached_aliases = attach_databases_on_connection(
+                conn,
+                attach_configs,
+                deadline_monotonic=deadline,
+                query_id=query_id,
+            )
             logger.info(f"Attached databases: {attached_aliases}")
 
         # DETACH 必须放 finally:查询/保存中途抛错时,若不清理,连接会带着
@@ -912,7 +928,7 @@ def execute_federated_query(
             for attempt in range(2):
                 staging_name = None
                 try:
-                    with mysql_remote_cancellation_scope(conn, query_id, attach_configs):
+                    with remote_cancellation_scope(conn, query_id, attach_configs):
                         # 2. 智能下推：半连接键下推(保持结果) + 时间界建议(不改 SQL)
                         attach_aliases = {alias for (alias, _cfg) in attach_configs}
                         mysql_aliases = {
@@ -1007,7 +1023,6 @@ def execute_federated_query(
             if attached_aliases:
                 detach_databases_on_connection(conn, attached_aliases)
 
-    timeout_s = int(config_manager.get_app_config().federated_query_timeout or 300)
     query_id = query_id or f"fed:{uuid4().hex}"
     timed_out = {"v": False}
 
@@ -1024,20 +1039,21 @@ def execute_federated_query(
                 timer = threading.Timer(timeout_s, _on_timeout)
                 timer.start()
                 try:
-                    result_columns, result_records, cursor_types = (
-                        execute_in_connection(conn)
-                    )
-                    describe_types = None
-                    if not saved_table and not _uses_mysql_query_table_function(
-                        _opt["sql"]
-                    ):
-                        describe_types = describe_query_column_types(
-                            conn, _opt["sql"]
+                    with structured_duckdb_errors(conn):
+                        result_columns, result_records, cursor_types = (
+                            execute_in_connection(conn)
                         )
-                    query_column_types = describe_types or [
-                        {"name": name, "duckdb_type": dtype}
-                        for name, dtype in cursor_types
-                    ]
+                        describe_types = None
+                        if not saved_table and not _uses_mysql_query_table_function(
+                            _opt["sql"]
+                        ):
+                            describe_types = describe_query_column_types(
+                                conn, _opt["sql"]
+                            )
+                        query_column_types = describe_types or [
+                            {"name": name, "duckdb_type": dtype}
+                            for name, dtype in cursor_types
+                        ]
                 finally:
                     timer.cancel()
                 execution_time = _log_query_metrics_in_conn(
@@ -1095,15 +1111,18 @@ def execute_federated_query(
     except BaseAPIException:
         raise
     except Exception as e:
-        logger.error(f"Federated query execution failed: {str(e)}")
+        safe_message = duckdb_error_message(e)
+        logger.error("Federated query execution failed: %s", safe_message)
         logger.error(f"Stack trace: {traceback.format_exc()}")
-        details = {"query_id": query_id}
-        sql_location = parse_sql_error_location(str(e), sql_query)
-        if sql_location:
-            details["sql_location"] = sql_location
+        details = build_sql_error_details(
+            e,
+            request.sql,
+            sql_query,
+            query_id,
+        )
         return error_json_response(
             500,
             MessageCode.QUERY_FAILED,
-            f"Federated query failed: {str(e)}",
+            f"Federated query failed: {safe_message}",
             details=details,
         )

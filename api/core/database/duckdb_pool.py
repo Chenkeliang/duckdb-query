@@ -554,6 +554,10 @@ def interruptible_connection(
         )
         
         try:
+            if connection_registry.is_cancel_requested(task_id):
+                raise duckdb.InterruptException(
+                    "INTERRUPT Error: cancelled before query execution"
+                )
             yield conn
         except duckdb.InterruptException:
             # 中断后销毁连接，避免被重新归还

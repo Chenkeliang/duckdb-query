@@ -134,7 +134,8 @@ class TestSaveAsTableResultSurfacing:
         assert con.execute("SELECT a FROM t1").fetchone()[0] == 1
         assert recs == [{"a": 1}]
 
-    def test_save_failure_surfaces_error_not_silent_success(self):
+    def test_save_materialization_failure_does_not_reexecute_query(self):
+        """Regression 2026-09-07: failed CTAS cannot replay the user query."""
         # 用包装连接强制 CTAS 失败(确定性):CREATE 抛错,SELECT 照常
         real = duckdb.connect(":memory:")
 
@@ -144,11 +145,8 @@ class TestSaveAsTableResultSurfacing:
                     raise RuntimeError("simulated save failure")
                 return real.execute(sql, *a, **k)
 
-        _cols, recs, _ct, _types, saved, err = self._call(
-            _FailCreateConn(), "SELECT 1 AS a", "t2")
-        assert saved is None, "保存失败却报告了 saved_table"
-        assert err is not None and "simulated save failure" in err
-        assert recs == [{"a": 1}]  # 结果仍如实返回
+        with pytest.raises(RuntimeError, match="simulated save failure"):
+            self._call(_FailCreateConn(), "SELECT 1 AS a", "t2")
 
     def test_preview_comes_from_materialized_table_once(self):
         con = duckdb.connect(":memory:")

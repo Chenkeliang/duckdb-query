@@ -24,6 +24,8 @@ from typing import Callable, Dict, List, Optional
 import duckdb
 
 logger = logging.getLogger(__name__)
+_PENDING_CANCELLATION_TTL_SECONDS = 60.0
+_MAX_PENDING_CANCELLATIONS = 2048
 
 
 @dataclass
@@ -50,7 +52,16 @@ class ConnectionRegistry:
     def __init__(self):
         self._registry: Dict[str, ConnectionRecord] = {}
         self._published: Dict[str, float] = {}
+        self._pending_cancellations: Dict[str, float] = {}
         self._lock = threading.RLock()
+
+    def _prune_pending_cancellations_locked(self) -> None:
+        cutoff = time.time() - _PENDING_CANCELLATION_TTL_SECONDS
+        for task_id, requested_at in list(self._pending_cancellations.items()):
+            if requested_at < cutoff:
+                self._pending_cancellations.pop(task_id, None)
+        while len(self._pending_cancellations) >= _MAX_PENDING_CANCELLATIONS:
+            self._pending_cancellations.pop(next(iter(self._pending_cancellations)))
 
     def register(
         self, 
@@ -61,7 +72,10 @@ class ConnectionRegistry:
     ) -> None:
         """注册连接到注册表"""
         with self._lock:
+            self._prune_pending_cancellations_locked()
             self._published.pop(task_id, None)
+            cancel_requested = task_id in self._pending_cancellations
+            self._pending_cancellations.pop(task_id, None)
             if task_id in self._registry:
                 logger.warning(f"Task {task_id} already registered, overwriting")
             
@@ -71,6 +85,7 @@ class ConnectionRegistry:
                 thread_id=threading.current_thread().ident or 0,
                 start_time=time.time(),
                 sql_preview=sql[:200] if sql else "",
+                cancel_requested=cancel_requested,
                 retain_publication=retain_publication,
             )
             logger.info(f"Registered connection for task {task_id}")
@@ -90,9 +105,10 @@ class ConnectionRegistry:
             return False
 
     def forget_publication(self, task_id: str) -> None:
-        """Release a committed-publication handoff marker after task finalization."""
+        """Release publication/cancellation handoff state after task finalization."""
         with self._lock:
             self._published.pop(task_id, None)
+            self._pending_cancellations.pop(task_id, None)
     
     def get(self, task_id: str) -> Optional[ConnectionRecord]:
         """获取连接记录"""
@@ -174,6 +190,8 @@ class ConnectionRegistry:
                 connection = record.connection
                 remote_interrupts = list(record.remote_interrupts)
             else:
+                self._prune_pending_cancellations_locked()
+                self._pending_cancellations[task_id] = time.time()
                 connection = None
                 remote_interrupts = []
 
@@ -193,11 +211,24 @@ class ConnectionRegistry:
                 logger.warning("Failed to interrupt remote query for task %s: %s", task_id, exc)
         return True
 
-    def interrupt_with_remote(self, task_id: str) -> bool:
+    def interrupt_with_remote(
+        self,
+        task_id: str,
+        *,
+        pending_if_missing: bool = False,
+    ) -> bool:
         """中断 DuckDB，并调用查询已登记的远端数据库取消器。"""
         with self._lock:
             record = self._registry.get(task_id)
             if not record:
+                if pending_if_missing:
+                    self._prune_pending_cancellations_locked()
+                    self._pending_cancellations[task_id] = time.time()
+                    logger.info(
+                        "Queued cancellation until task %s registers",
+                        task_id,
+                    )
+                    return True
                 logger.warning("Cannot interrupt task %s: not found in registry", task_id)
                 return False
             if record.publication_completed:

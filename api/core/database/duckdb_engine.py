@@ -200,6 +200,12 @@ def build_attach_sql(alias: str, db_config: Dict[str, Any]) -> str:
         ]
         if db_config.get('port'):
             conn_parts.append(f"port={_postgres_conninfo_value(db_config['port'])}")
+        application_name = db_config.get("_application_name")
+        if application_name:
+            conn_parts.append(
+                "application_name="
+                + _postgres_conninfo_value(application_name)
+            )
         timeout_value = db_config.get("_statement_timeout_ms")
         if timeout_value is not None:
             if isinstance(timeout_value, bool):

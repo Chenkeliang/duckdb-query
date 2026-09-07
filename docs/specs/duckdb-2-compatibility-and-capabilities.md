@@ -55,11 +55,11 @@ DuckDB 2.0 原样读取，不在启动时静默改写。显式迁移后不支持
 
 | 验证项 | 结果 |
 |---|---|
-| 2.0 alpha / Python 3.13（默认依赖） | 1328 passed，5 skipped |
+| 2.0 alpha / Python 3.13（默认依赖） | 1354 passed，6 skipped |
 | 2.0 alpha / Python 3.11 | CI 默认任务（待远端运行） |
-| 前端全量（改造后） | 1252 passed，1 skipped |
+| 前端全量（改造后） | 1258 passed，1 skipped |
 | MCP 全量 | 77 passed，1 skipped |
-| MySQL 8.4 / PostgreSQL 18.4 隔离语义矩阵 | 2 passed |
+| MySQL 8.4 / PostgreSQL 18.4 隔离语义矩阵 | 3 passed；覆盖精度/类型、筛选/排序、只读、本地 staging 保存、NUMERIC/数组/JSONB、截止时间与用户取消 |
 | macOS ARM64 Tauri Rust | 9 passed；`.app` 构建与深度签名校验通过 |
 | Docker Python 3.12 ARM64 | 镜像构建、独立 API 启动、离线 MySQL LOAD 通过 |
 | Linux ARM64 PyInstaller / Python 3.12 | 2.0 冻结包保真冒烟全部通过 |
@@ -110,7 +110,7 @@ DuckDB 2.0 原样读取，不在启动时静默改写。显式迁移后不支持
 
 ### 4.1 后端 SQL 能力判定
 
-`GET /api/capabilities` 是唯一能力契约，当前 `contract_version=1`。每项能力分别声明
+`GET /api/capabilities` 是唯一能力契约，当前 `contract_version=2`。每项能力分别声明
 engine、direct SQL、Agent、MCP 状态及扩展依赖；调用方不得从 engine 版本号直接推断
 其他执行面。Agent 将同一契约渲染进系统提示，MCP 0.4.0 暴露 `get_capabilities`。
 

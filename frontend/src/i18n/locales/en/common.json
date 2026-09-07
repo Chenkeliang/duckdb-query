@@ -576,6 +576,7 @@
       "description": "View the generated SQL statement, copy or execute directly",
       "copy": "Copy",
       "copied": "Copied",
+      "viewerDescription": "View JSON content and copy its source or path",
       "edit": "Edit",
       "editing": "Editing",
       "noSQL": "No SQL",
@@ -820,7 +821,11 @@
       "viewerTitle": "JSON viewer",
       "view": "View JSON",
       "copy": "Copy",
-      "copied": "Copied"
+      "copied": "Copied",
+      "path": "JSON path",
+      "copyPath": "Copy path",
+      "pathCopied": "Path copied",
+      "previewTruncated": "This value has {{count}} characters. Only the first portion is shown; copy still includes the full source."
     },
     "generating": "Generating…",
     "execute": "Execute",

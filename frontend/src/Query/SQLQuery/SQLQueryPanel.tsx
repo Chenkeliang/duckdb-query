@@ -117,6 +117,8 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
     baseSql: string;
   } | null>(null);
   const [sqlDiagnostic, setSqlDiagnostic] = useState<SQLErrorDiagnostic | null>(null);
+  const sqlRevisionRef = React.useRef(0);
+  const latestExecutionRef = React.useRef(0);
 
   // Global History
   const { addToHistory } = useGlobalHistory();
@@ -363,6 +365,7 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
   }, [maxQueryRows, systemLimitedSql]);
 
   const handleSQLChange = useCallback((nextSql: string) => {
+    sqlRevisionRef.current += 1;
     setSqlDiagnostic(null);
     if (systemLimitedSql) {
       const tokens = tokenizeSQL(nextSql);
@@ -473,6 +476,8 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
         setSystemLimitedSql(null);
       }
       const startTime = Date.now();
+      const executionRevision = sqlRevisionRef.current;
+      const executionId = ++latestExecutionRef.current;
       try {
         setSqlDiagnostic(null);
         // 构建执行时的 TableSource，包含联邦查询信息
@@ -494,7 +499,12 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
         // 重置警告状态
         setDismissedWarning(false);
       } catch (err) {
-        setSqlDiagnostic(diagnosticFromApiError(err));
+        if (
+          executionRevision === sqlRevisionRef.current &&
+          executionId === latestExecutionRef.current
+        ) {
+          setSqlDiagnostic(diagnosticFromApiError(err));
+        }
         console.error('SQL execution failed:', err);
         addToHistory({
           type: 'sql',

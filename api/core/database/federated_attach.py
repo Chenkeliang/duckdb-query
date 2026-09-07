@@ -3,19 +3,23 @@
 from __future__ import annotations
 
 import logging
+import hashlib
 import re
 import threading
+import time
 import uuid
 from contextlib import contextmanager
 from functools import partial
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
 import duckdb
+import psycopg2
 import pymysql
 
 from core.common.connection_alias import normalize_connection_id
 from core.common.config_manager import config_manager
 from core.common.sql_identifiers import escape_string_literal
+from core.common.sql_error_location import structured_duckdb_errors
 from core.database.database_manager import db_manager
 from core.database.duckdb_engine import (
     _is_federated_connection_lost,
@@ -210,7 +214,11 @@ def resolve_attach_configs(
 
 
 def attach_databases_on_connection(
-    conn: Any, attach_configs: List[Tuple[str, Dict[str, Any]]]
+    conn: Any,
+    attach_configs: List[Tuple[str, Dict[str, Any]]],
+    *,
+    deadline_monotonic: Optional[float] = None,
+    query_id: Optional[str] = None,
 ) -> List[str]:
     """在已有连接上 ATTACH，返回成功 alias 列表。"""
     attached: List[str] = []
@@ -227,19 +235,32 @@ def attach_databases_on_connection(
                 "postgres",
                 "postgresql",
             }:
-                timeout_seconds = int(
-                    getattr(
-                        config_manager.get_app_config(),
-                        "federated_query_timeout",
-                        300,
+                if deadline_monotonic is None:
+                    timeout_seconds = int(
+                        getattr(
+                            config_manager.get_app_config(),
+                            "federated_query_timeout",
+                            300,
+                        )
+                        or 300
                     )
-                    or 300
-                )
+                    timeout_ms = timeout_seconds * 1000
+                else:
+                    remaining = deadline_monotonic - time.monotonic()
+                    if remaining <= 0:
+                        raise TimeoutError(
+                            "Federated query deadline expired before PostgreSQL ATTACH"
+                        )
+                    timeout_ms = int(remaining * 1000)
                 effective_config = dict(db_config)
                 effective_config["_statement_timeout_ms"] = min(
-                    max(1, timeout_seconds * 1000),
+                    max(1, timeout_ms),
                     2_147_483_647,
                 )
+                if query_id:
+                    effective_config["_application_name"] = (
+                        _postgres_application_name(query_id)
+                    )
             attach_sql = build_attach_sql(alias, effective_config)
             logger.info("Executing ATTACH: %s", alias)
             conn.execute(attach_sql)
@@ -290,6 +311,41 @@ def kill_mysql_query(db_config: Dict[str, Any], connection_id: int) -> bool:
         return True
     finally:
         killer.close()
+
+
+def _postgres_application_name(query_id: str) -> str:
+    """Return a non-sensitive, attempt-owned PostgreSQL session identity."""
+    digest = hashlib.sha256(str(query_id).encode("utf-8")).hexdigest()[:32]
+    return f"duckquery_{digest}"
+
+
+def cancel_postgres_queries(
+    db_config: Dict[str, Any], application_name: str
+) -> bool:
+    """Cancel active PostgreSQL sessions owned by one DuckQuery attempt."""
+    username = db_config.get("user") or db_config.get("username")
+    controller = psycopg2.connect(
+        host=db_config["host"],
+        port=int(db_config.get("port") or 5432),
+        user=username,
+        password=db_config.get("password", ""),
+        database=db_config["database"],
+        connect_timeout=5,
+        application_name=f"{application_name}_cancel",
+    )
+    controller.autocommit = True
+    try:
+        with controller.cursor() as cursor:
+            cursor.execute(
+                "SELECT pg_cancel_backend(pid) "
+                "FROM pg_stat_activity "
+                "WHERE application_name = %s "
+                "AND pid <> pg_backend_pid() AND state <> 'idle'",
+                [application_name],
+            )
+            return any(bool(row[0]) for row in cursor.fetchall())
+    finally:
+        controller.close()
 
 
 def _rollback_quietly(conn: Any) -> None:
@@ -370,6 +426,41 @@ def mysql_remote_cancellation_scope(
             connection_registry.unregister_remote_interrupt(query_id, lease)
 
 
+@contextmanager
+def remote_cancellation_scope(
+    conn: Any,
+    query_id: Optional[str],
+    attach_configs: List[Tuple[str, Dict[str, Any]]],
+) -> Iterator[None]:
+    """Register attempt-scoped MySQL and PostgreSQL remote cancellation."""
+    leases: List[_RemoteInterruptLease] = []
+    if query_id:
+        application_name = _postgres_application_name(query_id)
+        for _alias, db_config in attach_configs:
+            if str(db_config.get("type", "")).lower() not in {
+                "postgres",
+                "postgresql",
+            }:
+                continue
+            lease = _RemoteInterruptLease(
+                partial(
+                    cancel_postgres_queries,
+                    dict(db_config),
+                    application_name,
+                )
+            )
+            if connection_registry.register_remote_interrupt(query_id, lease):
+                leases.append(lease)
+
+    try:
+        with mysql_remote_cancellation_scope(conn, query_id, attach_configs):
+            yield
+    finally:
+        for lease in leases:
+            lease.deactivate()
+            connection_registry.unregister_remote_interrupt(query_id, lease)
+
+
 def execute_sql_with_attach(
     sql: str,
     attach_databases: Optional[List[Any]] = None,
@@ -384,13 +475,25 @@ def execute_sql_with_attach(
     cleaned_sql = normalize_mysql_double_quoted_strings_for_duckdb(
         sql.rstrip().rstrip(";")
     )
+    timeout_seconds = int(
+        getattr(config_manager.get_app_config(), "federated_query_timeout", 300)
+        or 300
+    )
+    deadline = time.monotonic() + timeout_seconds
 
     def _run(conn: Any) -> tuple:
         attached: List[str] = []
         try:
             if attach_configs:
-                attached = attach_databases_on_connection(conn, attach_configs)
-            return fetch_query_records(conn, cleaned_sql)
+                attached = attach_databases_on_connection(
+                    conn,
+                    attach_configs,
+                    deadline_monotonic=deadline,
+                    query_id=query_id,
+                )
+            with structured_duckdb_errors(conn):
+                with remote_cancellation_scope(conn, query_id, attach_configs):
+                    return fetch_query_records(conn, cleaned_sql)
         finally:
             if attached:
                 detach_databases_on_connection(conn, attached)
@@ -438,13 +541,23 @@ def execute_sql_and_persist(
     if attach_configs:
         cleaned_sql = normalize_mysql_double_quoted_strings_for_duckdb(cleaned_sql)
     staging_name = f"__stage_{uuid.uuid4().hex}"
+    timeout_seconds = int(
+        getattr(config_manager.get_app_config(), "federated_query_timeout", 300)
+        or 300
+    )
+    deadline = time.monotonic() + timeout_seconds
 
     def _run(conn: Any) -> Dict[str, Any]:
         attached: List[str] = []
         try:
             if attach_configs:
                 configure_mysql_fresh_connections(conn, attach_configs)
-                attached = attach_databases_on_connection(conn, attach_configs)
+                attached = attach_databases_on_connection(
+                    conn,
+                    attach_configs,
+                    deadline_monotonic=deadline,
+                    query_id=query_id,
+                )
             snapshot = None
             for attempt in range(2):
                 try:
@@ -452,7 +565,7 @@ def execute_sql_and_persist(
                     # scope rolls its transaction back before cache clearing,
                     # so a failed CTAS cannot leak an aborted transaction or
                     # staging table into the next attempt.
-                    with mysql_remote_cancellation_scope(
+                    with remote_cancellation_scope(
                         conn, query_id, attach_configs
                     ):
                         create_query_staging_table(
@@ -507,10 +620,12 @@ def execute_sql_and_persist(
                 cleaned_sql,
                 retain_publication=True,
             ) as conn:
-                return _run(conn)
+                with structured_duckdb_errors(conn):
+                    return _run(conn)
 
         with with_duckdb_connection() as conn:
-            return _run(conn)
+            with structured_duckdb_errors(conn):
+                return _run(conn)
 
 
 def federated_source_sql_alias(table_ref: str, attach_aliases: set[str]) -> str:

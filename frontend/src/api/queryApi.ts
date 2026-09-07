@@ -8,7 +8,15 @@
 
 import { normalizeMysqlDoubleQuotedStringsForDuckdb } from '@/utils/mysqlStringQuotesForDuckdb';
 import { IS_DEMO } from '@/demo/isDemo';
-import { apiClient, handleApiError, getFederatedQueryTimeout, normalizeResponse, extractMessage, extractMessageCode } from './client';
+import {
+    apiClient,
+    handleApiError,
+    getFederatedQueryTimeout,
+    normalizeResponse,
+    extractMessage,
+    extractMessageCode,
+    type ApiError,
+} from './client';
 import type {
     QueryResponse,
     DataSource,
@@ -32,7 +40,7 @@ export interface FederatedQueryOptions extends ExecuteQueryOptions {
     timeout?: number;
 }
 
-export interface FederatedQueryError extends Error {
+export interface FederatedQueryError extends ApiError {
     type: 'connection' | 'authentication' | 'timeout' | 'network' | 'query';
     connectionId?: string;
     connectionName?: string;
@@ -177,12 +185,17 @@ export async function executeFederatedQuery(options: FederatedQueryOptions): Pro
         };
     } catch (error) {
         const parsedError = parseFederatedQueryError(error as Error);
+        const apiError = error as ApiError;
         const enhancedError = new Error(parsedError.message) as FederatedQueryError;
         enhancedError.type = parsedError.type;
         enhancedError.connectionId = parsedError.connectionId;
         enhancedError.connectionName = parsedError.connectionName;
         enhancedError.host = parsedError.host;
         enhancedError.originalError = error as Error;
+        enhancedError.statusCode = apiError.statusCode;
+        enhancedError.code = apiError.code;
+        enhancedError.messageCode = apiError.messageCode;
+        enhancedError.details = apiError.details;
         throw enhancedError;
     }
 }

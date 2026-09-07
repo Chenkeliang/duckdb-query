@@ -11,9 +11,11 @@ import duckdb
 import pytest
 
 from core.database.federated_attach import (
+    cancel_postgres_queries,
     execute_sql_and_persist,
     kill_mysql_query,
     mysql_remote_cancellation_scope,
+    remote_cancellation_scope,
 )
 from core.database.connection_registry import ConnectionRegistry
 from core.database.duckdb_engine import fetch_query_records
@@ -150,6 +152,79 @@ def test_accepted_task_cancellation_runs_remote_interrupts():
 
     connection.interrupt.assert_called_once_with()
     remote.assert_called_once_with()
+
+
+def test_cancellation_accepted_before_registration_blocks_execution_and_commit():
+    """Regression 2026-09-07: a pre-registration cancel survives handoff."""
+    registry = ConnectionRegistry()
+    connection = MagicMock()
+    assert registry.cancel_if_not_published("async:early", lambda: True)
+
+    registry.register("async:early", connection, "SELECT expensive()")
+
+    assert registry.is_cancel_requested("async:early")
+    commit = MagicMock()
+    assert not registry.commit_if_not_cancelled("async:early", commit)
+    commit.assert_not_called()
+
+
+def test_cancel_postgres_queries_targets_only_attempt_application_name(monkeypatch):
+    controller = MagicMock()
+    cursor = MagicMock()
+    controller.cursor.return_value.__enter__.return_value = cursor
+    cursor.fetchall.return_value = [(True,), (False,)]
+    connect = MagicMock(return_value=controller)
+    monkeypatch.setattr(
+        "core.database.federated_attach.psycopg2.connect",
+        connect,
+    )
+    config = {
+        "type": "postgresql",
+        "host": "postgres.example",
+        "port": 5432,
+        "username": "reader",
+        "password": "secret",
+        "database": "analytics",
+    }
+
+    assert cancel_postgres_queries(config, "duckquery_attempt")
+
+    assert cursor.execute.call_args.args[1] == ["duckquery_attempt"]
+    controller.close.assert_called_once_with()
+
+
+def test_postgres_remote_cancel_lease_expires_with_attempt(monkeypatch):
+    cancel = MagicMock(return_value=True)
+    registered = []
+    monkeypatch.setattr(
+        "core.database.federated_attach.cancel_postgres_queries",
+        cancel,
+    )
+    monkeypatch.setattr(
+        "core.database.federated_attach.connection_registry.register_remote_interrupt",
+        lambda _query_id, callback: registered.append(callback) or True,
+    )
+    monkeypatch.setattr(
+        "core.database.federated_attach.connection_registry.unregister_remote_interrupt",
+        lambda *_args: True,
+    )
+    config = {
+        "type": "postgresql",
+        "host": "postgres.example",
+        "username": "reader",
+        "password": "secret",
+        "database": "analytics",
+    }
+
+    with remote_cancellation_scope(
+        MagicMock(),
+        "sync:pg-attempt",
+        [("pg", config)],
+    ):
+        assert registered[0]()
+
+    assert not registered[0]()
+    cancel.assert_called_once()
 
 
 def test_standalone_persist_cancellation_removes_staging(monkeypatch):
@@ -399,7 +474,7 @@ def test_federated_endpoint_retries_mysql_disconnect_after_transaction_rollback(
     monkeypatch.setattr(
         duckdb_query,
         "attach_databases_on_connection",
-        lambda _connection, _configs: ["mysql_sorting"],
+        lambda _connection, _configs, **_kwargs: ["mysql_sorting"],
     )
     monkeypatch.setattr(
         duckdb_query, "detach_databases_on_connection", lambda _connection, _aliases: None
@@ -508,7 +583,7 @@ def test_federated_endpoint_temporarily_serializes_mysql_scan(monkeypatch):
         duckdb_query, "configure_mysql_fresh_connections", lambda *_args: None
     )
 
-    def attach(_connection, _configs):
+    def attach(_connection, _configs, **_kwargs):
         events.append("ATTACH")
         return ["mysql_sorting"]
 
@@ -517,7 +592,7 @@ def test_federated_endpoint_temporarily_serializes_mysql_scan(monkeypatch):
         duckdb_query, "detach_databases_on_connection", lambda *_args: None
     )
     monkeypatch.setattr(
-        duckdb_query, "mysql_remote_cancellation_scope", cancellation_scope
+        duckdb_query, "remote_cancellation_scope", cancellation_scope
     )
     monkeypatch.setattr(
         duckdb_query,

@@ -91,9 +91,9 @@
 
 | 方法 | 路径 | 成功体 | `data` 要点 | 前端入口 |
 |------|------|--------|-------------|----------|
-| POST | `/api/duckdb/execute` | 对象 | `executeDuckDBSQL`；`data`: `columns`, `column_types[]`（`{name, duckdb_type}`；来自 `DESCRIBE (<sql>)`，PRAGMA/EXPLAIN/多语句等不可 DESCRIBE 时由同一次执行的游标 description 类型兜底）, `data`, `row_count`, `preview_limit_applied?`；解析/绑定错误的标准错误 `details.sql_location?={line,column,end_column}`；499 / 500 |
-| POST | `/api/duckdb/federated-query` | 对象 | `executeFederatedQuery`；同上含 `column_types` 与 `details.sql_location?` 错误位置；额外 `optimized_sql`（半连接下推改写后 SQL）、`suggestions[]`（审计列时间界建议，**不自动改结果**）、`saved_table`（仅在 `save_as_table` 已通过本地 staging 原子发布时有值）、`save_error`（兼容字段；新路径保存失败整体失败，不把失败降级为查询成功）；联邦内联保存只物化用户查询一次，预览从同一 staging 读取，系统预览 LIMIT 不写入结果表；所有共享 ATTACH 入口为 PostgreSQL 新连接注入 `federated_query_timeout` 对应的服务端 `statement_timeout`，避免本地中断后远端继续运行；404 `connection_id`；503 ATTACH；499 / 500 / **504 超时** |
-| POST | `/api/query/cancel/{request_id}` | 对象 | `cancelSyncQuery`；404 `QUERY_NOT_FOUND`（无活跃同步查询） |
+| POST | `/api/duckdb/execute` | 对象 | `executeDuckDBSQL`；`data`: `columns`, `column_types[]`（`{name, duckdb_type}`；来自 `DESCRIBE (<sql>)`，PRAGMA/EXPLAIN/多语句等不可 DESCRIBE 时由同一次执行的游标 description 类型兜底）, `data`, `row_count`, `preview_limit_applied?`；解析/绑定错误的标准错误 `details.sql_location?={line,column,end_column}`，并带 `details.sql_identity={query_id?,sha256}` 绑定本次原 SQL；499 / 500 |
+| POST | `/api/duckdb/federated-query` | 对象 | `executeFederatedQuery`；同上含 `column_types`、`details.sql_location?` 与 `details.sql_identity`；额外 `optimized_sql`（半连接下推改写后 SQL）、`suggestions[]`（审计列时间界建议，**不自动改结果**）、`saved_table`（仅在 `save_as_table` 已通过本地 staging 原子发布时有值）、`save_error`（兼容字段；新路径保存失败整体失败，不把失败降级为查询成功）；联邦内联保存只物化用户查询一次，预览从同一 staging 读取，系统预览 LIMIT 不写入结果表；所有共享 ATTACH 入口为 PostgreSQL 新连接注入剩余执行预算对应的服务端 `statement_timeout`，避免本地中断后远端继续运行；404 `connection_id`；503 ATTACH；499 / 500 / **504 超时** |
+| POST | `/api/query/cancel/{request_id}` | 对象 | `cancelSyncQuery`；取消在查询连接注册前到达时也作为幂等请求接受并在注册时生效；200 表示请求已受理，不承诺远端已停止 |
 | POST | `/api/save_query_to_duckdb` | 对象 | 保存结果表元数据（依请求）；`apply_row_limit`（默认 `false`，兼容 `applyRowLimit`）为保存对话框的最终选择：`false`＝移除查询页面最外层 `LIMIT` 后全量保存（子查询 `LIMIT` 保留），`true`＝保留页面最外层 `LIMIT`，页面无最外层 `LIMIT` 时补默认 `max_query_rows` | `saveQueryToDuckDB` |
 | GET | `/api/duckdb/tables` | **列表** | `items[]`: `table_name`, `row_count`, `column_count`, `created_at`（应用时区 ISO，仅展示，可为 null）。顺序 = `system_table_registry.sort_seq` 倒序（稳定创建序登记表，新建/替换置顶，跨重启稳定；与 AI 目录同口径） | `getDuckDBTables` |
 | GET | `/api/duckdb/tables/{name}` | 对象 | 表详情 / `table` 包装 | `getDuckDBTableDetail` |
@@ -222,14 +222,14 @@ BY NAME、LIMIT、预览 vs 执行语义见 [QUERY_BEHAVIOR_ZH.md](QUERY_BEHAVIO
 | POST | `/api/set-operations/generate` | 对象 | `generateSetOperation`；400 `VALIDATION_ERROR`；500 `OPERATION_FAILED` |
 | POST | `/api/set-operations/preview` | 对象 | `previewSetOperation`；400 / 500（同上） |
 | POST | `/api/set-operations/validate` | 对象 | `validateSetOperation`；500 服务异常 |
-| POST | `/api/set-operations/execute` | 对象 | `executeSetOperation`（`save_as_table` / `preview`）；400 / 500 |
+| POST | `/api/set-operations/execute` | 对象 | `executeSetOperation`（`save_as_table` / `preview`）；保存分支经本地 staging 原子发布，取消或失败保留旧目标表；400 / 499 / 500 |
 | POST | `/api/set-operations/simple-union` | 对象 | `simpleUnionSetOperation` |
 
 ## 9.1 查询结果服务端导出（`queryExportApi.ts`）
 
 | 方法 | 路径 | 成功 `data` | 前端 |
 |------|------|-------------|------|
-| POST | `/api/query-results/export` | `file_id`, `download_url`, `format`, `row_count_estimate?` | `exportQueryResults`；`apply_row_limit`（默认 `false`）语义与 `/api/async-tasks` 相同（`false` 移除最外层 `LIMIT`，`true` 保留已有最外层 `LIMIT`、没有则补默认 `max_query_rows`）；子查询 `LIMIT` 始终保留 |
+| POST | `/api/query-results/export` | `file_id`, `download_url`, `format`, `row_count_estimate?` | `exportQueryResults`；`apply_row_limit`（默认 `false`）语义与 `/api/async-tasks` 相同（`false` 移除最外层 `LIMIT`，`true` 保留已有最外层 `LIMIT`、没有则补默认 `max_query_rows`）；子查询 `LIMIT` 始终保留；联邦 COPY 写入本地候选文件，取消/超时删除候选文件并分别返回 499/504 |
 | GET | `/api/query-results/export/{file_id}/download` | 文件流 | `getQueryExportDownloadUrl` + 浏览器下载 |
 | POST | `/api/query-results/export/{file_id}/save-to-path` | `path`, `size_bytes` | `saveQueryExportToPath`（体：`target_path`）；**桌面模式专用**（同 async export-to-path 门控，非桌面 403）；400 路径非法；404 文件不存在 |
 
@@ -243,7 +243,7 @@ BY NAME、LIMIT、预览 vs 执行语义见 [QUERY_BEHAVIOR_ZH.md](QUERY_BEHAVIO
 
 | 方法 | 路径 | 成功体 | 前端入口 |
 |------|------|--------|----------|
-| POST | `/api/query` | 对象 | `performJoinQuery`；`data`: `data`, `columns`, `column_types[]`, `sql`, `row_count` |
+| POST | `/api/query` | 对象 | `performJoinQuery`；`data`: `data`, `columns`, `column_types[]`, `sql`, `row_count`；联邦执行使用剩余服务端预算和远端取消；499 / 504 |
 | POST | `/api/save_query_to_duckdb` | 对象 | 见 §2 `saveQueryToDuckDB` |
 
 ## 9.3 AI（统一 Agent Engine；`agentApi.ts`/`aiApi.ts`，后端 `routers/ai.py`，OpenAPI tag `AI`）

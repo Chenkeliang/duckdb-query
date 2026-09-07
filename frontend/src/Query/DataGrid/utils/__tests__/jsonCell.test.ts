@@ -3,6 +3,8 @@ import {
   isJsonViewable,
   toFormattedJson,
   toRawJsonText,
+  getJsonViewerText,
+  listJsonPointerPaths,
   columnMostlyJson,
 } from '../jsonCell';
 
@@ -117,5 +119,35 @@ describe('toRawJsonText', () => {
     const raw = ' {"id":9007199254740993,"value":1,"value":2}\n';
 
     expect(toRawJsonText(raw)).toBe(raw);
+  });
+});
+
+describe('bounded JSON viewer text', () => {
+  it('limits visible work while leaving the raw copy untouched', () => {
+    const raw = `{"payload":"${'x'.repeat(100)}"}`;
+    const viewer = getJsonViewerText(raw, 20);
+
+    expect(viewer.text).toHaveLength(20);
+    expect(viewer.truncated).toBe(true);
+    expect(viewer.totalCharacters).toBe(raw.length);
+    expect(toRawJsonText(raw)).toBe(raw);
+  });
+});
+
+describe('JSON Pointer paths', () => {
+  it('escapes empty, slash, tilde and array segments without dot ambiguity', () => {
+    const paths = listJsonPointerPaths(
+      '{"":{"a/b":{"~key":[{"x.y":1}]}}}'
+    ).map((entry) => entry.pointer);
+
+    expect(paths).toContain('/');
+    expect(paths).toContain('//a~1b/~0key/0/x.y');
+  });
+
+  it('preserves duplicate key occurrences and obeys the entry budget', () => {
+    const entries = listJsonPointerPaths('{"value":1,"value":2,"other":3}', 3);
+
+    expect(entries).toHaveLength(3);
+    expect(entries.filter((entry) => entry.pointer === '/value')).toHaveLength(2);
   });
 });

@@ -172,6 +172,36 @@ def test_attach_adds_postgres_server_deadline_without_mutating_saved_config(monk
     assert "_statement_timeout_ms" not in original
 
 
+def test_attach_uses_remaining_deadline_and_query_owned_application_name(monkeypatch):
+    """Regression 2026-09-07: ATTACH receives the remaining, not initial, budget."""
+    from core.database import federated_attach
+
+    original = {
+        "type": "postgresql",
+        "host": "postgres.example",
+        "database": "analytics",
+    }
+    captured = []
+    monkeypatch.setattr(federated_attach.time, "monotonic", lambda: 100.0)
+    monkeypatch.setattr(
+        federated_attach,
+        "build_attach_sql",
+        lambda _alias, config: captured.append(config)
+        or "ATTACH DATABASE 'dummy' AS pg (TYPE postgres)",
+    )
+
+    attach_databases_on_connection(
+        MagicMock(),
+        [("pg", original)],
+        deadline_monotonic=101.25,
+        query_id="sync:deadline-owned",
+    )
+
+    assert captured[0]["_statement_timeout_ms"] == 1250
+    assert captured[0]["_application_name"].startswith("duckquery_")
+    assert "_application_name" not in original
+
+
 def test_persist_disables_mysql_pool_before_attach(monkeypatch):
     """历史回归（2026-07-28）：预览/取消留下的 MySQL 会话不得被全量落表复用。"""
     from core.database import federated_attach
@@ -196,7 +226,7 @@ def test_persist_disables_mysql_pool_before_attach(monkeypatch):
     )
     monkeypatch.setattr(federated_attach, "with_duckdb_connection", connection_scope)
 
-    def attach(_connection, _configs):
+    def attach(_connection, _configs, **_kwargs):
         events.append("ATTACH")
         return ["mysql_prod"]
 
@@ -259,7 +289,7 @@ def test_persist_retries_read_only_ctas_after_mysql_connection_lost(monkeypatch)
     monkeypatch.setattr(
         federated_attach,
         "attach_databases_on_connection",
-        lambda *_args: ["mysql_prod"],
+        lambda *_args, **_kwargs: ["mysql_prod"],
     )
     monkeypatch.setattr(
         federated_attach, "detach_databases_on_connection", lambda *_args: None
@@ -326,12 +356,12 @@ def test_persist_rebinds_remote_cancellation_for_each_retry_attempt(monkeypatch)
         federated_attach, "interruptible_connection", connection_scope
     )
     monkeypatch.setattr(
-        federated_attach, "mysql_remote_cancellation_scope", cancellation_scope
+        federated_attach, "remote_cancellation_scope", cancellation_scope
     )
     monkeypatch.setattr(
         federated_attach,
         "attach_databases_on_connection",
-        lambda *_args: ["mysql_prod"],
+        lambda *_args, **_kwargs: ["mysql_prod"],
     )
     monkeypatch.setattr(
         federated_attach, "detach_databases_on_connection", lambda *_args: None
@@ -416,7 +446,7 @@ def test_persist_restores_duckdb_threads_after_mysql_ctas_failure(monkeypatch):
     )
     monkeypatch.setattr(federated_attach, "with_duckdb_connection", connection_scope)
 
-    def attach(_connection, _configs):
+    def attach(_connection, _configs, **_kwargs):
         events.append("ATTACH")
         return ["mysql_prod"]
 

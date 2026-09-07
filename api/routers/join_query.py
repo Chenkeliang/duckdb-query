@@ -9,11 +9,14 @@ import logging
 import os
 import re
 import traceback
+import threading
+import time as time_module
 import uuid
 from datetime import datetime, time
 from typing import Any, Dict, List, Optional, Tuple
 
 import duckdb
+from core.common.config_manager import config_manager
 from core.common.timezone_utils import get_current_time
 from core.common.exceptions import ValidationError as APIValidationError
 from core.common.utils import describe_query_column_types
@@ -36,9 +39,12 @@ from core.database.federated_attach import (
     execute_sql_and_persist,
     federated_source_sql_alias,
     format_qualified_table_reference,
+    remote_cancellation_scope,
     resolve_attach_configs,
 )
 from core.database.duckdb_pool import interruptible_connection
+from core.database.connection_registry import connection_registry
+from core.common.sql_error_location import structured_duckdb_errors
 from fastapi import APIRouter, Body, Header
 from models.query_models import QueryRequest
 from pydantic import BaseModel, Field, ValidationError
@@ -625,8 +631,17 @@ def perform_query(
 ):
     """Performs a join query on the specified data sources."""
     query_id = f"sync:{x_request_id}" if x_request_id else None
-    if query_id:
+    if x_request_id:
         logger.info(f"Query with request ID: {x_request_id}")
+    timeout_s = int(config_manager.get_app_config().federated_query_timeout or 300)
+    deadline = time_module.monotonic() + timeout_s
+    timed_out = False
+
+    def _on_timeout() -> None:
+        nonlocal timed_out
+        timed_out = True
+        if query_id:
+            connection_registry.interrupt_with_remote(query_id)
 
     if not query_request.sources:
         raise APIValidationError(
@@ -641,10 +656,19 @@ def perform_query(
     )
     with conn_ctx as con:
         attached_aliases: List[str] = []
+        attach_configs = []
+        timer = threading.Timer(timeout_s, _on_timeout) if query_id else None
+        if timer:
+            timer.start()
         try:
             if federated_attach:
                 attach_configs = resolve_attach_configs(query_request.attach_databases)
-                attached_aliases = attach_databases_on_connection(con, attach_configs)
+                attached_aliases = attach_databases_on_connection(
+                    con,
+                    attach_configs,
+                    deadline_monotonic=deadline,
+                    query_id=query_id,
+                )
 
             available_table_names: List[str] = []
             if not federated_attach:
@@ -712,8 +736,6 @@ def perform_query(
                         )
                         raise ResourceNotFoundError("Table", actual_table_name)
 
-            from core.common.config_manager import config_manager
-
             max_rows = config_manager.get_app_config().max_query_rows
             if query_request.is_preview:
                 query = ensure_query_has_limit(query, max_rows)
@@ -727,16 +749,18 @@ def perform_query(
 
             logger.info(f"Executing query: {query}")
 
-            # 执行查询
-            columns_list, data_records, cursor_types = timed_fetch_query_records(
-                con, query
-            )
-            logger.info(
-                f"Query completed, {len(data_records)} rows x {len(columns_list)} cols"
-            )
-            column_types = describe_query_column_types(con, query) or [
-                {"name": name, "duckdb_type": dtype} for name, dtype in cursor_types
-            ]
+            with structured_duckdb_errors(con):
+                with remote_cancellation_scope(con, query_id, attach_configs):
+                    columns_list, data_records, cursor_types = timed_fetch_query_records(
+                        con, query
+                    )
+                    logger.info(
+                        f"Query completed, {len(data_records)} rows x {len(columns_list)} cols"
+                    )
+                    column_types = describe_query_column_types(con, query) or [
+                        {"name": name, "duckdb_type": dtype}
+                        for name, dtype in cursor_types
+                    ]
 
             return create_success_response(
                 data={
@@ -751,6 +775,13 @@ def perform_query(
             )
         except duckdb.InterruptException as e:
             logger.info("Join query %s cancelled by user", query_id)
+            if timed_out:
+                return error_json_response(
+                    504,
+                    MessageCode.QUERY_TIMEOUT,
+                    f"Query exceeded {timeout_s}s and was aborted",
+                    details={"query_id": query_id, "timeout_s": timeout_s},
+                )
             return error_json_response(
                 499,
                 MessageCode.QUERY_CANCELLED,
@@ -775,6 +806,8 @@ def perform_query(
                 details={"sql": getattr(query_request, "sql", None)},
             )
         finally:
+            if timer:
+                timer.cancel()
             if attached_aliases:
                 detach_databases_on_connection(con, attached_aliases)
 

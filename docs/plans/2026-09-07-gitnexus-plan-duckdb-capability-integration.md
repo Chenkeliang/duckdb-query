@@ -1,11 +1,20 @@
 # DuckQuery 2.0 前后端能力集成与提前缺陷处理方案
 
-> 日期：2026-09-07；状态：完成专项调研与最小复现，待实施。仅本文件是本轮仓库变更。
+> 日期：2026-09-07；状态：实施完成并通过本地验收。
 > Evidence verified at commit 887568b557a3bd4b25b8e3534e60ddad7273fca1。
 > GitNexus 图索引与 HEAD 一致；runner_identity=null、scope-extraction-unverified，CLI 1.6.5 / stdio MCP 1.6.11 存在工具版本差异；无 PDG 层。本方案以源码与运行实验为主，不声称图谱完整。
 > Evidence provenance schema 2；global dirty digest 0a9c85780067d9afcd0764f307b60891e3cee927ee11eaeb5ec7826d10fd82cd；31 个排序路径；仅排除本计划路径。
 > 标签：[verified] 源码/本地实验确认；[graph] 图谱导航结果；[inferred] 由证据作出的设计判断；[assumed] 尚待指定实验验证。
 > 用户要求：本版尽早发现并解决问题，每个建议配具体方案；保持用户使用简单。前面的聊天方案以本文件修订为准。
+
+### 实施结果（2026-09-07）
+
+- 当前构建对未验证的 MySQL `remote_pushdown` 采取 fail-closed 策略；正常与连接池后备配置都必须成功执行安全基线。
+- JSON 数字词元、重复键和完整复制保持原文；大值渲染有上限，JSON Pointer 路径覆盖空键、`/`、`~`、点号与数组索引。
+- 查询租约启用并恢复 `errors_as_json`，错误位置从执行 SQL 映射回原 SQL 的 UTF-16 坐标，并用 SQL 摘要/请求 ID 绑定；编辑后的旧诊断失效。
+- MySQL 与 PostgreSQL 取消器按 attempt 注册和释放；PostgreSQL 使用剩余服务端预算及任务专属 `application_name`，真实 `pg_cancel_backend` 用例通过。
+- 本地、联邦异步、内联与集合保存使用 staging/事务发布；注册前取消、提交竞态、失败与导出取消均保留旧结果并清理候选产物。
+- 验收：后端 **1354 passed / 6 skipped**，前端 **1258 passed / 1 skipped**，MCP **77 passed / 1 skipped**，真实 MySQL 8.4 / PostgreSQL 18.4 矩阵 **3 passed**，pylint **10.00/10**。
 
 ## 1. Objective
 
