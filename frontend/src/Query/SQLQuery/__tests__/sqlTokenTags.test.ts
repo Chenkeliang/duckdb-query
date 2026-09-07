@@ -45,6 +45,18 @@ describe('SQL token names', () => {
     const table = parts.find((p) => p.text === 'left0423_jst_del');
     expect(table?.name).toBe('Identifier');
   });
+
+  it('DuckDB 2.0 JSON mutation functions should use builtin tokens', () => {
+    const functions = ['json_set', 'json_insert', 'json_replace', 'json_remove'];
+    const document = `SELECT ${functions
+      .map((name) => `${name}('{}', '$.value', '1')`)
+      .join(', ')}`;
+    const parts = nodeNamesAt(document);
+
+    for (const name of functions) {
+      expect(parts.find((part) => part.text === name)?.name).toBe('Builtin');
+    }
+  });
 });
 
 describe('SQL editor DOM classes', () => {

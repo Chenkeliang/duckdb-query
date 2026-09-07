@@ -17,5 +17,5 @@ export const duckDBDialect = SQLDialect.define({
     PostgreSQL.spec.types +
     ' hugeint utinyint usmallint uinteger ubigint variant geometry',
   builtin:
-    'read_csv read_parquet read_json read_json_auto json_extract json_set json_insert json_replace json_merge_patch typeof list_value struct_pack variant_type variant_keys variant_contains variant_get ST_Point ST_AsText ST_GeomFromText ST_Intersects ST_Within ST_Distance',
+    'read_csv read_parquet read_json read_json_auto json_extract json_set json_insert json_replace json_remove json_merge_patch typeof list_value struct_pack variant_type variant_keys variant_contains variant_get ST_Point ST_AsText ST_GeomFromText ST_Intersects ST_Within ST_Distance',
 });
