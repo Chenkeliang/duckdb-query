@@ -57,10 +57,8 @@ Agent, and MCP policy support. `run_sql` and `federated_query` use the backend's
 fail-closed SQL classification when available and retain a conservative local
 fallback for older DuckQuery backends.
 
-The 0.4.0 wheel is attached to the
+Version 0.4.0 is available from PyPI, and its wheel is also attached to the
 [DuckQuery v2.0.0 prerelease](https://github.com/Chenkeliang/duckdb-query/releases/tag/v2.0.0).
-PyPI still serves 0.3.1, so the unpinned `uvx duckquery-mcp` command below remains
-on 0.3.1 until a trusted PyPI publishing channel is configured.
 
 High-level tools (query, the AI agent tools below, discover, add sources,
 configure LLM, transform, export) plus a generic `duckquery_request` passthrough.

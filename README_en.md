@@ -48,7 +48,7 @@ What this release adds:
 - extension metadata that separates UI, `LOAD`, and artifact names; MySQL/PostgreSQL artifacts are verified with autoinstall disabled;
 - healthy bundled Excel is hidden from the optional-extension page, while a missing artifact remains repairable;
 - explicit app, Python package, engine, and storage versions in About; the browser demo reports its independent Wasm engine.
-- a versioned capability contract shared by Agent and MCP; MCP 0.4.0 uses backend SQL classification and falls back safely with older backends. Its wheel is attached to the v2.0.0 prerelease; PyPI currently remains on 0.3.1.
+- a versioned capability contract shared by Agent and MCP; MCP 0.4.0 uses backend SQL classification and falls back safely with older backends. Version 0.4.0 is available from both PyPI and the v2.0.0 prerelease.
 
 Upgrade notes:
 
