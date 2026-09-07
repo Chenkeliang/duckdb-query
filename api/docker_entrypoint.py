@@ -7,7 +7,7 @@ import sys
 from pathlib import Path
 
 from core.database.extension_seed import seed_extension_tree
-from core.database.storage_upgrade import process_pending_storage_upgrade
+from core.database.storage_upgrade import require_storage_upgrade_ready
 
 
 def main() -> None:
@@ -16,7 +16,7 @@ def main() -> None:
     )
     runtime_dir.mkdir(parents=True, exist_ok=True)
     seed_extension_tree("/opt/duckquery/extensions", runtime_dir)
-    process_pending_storage_upgrade()
+    require_storage_upgrade_ready()
     command = sys.argv[1:] or [
         "uvicorn",
         "main:app",

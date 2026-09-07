@@ -6,9 +6,9 @@ import os
 import traceback
 from datetime import datetime
 from contextlib import asynccontextmanager
-from core.database.storage_upgrade import process_pending_storage_upgrade
+from core.database.storage_upgrade import require_storage_upgrade_ready
 
-process_pending_storage_upgrade()
+require_storage_upgrade_ready()
 from core.security.security import security_validator
 from core.common.config_manager import config_manager
 from core.common.exceptions import setup_exception_handlers

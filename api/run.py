@@ -148,9 +148,9 @@ def main() -> None:
     os.chdir(_wd)
     stage = _make_stage_logger(_wd / "startup.log")
     stage("checking pending storage migration...")
-    from core.database.storage_upgrade import process_pending_storage_upgrade
+    from core.database.storage_upgrade import require_storage_upgrade_ready
 
-    migration_report = process_pending_storage_upgrade()
+    migration_report = require_storage_upgrade_ready()
     if migration_report:
         stage(f"storage migration finished: {migration_report.get('status')}")
     stage("env ready (extensions seeded)")
