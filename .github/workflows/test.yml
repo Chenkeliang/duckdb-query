@@ -36,6 +36,66 @@ jobs:
           export PYTHONPATH="${PYTHONPATH}:$(pwd)"
           python -m pytest tests -q --tb=short
 
+  remote-semantic-test:
+    name: Remote DB Semantic Matrix
+    runs-on: ubuntu-latest
+    timeout-minutes: 30
+    services:
+      mysql:
+        image: mysql:8.4
+        env:
+          MYSQL_ROOT_PASSWORD: duckquery-test
+          MYSQL_DATABASE: duckquery_test
+        ports:
+          - 3306:3306
+        options: >-
+          --health-cmd="mysqladmin ping -h 127.0.0.1 -uroot -pduckquery-test"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+      postgres:
+        image: postgres:18.4-alpine
+        env:
+          POSTGRES_PASSWORD: duckquery-test
+          POSTGRES_DB: duckquery_test
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd="pg_isready -U postgres -d duckquery_test"
+          --health-interval=5s --health-timeout=5s --health-retries=20
+
+    steps:
+      - uses: actions/checkout@v6
+
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+          cache: pip
+
+      - name: Install dependencies and pinned DuckDB extensions
+        run: |
+          cd api
+          pip install -r requirements.txt
+          python - <<'PY'
+          import duckdb
+          with duckdb.connect(":memory:") as connection:
+              connection.execute("INSTALL mysql")
+              connection.execute("INSTALL postgres")
+          PY
+
+      - name: Run real remote semantic matrix
+        env:
+          DUCKQUERY_TEST_MYSQL_HOST: 127.0.0.1
+          DUCKQUERY_TEST_MYSQL_PORT: "3306"
+          DUCKQUERY_TEST_MYSQL_PASSWORD: duckquery-test
+          DUCKQUERY_TEST_MYSQL_DATABASE: duckquery_test
+          DUCKQUERY_TEST_POSTGRES_HOST: 127.0.0.1
+          DUCKQUERY_TEST_POSTGRES_PORT: "5432"
+          DUCKQUERY_TEST_POSTGRES_PASSWORD: duckquery-test
+          DUCKQUERY_TEST_POSTGRES_DATABASE: duckquery_test
+        run: |
+          cd api
+          export PYTHONPATH="${PYTHONPATH}:$(pwd)"
+          python -m pytest tests/test_remote_database_semantics.py -q --tb=short
+
   frontend-test:
     name: Frontend Vitest
     runs-on: ubuntu-latest

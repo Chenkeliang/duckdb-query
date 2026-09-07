@@ -176,7 +176,10 @@ def build_attach_sql(alias: str, db_config: Dict[str, Any]) -> str:
             conn_str += f" port={db_config['port']}"
         # 整个连接串是单引号 SQL 字面量,必须转义单引号——否则含 ' 的密码/主机
         # 名可突破字面量注入(DuckDB 解析层还原 '' 后驱动仍拿到正确值)
-        return f"ATTACH '{escape_string_literal(conn_str)}' AS {quoted_alias} (TYPE mysql)"
+        return (
+            f"ATTACH '{escape_string_literal(conn_str)}' AS {quoted_alias} "
+            "(TYPE mysql, READ_ONLY)"
+        )
 
     elif db_type in ('postgresql', 'postgres'):
         if not username:
@@ -211,7 +214,10 @@ def build_attach_sql(alias: str, db_config: Dict[str, Any]) -> str:
                 + _postgres_conninfo_value(f"-c statement_timeout={timeout_ms}")
             )
         conn_str = " ".join(conn_parts)
-        return f"ATTACH '{escape_string_literal(conn_str)}' AS {quoted_alias} (TYPE postgres)"
+        return (
+            f"ATTACH '{escape_string_literal(conn_str)}' AS {quoted_alias} "
+            "(TYPE postgres, READ_ONLY)"
+        )
 
     elif db_type == 'sqlite':
         # SQLite 使用文件路径（兼容 path、database 两种参数键）

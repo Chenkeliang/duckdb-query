@@ -12,6 +12,8 @@
 
 > 2026-09-07 读取边界：URL 导入与 `/api/url_info` 共用逐跳 HTTP(S) 地址校验；禁止 loopback、link-local、保留地址和 URL 凭据。URL 导入先流式暂存并按实际字节限制，再交给本地解析器，`prefer_native` 保留为兼容字段。普通上传同样按流式累计字节限制，超限返回 413 `FILE_TOO_LARGE`，失败清理候选文件。
 
+> 2026-09-07 联邦读取边界：应用管理的 MySQL/PostgreSQL `ATTACH` 一律使用 `READ_ONLY`；写操作仍由 SQL 分类/确认门控拦截，底层只读挂载作为独立第二道防线。PostgreSQL 连接同时继承联邦查询服务端截止时间。
+
 > **维护规则**：增删响应字段时先更新本表，再改 Pydantic / TypeScript 与调用方（与 [`AGENTS.md`](../AGENTS.md) §8.5 顺序一致）。  
 > **字段级实时真相**：所有端点均带 OpenAPI `tags`，运行中的 **Swagger `/docs`**（Docker: `:48001/docs`，本地: `:48001/docs`）和 `/openapi.json` 始终与代码同步；本表负责**高层导航 + 前端模块索引**，新增端点务必在此**登记一行**(否则就像 AI 端点那样漏掉)。  
 > **环境说明**：若网关或代理改写 JSON，以浏览器 Network 实际响应为准；本表以仓库内 FastAPI 路由与 `create_success_response` / `create_list_response` 为准。  

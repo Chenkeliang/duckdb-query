@@ -106,6 +106,7 @@ class TestBuildAttachSQL:
         
         # 验证 SQL 格式
         assert 'TYPE mysql' in sql
+        assert 'READ_ONLY' in sql
         assert 'host=localhost' in sql
         assert 'user=root' in sql
         assert 'database=testdb' in sql
@@ -134,6 +135,7 @@ class TestBuildAttachSQL:
         
         # 验证 SQL 格式
         assert 'TYPE postgres' in sql
+        assert 'READ_ONLY' in sql
         assert "host=''localhost''" in sql
         assert "user=''postgres''" in sql
         assert "dbname=''testdb''" in sql
@@ -268,7 +270,9 @@ class TestBuildAttachSQL:
         sql = build_attach_sql(malicious_alias, config)
 
         # 恶意内容必须整体落在转义后的引号标识符里,语句结构(TYPE 子句)完整
-        assert sql.endswith('AS "x""; DROP TABLE users; --" (TYPE mysql)')
+        assert sql.endswith(
+            'AS "x""; DROP TABLE users; --" (TYPE mysql, READ_ONLY)'
+        )
 
     def test_empty_password_handled(self):
         """测试空密码的处理"""
