@@ -74,6 +74,7 @@ class DuckDBConnectionPool:
         self._connection_id_counter = 0
         self._lock = threading.RLock()
         self._condition = threading.Condition(self._lock)
+        self._shutdown_event = threading.Event()
 
         # 连接池统计
         self._total_created = 0
@@ -337,9 +338,8 @@ class DuckDBConnectionPool:
 
     def _maintenance_worker(self):
         """维护工作线程"""
-        while True:
+        while not self._shutdown_event.wait(60):
             try:
-                time.sleep(60)  # 每分钟检查一次
                 self._cleanup_idle_connections()
                 self._health_check()
             except Exception as e:
@@ -443,6 +443,15 @@ class DuckDBConnectionPool:
         with self._lock:
             for conn_id in list(self._connections.keys()):
                 self._close_connection(conn_id)
+
+    def shutdown(self) -> None:
+        """Stop background maintenance and close every pooled connection."""
+        self._shutdown_event.set()
+        self.close_all()
+        if self._maintenance_thread is not threading.current_thread():
+            self._maintenance_thread.join(timeout=5)
+        if self._maintenance_thread.is_alive():
+            logger.warning("DuckDB pool maintenance thread did not stop in time")
 
 
 # 全局连接池实例
@@ -633,7 +642,11 @@ def shutdown_all_duckdb_connections() -> None:
     只关闭已经初始化过的连接，不会为了关闭而现开一个新连接/新池。幂等，可安全重复调用
     （例如 FastAPI lifespan 的 shutdown 钩子 + 桌面端 /api/system/shutdown 都可能触发）。
     """
-    if _connection_pool is not None:
-        _connection_pool.close_all()
+    global _connection_pool
+    with _connection_pool_lock:
+        pool = _connection_pool
+        _connection_pool = None
+    if pool is not None:
+        pool.shutdown()
 
     get_system_connection_manager().close()

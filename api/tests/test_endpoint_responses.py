@@ -23,6 +23,13 @@ from main import app
 client = TestClient(app)
 
 
+@pytest.fixture(scope="module", autouse=True)
+def _close_test_client():
+    """Release the module-scoped transport before shared DB teardown."""
+    yield
+    client.close()
+
+
 # Required fields for all responses
 REQUIRED_SUCCESS_FIELDS = {"success", "data", "messageCode", "message", "timestamp"}
 REQUIRED_ERROR_FIELDS = {"success", "error", "messageCode", "message", "timestamp"}

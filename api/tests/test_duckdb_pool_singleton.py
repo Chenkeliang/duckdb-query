@@ -22,11 +22,11 @@ from core.database.duckdb_pool import DuckDBConnectionPool
 @pytest.fixture(autouse=True)
 def _reset_singleton():
     if pool_module._connection_pool is not None:
-        pool_module._connection_pool.close_all()
+        pool_module._connection_pool.shutdown()
     pool_module._connection_pool = None
     yield
     if pool_module._connection_pool is not None:
-        pool_module._connection_pool.close_all()
+        pool_module._connection_pool.shutdown()
     pool_module._connection_pool = None
 
 

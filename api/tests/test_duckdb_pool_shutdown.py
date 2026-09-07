@@ -28,7 +28,7 @@ def small_pool():
     """独立于全局单例的一个小连接池，测试结束后自行关闭。"""
     p = DuckDBConnectionPool(min_connections=1, max_connections=2)
     yield p
-    p.close_all()
+    p.shutdown()
 
 
 def test_close_all_is_idempotent(small_pool):
@@ -40,6 +40,17 @@ def test_close_all_is_idempotent(small_pool):
     # 再关一次不应报错
     small_pool.close_all()
     assert small_pool._connections == {}
+
+
+def test_shutdown_stops_maintenance_thread_and_closes_connections():
+    """Regression 2026-09-07: close_all left its daemon worker alive and
+    the worker frame retained the last DuckDB connection until process exit."""
+    pool = DuckDBConnectionPool(min_connections=1, max_connections=1)
+
+    pool.shutdown()
+
+    assert pool._connections == {}
+    assert not pool._maintenance_thread.is_alive()
 
 
 def test_pool_rebuilds_connections_after_close_all(small_pool):
@@ -93,8 +104,10 @@ def test_shutdown_all_duckdb_connections_closes_an_existing_pool(monkeypatch):
         assert len(p._connections) >= 1
         shutdown_all_duckdb_connections()
         assert p._connections == {}
+        assert not p._maintenance_thread.is_alive()
+        assert pool_module._connection_pool is None
     finally:
-        p.close_all()
+        p.shutdown()
 
 
 def test_pool_release_checkpoints_pending_user_database_wal(monkeypatch, tmp_path):
@@ -122,4 +135,4 @@ def test_pool_release_checkpoints_pending_user_database_wal(monkeypatch, tmp_pat
 
         assert not wal_path.exists() or wal_path.stat().st_size == 0
     finally:
-        pool.close_all()
+        pool.shutdown()

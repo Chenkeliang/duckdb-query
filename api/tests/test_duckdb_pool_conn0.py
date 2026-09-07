@@ -28,7 +28,7 @@ def mem_pool():
     ):
         p = DuckDBConnectionPool(min_connections=1, max_connections=2)
         yield p
-        p.close_all()
+        p.shutdown()
 
 
 def test_is_connection_fatal_classification():
