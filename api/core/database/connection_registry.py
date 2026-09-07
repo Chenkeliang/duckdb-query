@@ -93,6 +93,20 @@ class ConnectionRegistry:
             record.remote_interrupts.append(remote_interrupt)
             return True
 
+    def unregister_remote_interrupt(
+        self, task_id: str, remote_interrupt: Callable[[], bool]
+    ) -> bool:
+        """Remove one attempt-scoped remote cancellation callback by identity."""
+        with self._lock:
+            record = self._registry.get(task_id)
+            if not record:
+                return False
+            for index, callback in enumerate(record.remote_interrupts):
+                if callback is remote_interrupt:
+                    record.remote_interrupts.pop(index)
+                    return True
+            return False
+
     def interrupt_with_remote(self, task_id: str) -> bool:
         """中断 DuckDB，并调用查询已登记的远端数据库取消器。"""
         with self._lock:

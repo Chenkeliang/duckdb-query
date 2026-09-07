@@ -31,6 +31,26 @@ from core.security.encryption import password_encryptor
 logger = logging.getLogger(__name__)
 _MYSQL_PERSIST_LOCK = threading.RLock()
 
+
+class _RemoteInterruptLease:
+    """Keep a remote cancel callback valid only for its current attempt."""
+
+    def __init__(self, callback):
+        self._callback = callback
+        self._active = True
+        self._lock = threading.Lock()
+
+    def __call__(self) -> bool:
+        with self._lock:
+            if not self._active:
+                return False
+            return bool(self._callback())
+
+    def deactivate(self) -> None:
+        """Wait for any in-flight cancellation and reject later calls."""
+        with self._lock:
+            self._active = False
+
 # DuckDB 的 mysql/postgres 扩展在 ATTACH 失败时会把整条连接串原样回显进错误信息，
 # 其中 password=明文 是空格分隔的一段 token。password 值本身不含空格（build_attach_sql
 # 不对其加引号，含空格的口令本就会破坏连接串），故 \S+ 正好匹配这一段。
@@ -256,18 +276,25 @@ def mysql_remote_cancellation_scope(
         yield
         return
 
+    leases: List[_RemoteInterruptLease] = []
     for db_config, connection_id in captured_sessions:
-        connection_registry.register_remote_interrupt(
-            query_id,
-            partial(kill_mysql_query, db_config, connection_id),
+        lease = _RemoteInterruptLease(
+            partial(kill_mysql_query, db_config, connection_id)
         )
+        if connection_registry.register_remote_interrupt(query_id, lease):
+            leases.append(lease)
 
     try:
-        yield
-        conn.execute("COMMIT")
-    except Exception:
-        _rollback_quietly(conn)
-        raise
+        try:
+            yield
+            conn.execute("COMMIT")
+        except Exception:
+            _rollback_quietly(conn)
+            raise
+    finally:
+        for lease in leases:
+            lease.deactivate()
+            connection_registry.unregister_remote_interrupt(query_id, lease)
 
 
 def execute_sql_with_attach(

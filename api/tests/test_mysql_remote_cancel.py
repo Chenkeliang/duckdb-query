@@ -14,6 +14,7 @@ from core.database.federated_attach import (
     kill_mysql_query,
     mysql_remote_cancellation_scope,
 )
+from core.database.connection_registry import ConnectionRegistry
 from core.database.duckdb_engine import fetch_query_records
 from routers.duckdb_query import _uses_mysql_query_table_function
 
@@ -56,6 +57,77 @@ def test_mysql_remote_cancellation_scope_registers_same_transaction_session():
     assert executed_sql[-1] == "COMMIT"
     register_remote.assert_called_once()
     assert register_remote.call_args.args[0] == "sync:test-query"
+
+
+def test_registry_removes_only_the_completed_attempt_remote_interrupt():
+    registry = ConnectionRegistry()
+    connection = MagicMock()
+    first = MagicMock(return_value=True)
+    second = MagicMock(return_value=True)
+    registry.register("sync:retry", connection, "SELECT 1")
+    assert registry.register_remote_interrupt("sync:retry", first)
+    assert registry.register_remote_interrupt("sync:retry", second)
+
+    assert registry.unregister_remote_interrupt("sync:retry", first)
+    assert registry.interrupt_with_remote("sync:retry")
+
+    first.assert_not_called()
+    second.assert_called_once_with()
+
+
+def test_mysql_remote_interrupt_lease_is_inactive_after_scope_exit():
+    connection = MagicMock()
+    session_result = MagicMock()
+    session_result.fetchone.return_value = (12345,)
+
+    def execute(sql):
+        if "SELECT CONNECTION_ID()" in sql:
+            return session_result
+        return MagicMock()
+
+    connection.execute.side_effect = execute
+    config = {
+        "type": "mysql",
+        "host": "mysql.example",
+        "user": "reader",
+        "password": "secret",
+        "database": "analytics",
+    }
+    registered = []
+
+    def register_remote(_query_id, callback):
+        registered.append(callback)
+        return True
+
+    with (
+        patch(
+            "core.database.federated_attach.connection_registry.register_remote_interrupt",
+            side_effect=register_remote,
+        ),
+        patch(
+            "core.database.federated_attach.connection_registry.unregister_remote_interrupt",
+            create=True,
+            return_value=True,
+        ) as unregister_remote,
+        patch(
+            "core.database.federated_attach.kill_mysql_query",
+            return_value=True,
+        ) as kill_remote,
+    ):
+        with mysql_remote_cancellation_scope(
+            connection,
+            "sync:finished-attempt",
+            [("mysql_prod", config)],
+        ):
+            pass
+
+        assert len(registered) == 1
+        assert registered[0]() is False
+
+    unregister_remote.assert_called_once_with(
+        "sync:finished-attempt", registered[0]
+    )
+    kill_remote.assert_not_called()
 
 
 def test_kill_mysql_query_uses_second_connection_without_exposing_credentials():
