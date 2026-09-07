@@ -40,19 +40,34 @@ vi.mock('@/components/SQLHighlight', () => ({
 vi.mock('../PivotTableDesigner', () => ({
   PivotTableDesigner: (props: {
     onRowsChange: (rows: string[]) => void;
+    onColumnsChange: (columns: string[]) => void;
     onValuesChange: (values: unknown[]) => void;
   }) => (
-    <button
-      type="button"
-      onClick={() => {
-        props.onRowsChange(['region']);
-        props.onValuesChange([
-          { column: 'amount', aggregation: AggregationFunction.SUM },
-        ]);
-      }}
-    >
-      configure pivot
-    </button>
+    <>
+      <button
+        type="button"
+        onClick={() => {
+          props.onRowsChange(['region']);
+          props.onValuesChange([
+            { column: 'amount', aggregation: AggregationFunction.SUM },
+          ]);
+        }}
+      >
+        configure pivot
+      </button>
+      <button
+        type="button"
+        onClick={() => {
+          props.onRowsChange(['region']);
+          props.onColumnsChange(['year', 'quarter']);
+          props.onValuesChange([
+            { column: 'amount', aggregation: AggregationFunction.SUM },
+          ]);
+        }}
+      >
+        configure multi pivot
+      </button>
+    </>
   ),
 }));
 
@@ -61,7 +76,11 @@ vi.mock('../PivotFilters', () => ({
   pivotFiltersToApi: () => [],
 }));
 
-vi.mock('../../AsyncTasks/AsyncTaskDialog', () => ({ AsyncTaskDialog: () => null }));
+vi.mock('../../AsyncTasks/AsyncTaskDialog', () => ({
+  AsyncTaskDialog: ({ attachDatabases }: { attachDatabases?: unknown[] }) => (
+    <span data-testid="pivot-async-attach">{JSON.stringify(attachDatabases ?? [])}</span>
+  ),
+}));
 vi.mock('@/Query/SQLQuery/ai/AiChatDrawer', () => ({
   AiChatDrawer: () => null,
   ChatToggleButton: () => null,
@@ -97,5 +116,40 @@ describe('PivotPanel SQL copy', () => {
     fireEvent.click(screen.getByRole('button', { name: '复制' }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(displayedSql));
     expect(await screen.findByRole('button', { name: '已复制' })).toBeInTheDocument();
+  });
+
+  it.each([
+    ['zero pivot columns', 'configure pivot'],
+    ['multiple pivot columns', 'configure multi pivot'],
+  ])('keeps the external DuckDB catalog for %s (issue #37)', async (_case, action) => {
+    const client = new QueryClient({
+      defaultOptions: { queries: { retry: false } },
+    });
+    const table = {
+      name: 'yunlian',
+      source: 'external' as const,
+      connection: { id: 'analysis', name: 'Analysis DuckDB', type: 'duckdb' as const },
+    };
+    const onExecute = vi.fn().mockResolvedValue(undefined);
+    render(
+      <QueryClientProvider client={client}>
+        <PivotPanel selectedTables={[table]} onExecute={onExecute} />
+      </QueryClientProvider>
+    );
+
+    fireEvent.click(screen.getByRole('button', { name: action }));
+    const sql = (await screen.findByTestId('pivot-sql-preview')).textContent ?? '';
+    expect(sql).toContain('FROM duckdb_analysis_duckdb.yunlian');
+    expect(sql).not.toMatch(/FROM\s+yunlian(?:\s|$)/);
+    expect(screen.getByTestId('pivot-async-attach')).toHaveTextContent(
+      '"alias":"duckdb_analysis_duckdb","connectionId":"analysis"'
+    );
+    fireEvent.click(screen.getByRole('button', { name: '执行' }));
+    await waitFor(() => expect(onExecute).toHaveBeenCalledOnce());
+    expect(onExecute.mock.calls[0][0]).toContain('FROM duckdb_analysis_duckdb.yunlian');
+    expect(onExecute.mock.calls[0][1]).toMatchObject({
+      type: 'federated',
+      attachDatabases: [{ alias: 'duckdb_analysis_duckdb', connectionId: 'analysis' }],
+    });
   });
 });
