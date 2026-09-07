@@ -1,5 +1,10 @@
 import { describe, expect, it } from 'vitest';
-import { isJsonViewable, toFormattedJson, columnMostlyJson } from '../jsonCell';
+import {
+  isJsonViewable,
+  toFormattedJson,
+  toRawJsonText,
+  columnMostlyJson,
+} from '../jsonCell';
 
 describe('isJsonViewable', () => {
   it('returns true for plain objects', () => {
@@ -61,6 +66,24 @@ describe('toFormattedJson', () => {
   it('returns raw string for non-JSON strings', () => {
     expect(toFormattedJson('hello')).toBe('hello');
   });
+
+  it('preserves JSON number tokens beyond JavaScript number precision', () => {
+    const raw =
+      '{"id":9007199254740993,"amount":1234567890.123456789,"exponent":1e100,"negativeZero":-0}';
+
+    const formatted = toFormattedJson(raw);
+
+    expect(formatted).toContain('9007199254740993');
+    expect(formatted).toContain('1234567890.123456789');
+    expect(formatted).toContain('1e100');
+    expect(formatted).toContain('-0');
+  });
+
+  it('preserves duplicate keys when formatting JSON text', () => {
+    const formatted = toFormattedJson('{"value":1,"value":2}');
+
+    expect(formatted.match(/"value"/g)).toHaveLength(2);
+  });
 });
 
 describe('columnMostlyJson', () => {
@@ -86,5 +109,13 @@ describe('columnMostlyJson', () => {
 
   it('returns false for empty data', () => {
     expect(columnMostlyJson([], 'col')).toBe(false);
+  });
+});
+
+describe('toRawJsonText', () => {
+  it('returns the original JSON text byte-for-byte for copying', () => {
+    const raw = ' {"id":9007199254740993,"value":1,"value":2}\n';
+
+    expect(toRawJsonText(raw)).toBe(raw);
   });
 });

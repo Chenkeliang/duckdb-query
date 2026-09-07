@@ -9,6 +9,7 @@
 
 import * as React from 'react';
 import i18next from 'i18next';
+import { applyEdits, format } from 'jsonc-parser';
 import { Braces } from 'lucide-react';
 import type { CellRendererProps } from '../types';
 
@@ -43,12 +44,40 @@ export function isJsonViewable(value: unknown): boolean {
  * 若值已是字符串则先 parse，再 stringify。
  */
 export function toFormattedJson(value: unknown): string {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    try {
+      // Validate with the platform parser, but keep the original text as the
+      // formatting source. Parsing and stringifying would round large JSON
+      // numbers and collapse duplicate object keys.
+      JSON.parse(trimmed);
+      return applyEdits(
+        trimmed,
+        format(trimmed, undefined, {
+          insertSpaces: true,
+          tabSize: 2,
+          eol: '\n',
+        })
+      );
+    } catch {
+      return value;
+    }
+  }
+
   try {
-    const obj =
-      typeof value === 'string' ? (JSON.parse(value.trim()) as unknown) : value;
-    return JSON.stringify(obj, null, 2);
+    return JSON.stringify(value, null, 2);
   } catch {
-    return typeof value === 'string' ? value : String(value);
+    return String(value);
+  }
+}
+
+/** Return the exact JSON text received from the API for lossless copying. */
+export function toRawJsonText(value: unknown): string {
+  if (typeof value === 'string') return value;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
   }
 }
 

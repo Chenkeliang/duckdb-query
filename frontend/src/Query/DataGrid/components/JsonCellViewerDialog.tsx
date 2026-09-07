@@ -15,7 +15,7 @@ import {
   DialogTitle,
 } from '@/components/ui/dialog';
 import { Button } from '@/components/ui/button';
-import { toFormattedJson } from '../utils/jsonCell';
+import { toFormattedJson, toRawJsonText } from '../utils/jsonCell';
 
 export interface JsonCellViewerDialogProps {
   /** 要展示的值（null 表示关闭） */
@@ -36,16 +36,20 @@ export const JsonCellViewerDialog: React.FC<JsonCellViewerDialogProps> = ({
     () => (open ? toFormattedJson(value) : ''),
     [open, value]
   );
+  const raw = React.useMemo(
+    () => (open ? toRawJsonText(value) : ''),
+    [open, value]
+  );
 
   const handleCopy = React.useCallback(async () => {
     try {
-      await navigator.clipboard.writeText(formatted);
+      await navigator.clipboard.writeText(raw);
       setCopied(true);
       setTimeout(() => setCopied(false), 2000);
     } catch {
       // clipboard 不可用时静默失败
     }
-  }, [formatted]);
+  }, [raw]);
 
   // 弹窗关闭时重置 copied 状态
   const handleOpenChange = React.useCallback(
