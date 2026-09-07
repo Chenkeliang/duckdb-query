@@ -132,6 +132,12 @@ from core.common.sql_identifiers import (  # noqa: E402
 )
 
 
+def _postgres_conninfo_value(value: Any) -> str:
+    """Quote one libpq keyword/value connection-string value."""
+    escaped = str(value).replace("\\", "\\\\").replace("'", "\\'")
+    return f"'{escaped}'"
+
+
 def build_attach_sql(alias: str, db_config: Dict[str, Any]) -> str:
     """
     根据数据库配置构建 ATTACH SQL 语句
@@ -175,10 +181,36 @@ def build_attach_sql(alias: str, db_config: Dict[str, Any]) -> str:
     elif db_type in ('postgresql', 'postgres'):
         if not username:
             raise ValueError("PostgreSQL connection missing username parameter (user or username)")
-        # PostgreSQL 连接字符串格式
-        conn_str = f"host={db_config['host']} dbname={db_config['database']} user={username} password={db_config.get('password', '')}"
+        # Quote every libpq conninfo value.  An unquoted empty ``password=``
+        # consumes the next token (for example ``port=``), while spaces,
+        # backslashes and quotes otherwise alter the option boundary.
+        conn_parts = [
+            f"host={_postgres_conninfo_value(db_config['host'])}",
+            f"dbname={_postgres_conninfo_value(db_config['database'])}",
+            f"user={_postgres_conninfo_value(username)}",
+            f"password={_postgres_conninfo_value(db_config.get('password', ''))}",
+        ]
         if db_config.get('port'):
-            conn_str += f" port={db_config['port']}"
+            conn_parts.append(f"port={_postgres_conninfo_value(db_config['port'])}")
+        timeout_value = db_config.get("_statement_timeout_ms")
+        if timeout_value is not None:
+            if isinstance(timeout_value, bool):
+                raise ValueError("PostgreSQL statement timeout must be an integer")
+            try:
+                timeout_ms = int(timeout_value)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    "PostgreSQL statement timeout must be an integer"
+                ) from exc
+            if timeout_ms <= 0 or timeout_ms > 2_147_483_647:
+                raise ValueError(
+                    "PostgreSQL statement timeout must be between 1 and 2147483647 ms"
+                )
+            conn_parts.append(
+                "options="
+                + _postgres_conninfo_value(f"-c statement_timeout={timeout_ms}")
+            )
+        conn_str = " ".join(conn_parts)
         return f"ATTACH '{escape_string_literal(conn_str)}' AS {quoted_alias} (TYPE postgres)"
 
     elif db_type == 'sqlite':

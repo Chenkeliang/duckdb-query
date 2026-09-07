@@ -14,6 +14,7 @@ import duckdb
 import pymysql
 
 from core.common.connection_alias import normalize_connection_id
+from core.common.config_manager import config_manager
 from core.common.sql_identifiers import escape_string_literal
 from core.database.database_manager import db_manager
 from core.database.duckdb_engine import (
@@ -217,7 +218,25 @@ def attach_databases_on_connection(
             logger.debug("Pre-ATTACH DETACH %s skipped: %s", alias, detach_error)
 
         try:
-            attach_sql = build_attach_sql(alias, db_config)
+            effective_config = db_config
+            if str(db_config.get("type", "")).lower() in {
+                "postgres",
+                "postgresql",
+            }:
+                timeout_seconds = int(
+                    getattr(
+                        config_manager.get_app_config(),
+                        "federated_query_timeout",
+                        300,
+                    )
+                    or 300
+                )
+                effective_config = dict(db_config)
+                effective_config["_statement_timeout_ms"] = min(
+                    max(1, timeout_seconds * 1000),
+                    2_147_483_647,
+                )
+            attach_sql = build_attach_sql(alias, effective_config)
             logger.info("Executing ATTACH: %s", alias)
             conn.execute(attach_sql)
             attached.append(alias)

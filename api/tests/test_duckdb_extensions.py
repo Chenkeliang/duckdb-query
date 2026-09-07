@@ -134,11 +134,47 @@ class TestBuildAttachSQL:
         
         # 验证 SQL 格式
         assert 'TYPE postgres' in sql
-        assert 'host=localhost' in sql
-        assert 'user=postgres' in sql
-        assert 'dbname=testdb' in sql
-        assert 'port=5432' in sql
+        assert "host=''localhost''" in sql
+        assert "user=''postgres''" in sql
+        assert "dbname=''testdb''" in sql
+        assert "port=''5432''" in sql
         assert 'AS "pg_alias"' in sql
+
+    def test_postgres_attach_sql_includes_validated_statement_timeout(self):
+        """Regression 2026-09-07: every PostgreSQL scanner connection must
+        inherit the application deadline so local interrupt cannot leave a
+        remote statement running until an unrelated network timeout."""
+        from core.database.duckdb_engine import build_attach_sql
+
+        sql = build_attach_sql(
+            "pg_alias",
+            {
+                "type": "postgresql",
+                "host": "localhost",
+                "username": "postgres",
+                "password": "test_password",
+                "database": "testdb",
+                "_statement_timeout_ms": 250,
+            },
+        )
+
+        assert "options=''-c statement_timeout=250''" in sql
+
+    def test_postgres_attach_rejects_non_integer_statement_timeout(self):
+        from core.database.duckdb_engine import build_attach_sql
+
+        with pytest.raises(ValueError, match="statement timeout"):
+            build_attach_sql(
+                "pg_alias",
+                {
+                    "type": "postgresql",
+                    "host": "localhost",
+                    "username": "postgres",
+                    "password": "test_password",
+                    "database": "testdb",
+                    "_statement_timeout_ms": "1; DROP TABLE users",
+                },
+            )
 
     def test_sqlite_attach_sql_format(self):
         """
@@ -194,7 +230,7 @@ class TestBuildAttachSQL:
         sql = build_attach_sql('pg_db', config)
         
         assert 'TYPE postgres' in sql
-        assert 'host=localhost' in sql
+        assert "host=''localhost''" in sql
         assert 'port=' not in sql
 
     def test_unsupported_database_type_raises_error(self):

@@ -1,6 +1,7 @@
 """federated_attach 工具测试"""
 
 from contextlib import contextmanager
+from types import SimpleNamespace
 
 import duckdb as duckdb_mod
 import pytest
@@ -140,6 +141,35 @@ def test_attach_databases_on_connection_escapes_alias_in_detach(_mock_build_atta
         conn, [(malicious_alias, {"type": "mysql", "host": "h", "database": "d"})]
     )
     assert seen_detach_sql == [f'DETACH {_quote_identifier(malicious_alias)}']
+
+
+def test_attach_adds_postgres_server_deadline_without_mutating_saved_config(monkeypatch):
+    """Regression 2026-09-07: all query surfaces using shared ATTACH must
+    receive the same PostgreSQL deadline, while stored connection data stays
+    unchanged."""
+    from core.database import federated_attach
+
+    original = {
+        "type": "postgresql",
+        "host": "postgres.example",
+        "database": "analytics",
+    }
+    captured = []
+    monkeypatch.setattr(
+        federated_attach.config_manager,
+        "get_app_config",
+        lambda: SimpleNamespace(federated_query_timeout=7),
+    )
+
+    def build(_alias, config):
+        captured.append(config)
+        return "ATTACH DATABASE 'dummy' AS pg (TYPE postgres)"
+
+    monkeypatch.setattr(federated_attach, "build_attach_sql", build)
+    attach_databases_on_connection(MagicMock(), [("pg", original)])
+
+    assert captured[0]["_statement_timeout_ms"] == 7000
+    assert "_statement_timeout_ms" not in original
 
 
 def test_persist_disables_mysql_pool_before_attach(monkeypatch):
