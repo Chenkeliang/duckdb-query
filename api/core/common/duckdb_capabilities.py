@@ -282,14 +282,13 @@ def build_capability_contract(
 def current_capability_contract() -> dict[str, Any]:
     """Build the contract from the engine actually loaded by this process."""
     import duckdb
+    from core.database.duckdb_engine import with_duckdb_connection
     from core.database.duckdb_storage import DUCKDB_STORAGE_COMPATIBILITY_VERSION
-    connection = duckdb.connect(":memory:")
-    try:
+
+    with with_duckdb_connection() as connection:
         engine_version = str(connection.execute("SELECT version()").fetchone()[0])
         platform = str(connection.execute("PRAGMA platform").fetchone()[0])
         extensions = extension_manifest_from_connection(connection)
-    finally:
-        connection.close()
     return build_capability_contract(
         python_version=str(duckdb.__version__),
         engine_version=engine_version,

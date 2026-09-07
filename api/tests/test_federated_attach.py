@@ -303,7 +303,7 @@ def test_persist_rebinds_remote_cancellation_for_each_retry_attempt(monkeypatch)
     connection.execute.side_effect = execute
 
     @contextmanager
-    def connection_scope(_query_id, _sql):
+    def connection_scope(_query_id, _sql, **_kwargs):
         yield connection
 
     @contextmanager

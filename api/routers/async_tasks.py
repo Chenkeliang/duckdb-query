@@ -1510,6 +1510,13 @@ def execute_async_federated_query(
                 task_id, error_message, metadata_update=error_metadata
             ):
                 logger.error(f"Unable to mark federated query task as failed: {task_id}")
+    finally:
+        # execute_sql_and_persist unregisters its connection before this caller
+        # writes the terminal task state. Release the publication handoff only
+        # after every success/cancel/failure branch has finished.
+        from core.database.connection_registry import connection_registry
+
+        connection_registry.forget_publication(task_id)
 
 
 def generate_download_file(task_id: str, format: str = "csv", target_path: Optional[str] = None):

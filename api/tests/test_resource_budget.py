@@ -56,6 +56,7 @@ def test_disk_reserve_checks_both_paths(monkeypatch, tmp_path):
 def test_fallback_configuration_still_applies_budget(monkeypatch, tmp_path):
     from core.database import duckdb_engine, duckdb_pool
     monkeypatch.setattr(duckdb_engine, "_apply_duckdb_configuration", Mock(side_effect=RuntimeError("setup failed")))
+    monkeypatch.setattr(duckdb_engine, "_enforce_optimizer_safety", Mock())
     apply = Mock()
     monkeypatch.setattr(budgets, "apply_resource_budget", apply)
     cfg = config(duckdb_threads=2)
@@ -63,6 +64,27 @@ def test_fallback_configuration_still_applies_budget(monkeypatch, tmp_path):
     connection = Mock()
     pool._configure_connection(connection, cfg, str(tmp_path))
     apply.assert_called_once_with(connection, cfg)
+
+
+def test_fallback_configuration_rejects_optimizer_safety_failure(monkeypatch, tmp_path):
+    """Regression 2026-09-07: pool fallback cannot admit an unsafe connection."""
+    from core.database import duckdb_engine, duckdb_pool
+
+    monkeypatch.setattr(
+        duckdb_engine,
+        "_apply_duckdb_configuration",
+        Mock(side_effect=RuntimeError("safety setup failed")),
+    )
+    enforce = Mock(side_effect=RuntimeError("cannot disable remote pushdown"))
+    monkeypatch.setattr(duckdb_engine, "_enforce_optimizer_safety", enforce)
+    cfg = config(duckdb_threads=2)
+    pool = object.__new__(duckdb_pool.DuckDBConnectionPool)
+    connection = Mock()
+
+    with pytest.raises(RuntimeError, match="cannot disable remote pushdown"):
+        pool._configure_connection(connection, cfg, str(tmp_path))
+
+    enforce.assert_called_once_with(connection)
 
 
 def test_pool_factory_limits_concurrent_connections(monkeypatch):

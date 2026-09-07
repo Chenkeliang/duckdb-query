@@ -204,9 +204,20 @@ def _run_query_maybe_save(
     if table_name:
         save_sql = (original_sql if original_sql is not None else sql_query).strip().rstrip(";")
         staging_name = None
+        preview_result = None
         try:
             staging_name = create_query_staging_table(conn, save_sql)
             snapshot = build_table_metadata_snapshot(conn, staging_name)
+            preview_sql = f"SELECT * FROM {quote_identifier(staging_name)}"
+            if limit:
+                preview_sql = f"{preview_sql} LIMIT {limit}"
+            cols, recs, cur_types = fetch_query_records(conn, preview_sql)
+            preview_result = (
+                cols,
+                recs,
+                cur_types,
+                _types(cur_types, preview_sql),
+            )
             publish_query_staging_table(
                 conn, staging_name, table_name, query_id=query_id
             )
@@ -224,17 +235,18 @@ def _run_query_maybe_save(
                 })
             except Exception as meta_error:  # pylint: disable=broad-except
                 logger.warning("Failed to save table metadata (non-fatal): %s", meta_error)
-            preview_sql = f"SELECT * FROM {quote_identifier(table_name)}"
-            if limit:
-                preview_sql = f"{preview_sql} LIMIT {limit}"
-            cols, recs, cur_types = fetch_query_records(conn, preview_sql)
-            return cols, recs, cur_types, _types(cur_types, preview_sql), table_name, None
+            return (*preview_result, table_name, None)
+        except duckdb.InterruptException:
+            drop_query_staging_table(conn, staging_name)
+            raise
         except Exception as save_error:  # pylint: disable=broad-except
             drop_query_staging_table(conn, staging_name)
             logger.warning("Failed to save query result as table: %s", save_error)
-            # 保存失败 → 退回直接执行原查询,至少把数据返回,并将错误带回响应
-            cols, recs, cur_types = fetch_query_records(conn, sql_query)
-            return cols, recs, cur_types, _types(cur_types, sql_query), None, str(save_error)
+            # Materialization succeeded, so reuse its preview rather than
+            # replaying a volatile or remote user query after publication fails.
+            if preview_result is not None:
+                return (*preview_result, None, str(save_error))
+            raise
 
     created_table, if_not_exists = _main_table_create_target(sql_query)
     table_existed = False
@@ -926,15 +938,26 @@ def execute_federated_query(
                             # response preview is read from this same staging
                             # table, so volatile/remote data cannot diverge
                             # from the table that will be published.
+                            order_column = f"__duckquery_row_order_{uuid4().hex}"
+                            ordered_materialization_sql = (
+                                f"SELECT row_number() OVER () AS {quote_identifier(order_column)}, "
+                                f"source.* FROM ({base_sql_query}) AS source"
+                            )
                             staging_name = create_query_staging_table(
-                                conn, base_sql_query
+                                conn, ordered_materialization_sql
                             )
                             preview_sql = (
-                                f"SELECT * FROM {quote_identifier(staging_name)}"
+                                f"SELECT * EXCLUDE ({quote_identifier(order_column)}) "
+                                f"FROM {quote_identifier(staging_name)} "
+                                f"ORDER BY {quote_identifier(order_column)}"
                             )
                             if limit:
                                 preview_sql = f"{preview_sql} LIMIT {limit}"
                             result_triplet = fetch_query_records(conn, preview_sql)
+                            conn.execute(
+                                f"ALTER TABLE {quote_identifier(staging_name)} "
+                                f"DROP COLUMN {quote_identifier(order_column)}"
+                            )
                             _opt["sql"] = base_sql_query
                         else:
                             # DESCRIBE(mysql_query(...)) executes the remote

@@ -1,6 +1,8 @@
 """DuckDB 2.0 capability contract and safety classification regressions."""
 
 import asyncio
+from contextlib import contextmanager
+from unittest.mock import MagicMock
 
 from fastapi.testclient import TestClient
 
@@ -44,6 +46,36 @@ def test_contract_is_explicit_per_surface_and_matches_runtime():
     assert features["automatic_remote_pushdown"]["direct_sql"]["status"] == "blocked"
     for feature_id in ("connect_and_quack", "custom_extension_repository", "stable_c_api"):
         assert features[feature_id]["engine"]["status"] == "blocked"
+
+
+def test_contract_reads_extension_identity_from_configured_runtime(monkeypatch):
+    """Regression 2026-09-07: capabilities must not inspect a fresh empty DB."""
+    from core.common import duckdb_capabilities
+    from core.database import duckdb_engine
+
+    connection = MagicMock()
+    connection.execute.side_effect = lambda sql: MagicMock(
+        fetchone=lambda: (
+            "v2.0.0-alpha39998" if "version" in sql else "osx_arm64"
+        ),
+        fetchall=lambda: [("postgres_scanner", True, True, "c91ea57793")],
+    )
+
+    @contextmanager
+    def configured_runtime():
+        yield connection
+
+    monkeypatch.setattr(duckdb_engine, "with_duckdb_connection", configured_runtime)
+    duckdb_capabilities.current_capability_contract.cache_clear()
+    try:
+        contract = duckdb_capabilities.current_capability_contract()
+        assert contract["engine"]["extensions"]["postgres_scanner"] == {
+            "installed": True,
+            "loaded": True,
+            "version": "c91ea57793",
+        }
+    finally:
+        duckdb_capabilities.current_capability_contract.cache_clear()
 
 
 def test_contract_does_not_claim_v2_engine_features_on_an_old_runtime():

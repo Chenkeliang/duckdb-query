@@ -52,10 +52,14 @@ class _RemoteInterruptLease:
         with self._lock:
             self._active = False
 
-# DuckDB 的 mysql/postgres 扩展在 ATTACH 失败时会把整条连接串原样回显进错误信息，
-# 其中 password=明文 是空格分隔的一段 token。password 值本身不含空格（build_attach_sql
-# 不对其加引号，含空格的口令本就会破坏连接串），故 \S+ 正好匹配这一段。
-_CONN_SECRET_RE = re.compile(r"(password=)\S+", re.IGNORECASE)
+# DuckDB 的 mysql/postgres 扩展在 ATTACH 失败时会把整条连接串原样回显进错误信息。
+# PostgreSQL 使用 libpq conninfo 引号，口令可含空白、引号与反斜线；同时兼容 DuckDB
+# SQL 字面量尚未解析时出现的双单引号表示。未加引号的 MySQL 值仍按单 token 处理。
+_CONN_SECRET_RE = re.compile(
+    r"(password\s*=\s*)"
+    r"(?:''(?:\\.|[^']|'(?!'))*''|'(?:\\.|[^'\\])*'|\"(?:\\.|[^\"\\])*\"|\S+)",
+    re.IGNORECASE,
+)
 
 
 def redact_connection_secrets(text: Any) -> str:
@@ -480,13 +484,29 @@ def execute_sql_and_persist(
                     conn, staging_name, table_name, query_id=query_id
                 )
             return snapshot
+        except Exception:
+            # Publication sits outside the retry attempt. Cancellation or a
+            # failed DROP/RENAME must not retain a full unpublished dataset.
+            try:
+                drop_query_staging_table(conn, staging_name)
+            except Exception as cleanup_error:  # pylint: disable=broad-exception-caught
+                logger.warning(
+                    "Failed to remove unpublished query staging table %s: %s",
+                    staging_name,
+                    cleanup_error,
+                )
+            raise
         finally:
             if attached:
                 detach_databases_on_connection(conn, attached)
 
     with single_threaded_mysql_persistence(attach_configs):
         if query_id:
-            with interruptible_connection(query_id, cleaned_sql) as conn:
+            with interruptible_connection(
+                query_id,
+                cleaned_sql,
+                retain_publication=True,
+            ) as conn:
                 return _run(conn)
 
         with with_duckdb_connection() as conn:

@@ -5,7 +5,9 @@
 原始查询 original_sql,不做任何文本反推。
 """
 import duckdb
+import pytest
 
+from routers import duckdb_query
 from routers.duckdb_query import _run_query_maybe_save
 
 
@@ -43,3 +45,49 @@ def test_ctas_respects_user_written_limit():
     )
     assert saved == "userlimit_tbl" and err is None
     assert con.execute("SELECT count(*) FROM userlimit_tbl").fetchone()[0] == 2
+
+
+def test_cancel_before_publication_propagates_without_reexecuting(monkeypatch):
+    """Regression 2026-09-07: publication cancellation must not replay the query."""
+    con = duckdb.connect(":memory:")
+    con.execute("CREATE SEQUENCE cancel_once START 1")
+
+    def cancel_publish(*_args, **_kwargs):
+        raise duckdb.InterruptException("cancelled before publication")
+
+    monkeypatch.setattr(duckdb_query, "publish_query_staging_table", cancel_publish)
+    with pytest.raises(duckdb.InterruptException):
+        _run_query_maybe_save(
+            con,
+            "SELECT nextval('cancel_once') AS value",
+            "cancelled_result",
+            None,
+            query_id="sync:cancel-before-publish",
+        )
+
+    assert con.execute("SELECT currval('cancel_once')").fetchone() == (1,)
+    assert con.execute("SHOW TABLES").fetchall() == []
+
+
+def test_publication_failure_reuses_materialized_preview(monkeypatch):
+    """Regression 2026-09-07: publication failure must not replay a volatile query."""
+    con = duckdb.connect(":memory:")
+    con.execute("CREATE SEQUENCE publish_once START 1")
+
+    def fail_publish(*_args, **_kwargs):
+        raise RuntimeError("publication failed")
+
+    monkeypatch.setattr(duckdb_query, "publish_query_staging_table", fail_publish)
+    columns, rows, *_types, saved, error = _run_query_maybe_save(
+        con,
+        "SELECT nextval('publish_once') AS value",
+        "failed_result",
+        None,
+    )
+
+    assert columns == ["value"]
+    assert rows == [{"value": 1}]
+    assert saved is None
+    assert error == "publication failed"
+    assert con.execute("SELECT currval('publish_once')").fetchone() == (1,)
+    assert con.execute("SHOW TABLES").fetchall() == []

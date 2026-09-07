@@ -108,6 +108,7 @@ class DuckDBConnectionPool:
 
     def _create_connection(self) -> Optional[int]:
         """创建新连接"""
+        connection = None
         try:
             # 获取数据库配置
             app_config = config_manager.get_app_config()
@@ -149,6 +150,14 @@ class DuckDBConnectionPool:
 
         except Exception as e:
             logger.error(f"Failed to create connection: {str(e)}")
+            if connection is not None:
+                try:
+                    connection.close()
+                except Exception as close_error:  # pylint: disable=broad-exception-caught
+                    logger.warning(
+                        "Failed to close rejected DuckDB connection: %s",
+                        close_error,
+                    )
             self._total_errors += 1
             return None
 
@@ -156,6 +165,7 @@ class DuckDBConnectionPool:
         self, connection: duckdb.DuckDBPyConnection, app_config, temp_dir: str
     ):
         """配置连接参数 - 使用统一的 DuckDB 配置系统"""
+        used_fallback = False
         try:
             # 导入统一的配置应用函数
             from core.database.duckdb_engine import _apply_duckdb_configuration
@@ -164,6 +174,7 @@ class DuckDBConnectionPool:
             _apply_duckdb_configuration(connection, temp_dir)
 
         except Exception as e:
+            used_fallback = True
             logger.warning(f"Failed to apply unified configuration, using basic configuration: {str(e)}")
             # 基础配置作为后备，使用配置文件中的值
             try:
@@ -193,6 +204,14 @@ class DuckDBConnectionPool:
                 # 最后的硬编码后备
                 connection.execute("SET threads=8")
                 connection.execute(f"SET temp_directory='{temp_dir}'")
+
+        if used_fallback:
+            # Optimizer precision protection is a mandatory admission policy,
+            # not a best-effort performance setting. Reapply and let failures
+            # reject the connection instead of returning it fail-open.
+            from core.database.duckdb_engine import _enforce_optimizer_safety
+
+            _enforce_optimizer_safety(connection)
 
         from core.database.resource_budget import apply_resource_budget
         apply_resource_budget(connection, app_config)
@@ -494,7 +513,12 @@ def get_connection_pool() -> DuckDBConnectionPool:
 
 
 @contextmanager
-def interruptible_connection(task_id: str, sql: str = ""):
+def interruptible_connection(
+    task_id: str,
+    sql: str = "",
+    *,
+    retain_publication: bool = False,
+):
     """
     可中断的连接上下文管理器
     
@@ -507,6 +531,7 @@ def interruptible_connection(task_id: str, sql: str = ""):
     Args:
         task_id: 任务 ID，用于注册和中断
         sql: SQL 语句，用于调试日志
+        retain_publication: 注销后保留“已发布”交接标记，直到异步任务落定
         
     Yields:
         DuckDB 连接对象
@@ -521,7 +546,12 @@ def interruptible_connection(task_id: str, sql: str = ""):
     
     with pool.get_connection() as conn:
         # 注册到注册表
-        connection_registry.register(task_id, conn, sql[:200] if sql else "")
+        connection_registry.register(
+            task_id,
+            conn,
+            sql[:200] if sql else "",
+            retain_publication=retain_publication,
+        )
         
         try:
             yield conn

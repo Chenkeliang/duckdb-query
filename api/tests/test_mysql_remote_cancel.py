@@ -11,6 +11,7 @@ import duckdb
 import pytest
 
 from core.database.federated_attach import (
+    execute_sql_and_persist,
     kill_mysql_query,
     mysql_remote_cancellation_scope,
 )
@@ -98,6 +99,85 @@ def test_publication_commit_wins_before_late_cancel():
 
     commit.assert_called_once_with()
     connection.interrupt.assert_not_called()
+
+
+def test_task_state_transition_is_rejected_after_publication():
+    """Regression 2026-09-07: late cancellation cannot mutate async task state."""
+    registry = ConnectionRegistry()
+    connection = MagicMock()
+    accept = MagicMock(return_value=True)
+    registry.register("async:already-published", connection, "SELECT 1")
+    assert registry.commit_if_not_cancelled("async:already-published", lambda: None)
+
+    assert not registry.cancel_if_not_published("async:already-published", accept)
+
+    accept.assert_not_called()
+    connection.interrupt.assert_not_called()
+
+
+def test_publication_marker_survives_connection_unregister_until_acknowledged():
+    """Regression 2026-09-07: unregister-to-task-complete window rejects cancel."""
+    registry = ConnectionRegistry()
+    connection = MagicMock()
+    accept = MagicMock(return_value=True)
+    task_id = "async:published-unregistered"
+    registry.register(
+        task_id,
+        connection,
+        "SELECT 1",
+        retain_publication=True,
+    )
+    assert registry.commit_if_not_cancelled(task_id, lambda: None)
+    assert registry.unregister(task_id)
+
+    assert not registry.cancel_if_not_published(task_id, accept)
+    accept.assert_not_called()
+
+    registry.forget_publication(task_id)
+    assert registry.cancel_if_not_published(task_id, accept)
+    accept.assert_called_once_with()
+
+
+def test_accepted_task_cancellation_runs_remote_interrupts():
+    """Regression 2026-09-07: async cancellation uses attempt-scoped remote cancel."""
+    registry = ConnectionRegistry()
+    connection = MagicMock()
+    remote = MagicMock(return_value=True)
+    registry.register("async:remote", connection, "SELECT 1")
+    registry.register_remote_interrupt("async:remote", remote)
+
+    assert registry.cancel_if_not_published("async:remote", lambda: True)
+
+    connection.interrupt.assert_called_once_with()
+    remote.assert_called_once_with()
+
+
+def test_standalone_persist_cancellation_removes_staging(monkeypatch):
+    """Regression 2026-09-07: pre-publication cancel leaves no __stage table."""
+    connection = duckdb.connect(":memory:")
+
+    @contextmanager
+    def connection_scope(_query_id, _sql, **_kwargs):
+        yield connection
+
+    monkeypatch.setattr(
+        "core.database.federated_attach.interruptible_connection",
+        connection_scope,
+    )
+    monkeypatch.setattr(
+        "core.database.federated_attach.connection_registry.is_cancel_requested",
+        lambda _query_id: True,
+    )
+    with pytest.raises(duckdb.InterruptException):
+        execute_sql_and_persist(
+            "SELECT * FROM range(10)",
+            "cancelled_persist",
+            [],
+            query_id="async:cancelled-persist",
+        )
+
+    assert connection.execute("SHOW TABLES").fetchall() == []
+    connection.close()
 
 
 def test_mysql_remote_interrupt_lease_is_inactive_after_scope_exit():

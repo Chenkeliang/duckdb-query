@@ -78,3 +78,47 @@ def test_inline_save_keeps_system_preview_limit_out_of_saved_table(monkeypatch):
         assert connection.execute("SELECT count(*) FROM saved_full").fetchone() == (5,)
     finally:
         connection.close()
+
+
+def test_inline_save_preview_preserves_explicit_order_without_internal_column(monkeypatch):
+    """Regression 2026-09-07: parallel CTAS must not scramble ordered preview rows."""
+    connection = duckdb.connect(":memory:")
+    connection.execute("SET threads=8")
+    connection.execute("SET preserve_insertion_order=false")
+
+    @contextmanager
+    def connection_scope(_query_id, _sql):
+        yield connection
+
+    monkeypatch.setattr(duckdb_query, "interruptible_connection", connection_scope)
+    monkeypatch.setattr(
+        duckdb_query.config_manager,
+        "get_app_config",
+        lambda: SimpleNamespace(max_query_rows=3, federated_query_timeout=30),
+    )
+    monkeypatch.setattr(
+        duckdb_query, "_log_query_metrics_in_conn", lambda *_args: 1.0
+    )
+    monkeypatch.setattr(duckdb_query.table_registry, "record_creation", lambda *_args: None)
+
+    try:
+        response = duckdb_query.execute_federated_query(
+            FederatedQueryRequest(
+                sql="SELECT range AS id FROM range(1000000) ORDER BY id DESC",
+                is_preview=True,
+                save_as_table="saved_ordered",
+            )
+        )
+
+        assert response["data"]["data"] == [
+            {"id": 999999},
+            {"id": 999998},
+            {"id": 999997},
+        ]
+        columns = connection.execute(
+            "SELECT column_name FROM duckdb_columns() "
+            "WHERE table_name='saved_ordered' ORDER BY column_index"
+        ).fetchall()
+        assert columns == [("id",)]
+    finally:
+        connection.close()
