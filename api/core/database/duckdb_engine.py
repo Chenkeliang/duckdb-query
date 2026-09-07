@@ -236,6 +236,44 @@ def _apply_perf_and_remote_settings(connection, app_config) -> None:
                     "Failed to apply remote config %s: %s", setting_key, remote_error
                 )
 
+    _enforce_optimizer_safety(connection)
+
+
+def _enforce_optimizer_safety(connection) -> None:
+    """Disable v2 optimizers whose result semantics are not yet verified.
+
+    DuckDB v2.0.0-alpha39998 with mysql_scanner 1b7a31b95b can rewrite a
+    ``SUM(DECIMAL)`` into ``mysql_query`` and return a rounded DOUBLE even
+    though ``DESCRIBE`` reports DECIMAL.  This runs after user-provided remote
+    settings so an empty ``disabled_optimizers`` value cannot re-enable the
+    unsafe path.  Existing disabled optimizer choices are preserved.
+
+    A future engine/extension combination must pass the real MySQL semantic
+    matrix before ``remote_pushdown`` is removed from this fail-closed set.
+    """
+    version = str(connection.execute("SELECT version()").fetchone()[0])
+    if not version.startswith("v2."):
+        return
+
+    row = connection.execute(
+        "SELECT value FROM duckdb_settings() WHERE name='disabled_optimizers'"
+    ).fetchone()
+    disabled = {
+        item.strip()
+        for item in str(row[0] if row else "").split(",")
+        if item.strip()
+    }
+    disabled.add("remote_pushdown")
+    connection.execute(
+        "SET disabled_optimizers=?",
+        [",".join(sorted(disabled))],
+    )
+    logger.info(
+        "Applied verified optimizer safety policy for %s: %s",
+        version,
+        ",".join(sorted(disabled)),
+    )
+
 
 def _apply_duckdb_configuration(connection, temp_dir: str):
     """
