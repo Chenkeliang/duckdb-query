@@ -58,7 +58,7 @@ fail-closed SQL classification when available and retain a conservative local
 fallback for older DuckQuery backends.
 
 Version 0.4.0 is available from PyPI, and its wheel is also attached to the
-[DuckQuery v2.0.0 prerelease](https://github.com/Chenkeliang/duckdb-query/releases/tag/v2.0.0).
+[DuckQuery v2.0.0 release](https://github.com/Chenkeliang/duckdb-query/releases/tag/v2.0.0).
 
 High-level tools (query, the AI agent tools below, discover, add sources,
 configure LLM, transform, export) plus a generic `duckquery_request` passthrough.

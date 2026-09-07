@@ -138,7 +138,7 @@ jobs:
           releaseName: "DuckQuery v__VERSION__"
           releaseBody: ${{ steps.release_notes.outputs.body }}
           releaseDraft: true
-          prerelease: true
+          prerelease: false
           args: --target ${{ matrix.rust_target }} --bundles ${{ matrix.bundles }}
 
       # ---- 离线全量包(第二资产,不进更新通道) ----
