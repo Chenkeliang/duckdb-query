@@ -23,16 +23,25 @@ def _features(contract):
 def test_contract_is_explicit_per_surface_and_matches_runtime():
     contract = current_capability_contract()
     features = _features(contract)
-    assert contract["contract_version"] == 1
+    assert contract["contract_version"] == 2
     assert contract["product_version"] == "2.0.0"
     assert contract["engine"]["version"].startswith("v2.0.0-alpha")
     assert contract["engine"]["release_stage"] == "preview"
+    assert contract["engine"]["platform"]
+    assert "core_functions" in contract["engine"]["extensions"]
+    assert contract["optimizer_policy"]["remote_pushdown"] == {
+        "status": "blocked",
+        "reason_code": "SEMANTIC_MATRIX_NOT_VERIFIED",
+        "reason": "Automatic remote pushdown is disabled to preserve result types and numeric precision",
+    }
     assert contract["mcp"]["package_version"] == "0.4.0"
     assert features["approx_nearest"]["direct_sql"]["status"] == "supported"
     assert features["approx_nearest"]["agent"]["status"] == "blocked"
     assert features["variant_and_json_mutation"]["agent"]["status"] == "supported"
     assert features["dml_in_cte"]["mcp"]["status"] == "blocked"
     assert features["triggers"]["engine"]["status"] == "supported"
+    assert features["storage_v2"]["engine"]["status"] == "supported"
+    assert features["automatic_remote_pushdown"]["direct_sql"]["status"] == "blocked"
     for feature_id in ("connect_and_quack", "custom_extension_repository", "stable_c_api"):
         assert features[feature_id]["engine"]["status"] == "blocked"
 
@@ -108,7 +117,7 @@ def test_capability_endpoint_and_fail_closed_sql_classifier():
     client = TestClient(app)
     response = client.get("/api/capabilities")
     assert response.status_code == 200
-    assert response.json()["data"]["contract_version"] == 1
+    assert response.json()["data"]["contract_version"] == 2
 
     for sql in (
         "SELECT '; LIMIT' AS value",

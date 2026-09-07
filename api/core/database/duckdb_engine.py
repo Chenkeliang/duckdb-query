@@ -286,6 +286,15 @@ def _enforce_optimizer_safety(connection) -> None:
     version = str(connection.execute("SELECT version()").fetchone()[0])
     if not version.startswith("v2."):
         return
+    from core.common.duckdb_capabilities import (  # pylint: disable=import-outside-toplevel
+        extension_manifest_from_connection,
+        remote_pushdown_verified,
+    )
+
+    platform = str(connection.execute("PRAGMA platform").fetchone()[0])
+    extensions = extension_manifest_from_connection(connection)
+    if remote_pushdown_verified(version, platform, extensions):
+        return
 
     row = connection.execute(
         "SELECT value FROM duckdb_settings() WHERE name='disabled_optimizers'"

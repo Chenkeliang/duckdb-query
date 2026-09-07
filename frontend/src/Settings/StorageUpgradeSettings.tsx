@@ -7,6 +7,7 @@ import { Button } from '@/components/ui/button';
 import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
 import { OPEN_STORAGE_UPGRADE_EVENT } from '@/components/MajorVersionNotice';
 import { useStorageUpgrade } from '@/hooks/useStorageUpgrade';
+import { useDuckDBCapabilities } from '@/hooks/useDuckDBCapabilities';
 import { inspectStorageBackup, openStorageBackup, getResourceBudget } from '@/api';
 import { isTauri } from '@/desktop/openExternal';
 import { showErrorToast } from '@/utils/toastHelpers';
@@ -14,6 +15,7 @@ import { showErrorToast } from '@/utils/toastHelpers';
 export function StorageUpgradeSettings() {
   const { t, i18n } = useTranslation('common');
   const { data, isPending } = useStorageUpgrade();
+  const capabilities = useDuckDBCapabilities();
   const [showReport, setShowReport] = useState(false);
   const [showRecovery, setShowRecovery] = useState(false);
   const backup = useQuery({ queryKey: ['storage-backup'], queryFn: inspectStorageBackup, enabled: showRecovery, retry: false });
@@ -44,6 +46,30 @@ export function StorageUpgradeSettings() {
         </CardDescription>
       </CardHeader>
       <CardContent className="space-y-4">
+        {capabilities.data && (
+          <div className="rounded-lg border border-border bg-muted/20 p-3 text-sm">
+            <div className="font-medium">
+              {t('settings.storageUpgrade.capabilityTitle')}
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">
+              {t('settings.storageUpgrade.capabilityRuntime', {
+                version: capabilities.data.engine.version,
+                stage: t(
+                  capabilities.data.engine.release_stage === 'preview'
+                    ? 'settings.storageUpgrade.stagePreview'
+                    : 'settings.storageUpgrade.stageStable'
+                ),
+              })}
+            </div>
+            <div className="mt-1 text-xs text-muted-foreground">
+              {t(
+                capabilities.data.optimizer_policy.remote_pushdown?.status === 'supported'
+                  ? 'settings.storageUpgrade.optimizerVerified'
+                  : 'settings.storageUpgrade.optimizerSafe'
+              )}
+            </div>
+          </div>
+        )}
         {budget.data && (
           <div className="rounded-lg border border-border bg-muted/20 p-3 text-sm">
             <div className="font-medium">{t('settings.storageUpgrade.budgetTitle')}</div>

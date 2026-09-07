@@ -1292,6 +1292,12 @@
       "loadFailed": "Failed to load engine compatibility settings"
     },
     "storageUpgrade": {
+      "capabilityTitle": "Runtime capabilities",
+      "capabilityRuntime": "DuckDB {{version}} · {{stage}}",
+      "stagePreview": "Preview",
+      "stageStable": "Stable",
+      "optimizerSafe": "Remote optimization is enabled only after result semantics are verified. The safe execution path is active.",
+      "optimizerVerified": "Remote optimization is verified for this engine, extension, and platform.",
       "budgetTitle": "Resource budget",
       "statusUnavailable": "Database status is unavailable; backup checks remain accessible.",
       "budgetValues": "Engine memory {{memory}} GiB · Spill limit {{temp}} GiB · Up to {{concurrent}} user DB connections · {{reserve}} MiB disk reserve",

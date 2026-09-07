@@ -236,6 +236,16 @@ export {
     type AgentLimitsInfo,
 } from './agentApi';
 
+// ==================== DuckDB Capability Contract ====================
+export {
+    getDuckDBCapabilities,
+    type CapabilityStatus,
+    type CapabilitySurface,
+    type DuckDBExtensionIdentity,
+    type DuckDBFeatureCapability,
+    type DuckDBCapabilityContract,
+} from './capabilitiesApi';
+
 // ==================== Engine Compat API ====================
 export {
     getEngineCompat,

@@ -1292,6 +1292,12 @@
       "loadFailed": "获取引擎兼容性配置失败"
     },
     "storageUpgrade": {
+      "capabilityTitle": "运行时能力",
+      "capabilityRuntime": "DuckDB {{version}} · {{stage}}",
+      "stagePreview": "预览版",
+      "stageStable": "稳定版",
+      "optimizerSafe": "远端优化仅在通过结果语义验证后启用，当前使用安全执行路径。",
+      "optimizerVerified": "远端优化已通过当前引擎、扩展和平台的结果语义验证。",
       "budgetTitle": "资源预算",
       "statusUnavailable": "数据库状态暂不可用，可继续检查备份。",
       "budgetValues": "引擎内存 {{memory}} GiB · 溢写上限 {{temp}} GiB · 最多 {{concurrent}} 个用户库连接 · 磁盘至少保留 {{reserve}} MiB",
