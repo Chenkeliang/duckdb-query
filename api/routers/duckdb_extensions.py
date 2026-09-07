@@ -463,6 +463,11 @@ def _run_extension_install(name: str) -> None:
                     )
 
         _set_install_state(name, status="done", progress=100, error=None)
+        from core.common.duckdb_capabilities import (  # pylint: disable=import-outside-toplevel
+            current_capability_contract,
+        )
+
+        current_capability_contract.cache_clear()
         logger.info("DuckDB extension %s installed successfully", name)
 
     except Exception as exc:

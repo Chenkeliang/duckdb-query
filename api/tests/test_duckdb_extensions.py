@@ -501,6 +501,7 @@ class TestInstallProgressStateMachine:
 
     def test_install_reaches_done_with_mocked_download(self):
         fake_payload = gzip.compress(b"fake-duckdb-extension-bytes")
+        from core.common.duckdb_capabilities import current_capability_contract
 
         fake_response = MagicMock()
         fake_response.headers = {"Content-Length": str(len(fake_payload))}
@@ -517,7 +518,9 @@ class TestInstallProgressStateMachine:
                 return_value=fake_response,
             ), patch.object(
                 duckdb_extensions.threading, "Thread", _ImmediateThread
-            ):
+            ), patch.object(
+                current_capability_contract, "cache_clear"
+            ) as clear_capabilities:
                 bind_mock_duckdb_pool(mock_pool, mock_con)
                 response = client.post("/api/duckdb/extensions/fts/install")
                 assert response.status_code == 200
@@ -526,6 +529,7 @@ class TestInstallProgressStateMachine:
             assert state["status"] == "done"
             assert state["progress"] == 100
             assert state["error"] is None
+            clear_capabilities.assert_called_once_with()
 
             dest_path = os.path.join(ext_dir, "v1.5.3", "osx_arm64", "fts.duckdb_extension")
             assert os.path.exists(dest_path)

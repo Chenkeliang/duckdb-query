@@ -21,6 +21,7 @@ import {
   type ExtensionCategory,
   type ExtensionInstallStatus,
 } from '@/api';
+import { DUCKDB_CAPABILITIES_QUERY_KEY } from '@/hooks/useDuckDBCapabilities';
 import { ExtensionCard } from './ExtensionCard';
 
 const POLL_INTERVAL_MS = 500;
@@ -93,6 +94,7 @@ export function ExtensionsPage() {
           t('extensions.installSuccess', '{{name}} 安装成功', { name })
         );
         void queryClient.invalidateQueries({ queryKey: ['duckdb-extensions'] });
+        void queryClient.invalidateQueries({ queryKey: DUCKDB_CAPABILITIES_QUERY_KEY });
         setInstallingNames((current) => current.filter((item) => item !== name));
       } else if (status.status === 'error') {
         settledNames.current.add(name);

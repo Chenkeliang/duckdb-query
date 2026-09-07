@@ -63,7 +63,7 @@ export function StorageUpgradeSettings() {
             </div>
             <div className="mt-1 text-xs text-muted-foreground">
               {t(
-                capabilities.data.optimizer_policy.remote_pushdown?.status === 'supported'
+                capabilities.data.optimizer_policy?.remote_pushdown?.status === 'supported'
                   ? 'settings.storageUpgrade.optimizerVerified'
                   : 'settings.storageUpgrade.optimizerSafe'
               )}

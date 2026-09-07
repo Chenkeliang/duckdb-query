@@ -34,7 +34,7 @@ export interface DuckDBCapabilityContract {
     platform: string;
     extensions: Record<string, DuckDBExtensionIdentity>;
   };
-  optimizer_policy: Record<
+  optimizer_policy?: Record<
     string,
     { status: CapabilityStatus; reason_code: string | null; reason: string | null }
   >;

@@ -159,6 +159,7 @@ describe('ExtensionsPage', () => {
   });
 
   it('clicking install shows progress, then flips to installed once done', async () => {
+    const invalidate = vi.spyOn(QueryClient.prototype, 'invalidateQueries');
     installDuckDBExtension.mockResolvedValue(undefined);
     getDuckDBExtensionInstallStatus
       .mockResolvedValueOnce({
@@ -196,6 +197,9 @@ describe('ExtensionsPage', () => {
     );
 
     expect(getDuckDBExtensionInstallStatus).toHaveBeenCalledWith('sqlite_scanner');
+    expect(invalidate).toHaveBeenCalledWith({
+      queryKey: ['duckdb-capabilities'],
+    });
   });
 
   it('shows an error toast and restores the install button on failure', async () => {
