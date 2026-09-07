@@ -171,9 +171,14 @@ def build_attach_sql(alias: str, db_config: Dict[str, Any]) -> str:
         if not username:
             raise ValueError("MySQL connection missing username parameter (user or username)")
         # MySQL 连接字符串格式
-        conn_str = f"host={db_config['host']} user={username} password={db_config.get('password', '')} database={db_config['database']}"
+        conn_parts = [f"host={db_config['host']}", f"user={username}"]
+        password = db_config.get("password")
+        if password not in (None, ""):
+            conn_parts.append(f"password={password}")
+        conn_parts.append(f"database={db_config['database']}")
         if db_config.get('port'):
-            conn_str += f" port={db_config['port']}"
+            conn_parts.append(f"port={db_config['port']}")
+        conn_str = " ".join(conn_parts)
         # 整个连接串是单引号 SQL 字面量,必须转义单引号——否则含 ' 的密码/主机
         # 名可突破字面量注入(DuckDB 解析层还原 '' 后驱动仍拿到正确值)
         return (

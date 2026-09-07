@@ -217,6 +217,26 @@ class TestBuildAttachSQL:
         assert 'host=localhost' in sql
         assert 'port=' not in sql
 
+    def test_mysql_empty_password_omits_the_option(self):
+        """Regression 2026-09-07: mysql_scanner rejects an empty
+        ``password=`` token, while omitting it correctly selects no password."""
+        from core.database.duckdb_engine import build_attach_sql
+
+        sql = build_attach_sql(
+            "mysql_db",
+            {
+                "type": "mysql",
+                "host": "localhost",
+                "username": "root",
+                "password": "",
+                "database": "testdb",
+                "port": 3306,
+            },
+        )
+
+        assert "password=" not in sql
+        assert "port=3306" in sql
+
     def test_postgres_without_port(self):
         """测试 PostgreSQL 不带端口的情况"""
         from core.database.duckdb_engine import build_attach_sql
