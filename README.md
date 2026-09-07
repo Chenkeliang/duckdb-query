@@ -48,6 +48,7 @@
 - 扩展管理区分 UI 名、`LOAD` 名与实际 artifact；MySQL / PostgreSQL 扩展可在关闭 autoinstall 后离线加载；
 - 内置且正常的 Excel 扩展不再重复展示，缺失时仍可从扩展页修复；
 - About 页分别展示应用版本、Python DuckDB 包、实际 engine 和 storage compatibility；浏览器 Demo 单独展示自己的 Wasm engine。
+- Agent 与 MCP 读取同一份版本化能力契约；MCP 0.4.0 使用后端安全分类并兼容缺少该接口的旧后端。
 
 升级注意事项：
 
@@ -114,7 +115,7 @@
 <tr>
   <td><strong>MCP 自动化</strong></td>
   <td>希望 Claude Code、Codex、Cursor、OpenCode、Pi 等 AI 编程工具直接访问本机数据源</td>
-  <td>以 MCP 协议开放 24 个工具，提供 <code>read-only</code> / <code>normal</code> / <code>full</code> 三种权限模式</td>
+  <td>以 MCP 协议开放 25 个工具，提供 <code>read-only</code> / <code>normal</code> / <code>full</code> 三种权限模式</td>
 </tr>
 </table>
 

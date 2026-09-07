@@ -107,6 +107,26 @@ DuckDB 2.0 原样读取，不在启动时静默改写。显式迁移后不支持
 
 ### 4.1 后端 SQL 能力判定
 
+`GET /api/capabilities` 是唯一能力契约，当前 `contract_version=1`。每项能力分别声明
+engine、direct SQL、Agent、MCP 状态及扩展依赖；调用方不得从 engine 版本号直接推断
+其他执行面。Agent 将同一契约渲染进系统提示，MCP 0.4.0 暴露 `get_capabilities`。
+
+`POST /api/sql/classify` 是远程安全分类入口。MCP 的 `run_sql` 与 `federated_query`
+优先采用该结果进行确认门控；连接旧后端遇到 404 时才回退到包内保守分类。后端查询
+端点仍独立执行自己的安全校验，MCP 的分类不是绕过授权的凭据。
+
+当前能力边界：
+
+| 能力 | 手写 SQL | Agent | MCP |
+|---|---|---|---|
+| `APPROX NEAREST` / `USING KEY` / `FETCH` | 支持 | 暂时阻止 | 支持 |
+| VARIANT / JSON mutation / `lambda x:` | 支持 | 支持 | 支持 |
+| DML-in-CTE / Triggers / `CONNECT` / 自定义扩展仓库 | 阻止 | 阻止 | 阻止 |
+
+Agent 暂时阻止前三种新语法，是因为 sqlglot 尚不能为它们提供可靠的物理表与作用域
+审计；DuckDB parser 能执行不等于可以安全放入 Agent 自动探查。这里采用显式能力降级，
+不以字符串扫描替代授权检查。
+
 新增纯后端公共模块，提供：
 
 - 单语句解析；

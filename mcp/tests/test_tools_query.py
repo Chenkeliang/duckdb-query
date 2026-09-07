@@ -10,6 +10,8 @@ from duckquery_mcp.tools.query import run_sql
 async def test_run_sql_returns_rows(cfg):
     respx.get("http://127.0.0.1:48001/health").mock(
         return_value=httpx.Response(200, json={"status": "healthy"}))
+    respx.post("http://127.0.0.1:48001/api/sql/classify").mock(
+        return_value=httpx.Response(200, json={"success": True, "data": {"read_only": True}}))
     respx.post("http://127.0.0.1:48001/api/duckdb/execute").mock(
         return_value=httpx.Response(200, json={
             "success": True,
@@ -27,6 +29,8 @@ async def test_run_sql_truncates(cfg):
     cfg = cfg.__class__(**{**cfg.__dict__, "row_cap": 2})
     respx.get("http://127.0.0.1:48001/health").mock(
         return_value=httpx.Response(200, json={"status": "healthy"}))
+    respx.post("http://127.0.0.1:48001/api/sql/classify").mock(
+        return_value=httpx.Response(200, json={"success": True, "data": {"read_only": True}}))
     respx.post("http://127.0.0.1:48001/api/duckdb/execute").mock(
         return_value=httpx.Response(200, json={
             "success": True,
@@ -64,6 +68,8 @@ async def test_run_sql_requires_confirm_for_write_in_normal_mode(cfg):
 async def test_run_sql_write_proceeds_with_confirm_true(cfg):
     respx.get("http://127.0.0.1:48001/health").mock(
         return_value=httpx.Response(200, json={"status": "healthy"}))
+    respx.post("http://127.0.0.1:48001/api/sql/classify").mock(
+        return_value=httpx.Response(200, json={"success": True, "data": {"read_only": False}}))
     route = respx.post("http://127.0.0.1:48001/api/duckdb/execute").mock(
         return_value=httpx.Response(200, json={
             "success": True,
@@ -89,6 +95,8 @@ async def test_run_sql_read_query_never_needs_confirm(cfg):
     with respx.mock:
         respx.get("http://127.0.0.1:48001/health").mock(
             return_value=httpx.Response(200, json={"status": "healthy"}))
+        respx.post("http://127.0.0.1:48001/api/sql/classify").mock(
+            return_value=httpx.Response(200, json={"success": True, "data": {"read_only": True}}))
         respx.post("http://127.0.0.1:48001/api/duckdb/execute").mock(
             return_value=httpx.Response(200, json={
                 "success": True,
@@ -97,6 +105,31 @@ async def test_run_sql_read_query_never_needs_confirm(cfg):
         client = DuckQueryClient(cfg)
         out = await run_sql(client, cfg, sql="SELECT 1 AS n")
         assert "error" not in out
+
+
+@respx.mock
+async def test_backend_classifier_overrides_mcp_fallback(cfg):
+    """2026-09-07: MCP must not bypass a stricter backend classification."""
+    base = "http://127.0.0.1:48001"
+    respx.get(f"{base}/health").mock(return_value=httpx.Response(200, json={"status": "healthy"}))
+    respx.post(f"{base}/api/sql/classify").mock(return_value=httpx.Response(200, json={
+        "success": True, "data": {"read_only": False}}))
+    execute = respx.post(f"{base}/api/duckdb/execute")
+    out = await run_sql(DuckQueryClient(cfg), cfg, sql="PRAGMA user_agent")
+    assert "confirm" in out["error"].lower()
+    assert not execute.called
+
+
+@respx.mock
+async def test_old_backend_falls_back_to_local_classifier(cfg):
+    """MCP 0.4 remains usable with an older backend lacking the classifier."""
+    base = "http://127.0.0.1:48001"
+    respx.get(f"{base}/health").mock(return_value=httpx.Response(200, json={"status": "healthy"}))
+    respx.post(f"{base}/api/sql/classify").mock(return_value=httpx.Response(404, json={"detail": "Not Found"}))
+    respx.post(f"{base}/api/duckdb/execute").mock(return_value=httpx.Response(200, json={
+        "success": True, "data": {"columns": ["n"], "data": [{"n": 1}], "row_count": 1}}))
+    out = await run_sql(DuckQueryClient(cfg), cfg, sql="SELECT 1 AS n")
+    assert out["rows"] == [{"n": 1}]
 
 
 # ============ 统一 Agent 工具:全部走 POST /api/ai/agent/run(mode 判别) ============

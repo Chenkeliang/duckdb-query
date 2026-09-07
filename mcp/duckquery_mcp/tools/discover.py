@@ -1,6 +1,16 @@
 from typing import Any
 
 
+async def get_capabilities(client, cfg) -> Any:
+    """Return DuckQuery's versioned engine/Agent/MCP capability contract.
+
+    Read this before generating DuckDB 2.0-specific SQL. A feature is usable on a
+    surface only when that surface reports ``status=supported``; never infer support
+    from the engine version alone.
+    """
+    return await client.call("GET", "/api/capabilities")
+
+
 async def list_tables(client, cfg) -> Any:
     """List DuckDB tables currently loaded in the local engine."""
     return await client.call("GET", "/api/duckdb/tables")

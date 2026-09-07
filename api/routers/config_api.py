@@ -2,6 +2,8 @@ import duckdb
 from fastapi import APIRouter
 from pydantic import BaseModel
 from core.common.exceptions import ValidationError as APIValidationError
+from core.common.duckdb_capabilities import current_capability_contract
+from core.common.sql_capabilities import is_read_only_sql
 from utils.response_helpers import create_success_response, MessageCode
 from core.common.config_manager import config_manager
 from core.database.duckdb_engine import (
@@ -52,6 +54,10 @@ class StorageUpgradeConfirmation(BaseModel):
     confirm_no_downgrade: bool = False
 
 
+class SQLClassificationRequest(BaseModel):
+    sql: str
+
+
 def _remote_storage_configured(app_config) -> bool:
     settings = getattr(app_config, "duckdb_remote_settings", None) or {}
     if not isinstance(settings, dict):
@@ -71,6 +77,29 @@ def _duckdb_versions() -> tuple[str, str]:
     finally:
         connection.close()
     return str(duckdb.__version__), engine_version
+
+
+@router.get("/api/capabilities", tags=["Config"])
+def get_capabilities():
+    """Return the versioned capability contract used by every execution surface."""
+    return create_success_response(
+        data=current_capability_contract(),
+        message_code=MessageCode.OPERATION_SUCCESS,
+    )
+
+
+@router.post("/api/sql/classify", tags=["Config"])
+def classify_sql(payload: SQLClassificationRequest):
+    """Classify unknown or mutating SQL fail-closed for remote safety gates."""
+    read_only = is_read_only_sql(payload.sql)
+    return create_success_response(
+        data={
+            "classification": "read-only" if read_only else "mutation-or-unknown",
+            "read_only": read_only,
+            "requires_confirmation": not read_only,
+        },
+        message_code=MessageCode.OPERATION_SUCCESS,
+    )
 
 
 def _database_storage_version(connection) -> str:

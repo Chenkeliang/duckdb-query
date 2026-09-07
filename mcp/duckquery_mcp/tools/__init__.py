@@ -45,6 +45,7 @@ def register_all(mcp: FastMCP, client: DuckQueryClient, cfg: Config) -> None:
         return deco
 
     add("read")(discover.list_tables)
+    add("read")(discover.get_capabilities)
     add("read")(discover.describe_table)
     add("read")(discover.list_connections)
     add("read")(discover.list_db_objects)

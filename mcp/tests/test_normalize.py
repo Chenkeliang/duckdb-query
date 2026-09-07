@@ -76,6 +76,8 @@ async def test_federated_query_strips_connection_id_via_registration(cfg):
     """回归:federated_query 自身不再做归一化,必须由注册闭包代劳。"""
     base = "http://127.0.0.1:48001"
     respx.get(f"{base}/health").mock(return_value=httpx.Response(200, json={"status": "healthy"}))
+    respx.post(f"{base}/api/sql/classify").mock(return_value=httpx.Response(200, json={
+        "success": True, "data": {"read_only": True}}))
     route = respx.post(f"{base}/api/duckdb/federated-query").mock(
         return_value=httpx.Response(200, json={"success": True, "data": {
             "columns": ["n"], "data": [{"n": 1}], "row_count": 1}}))

@@ -51,6 +51,12 @@ Windows: `%APPDATA%\Claude\claude_desktop_config.json`):
 
 ## Tools
 
+MCP package version 0.4.0 adds `get_capabilities`. Call it before emitting
+DuckDB 2.0-specific SQL: it reports engine support separately from direct SQL,
+Agent, and MCP policy support. `run_sql` and `federated_query` use the backend's
+fail-closed SQL classification when available and retain a conservative local
+fallback for older DuckQuery backends.
+
 High-level tools (query, the AI agent tools below, discover, add sources,
 configure LLM, transform, export) plus a generic `duckquery_request` passthrough.
 Safety mode gates which tools are exposed:
