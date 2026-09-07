@@ -28,12 +28,22 @@ os.environ.setdefault("DUCKDB_DATA_DIR", str(_duck_base))
 os.environ.setdefault("DUCKDB_DATABASE_PATH", str(_duck_base / "main.db"))
 
 
-def pytest_sessionfinish(session, exitstatus):
-    """Close shared DuckDB state before nanobind runs its exit diagnostics."""
-    del session, exitstatus
+def _shutdown_duckdb_test_state() -> None:
     try:
         from core.database.duckdb_pool import shutdown_all_duckdb_connections
 
         shutdown_all_duckdb_connections()
     finally:
         gc.collect()
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """Close shared DuckDB state after tests have stopped using it."""
+    del session, exitstatus
+    _shutdown_duckdb_test_state()
+
+
+def pytest_unconfigure(config):
+    """Repeat cleanup after plugin teardown, immediately before interpreter exit."""
+    del config
+    _shutdown_duckdb_test_state()

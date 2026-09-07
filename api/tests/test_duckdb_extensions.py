@@ -309,7 +309,7 @@ class TestBuildAttachSQL:
         sql = build_attach_sql('mysql_db', config)
         
         assert 'TYPE mysql' in sql
-        assert 'password=' in sql
+        assert 'password=' not in sql
 
 
 class TestExtensionLoading:
