@@ -18,7 +18,7 @@
 
 <p align="center">
   <a href="https://github.com/Chenkeliang/duckdb-query/releases/latest"><strong>Download Stable</strong></a>
-  · <a href="https://github.com/Chenkeliang/duckdb-query/releases">2.0 Preview releases (download when published)</a>
+  · <a href="https://github.com/Chenkeliang/duckdb-query/releases">All releases</a>
   · <a href="#get-started">Docker Self-hosting</a>
   · <a href="README.md">中文</a>
 </p>
@@ -48,7 +48,8 @@ What this release adds:
 - extension metadata that separates UI, `LOAD`, and artifact names; MySQL/PostgreSQL artifacts are verified with autoinstall disabled;
 - healthy bundled Excel is hidden from the optional-extension page, while a missing artifact remains repairable;
 - explicit app, Python package, engine, and storage versions in About; the browser demo reports its independent Wasm engine.
-- a versioned capability contract shared by Agent and MCP; MCP 0.4.0 uses backend SQL classification and falls back safely with older backends. Version 0.4.0 is available from both PyPI and the v2.0.0 prerelease.
+- a versioned capability contract shared by Agent and MCP; MCP 0.4.0 uses backend SQL classification and falls back safely with older backends. Version 0.4.0 is available from both PyPI and the v2.0.0 release.
+- external DuckDB tables now preserve their catalog in zero/multiple-column pivot modes; storage migration uses durable recovery markers and restores the complete database/WAL set after interruption or any database failure.
 
 Upgrade notes:
 

@@ -18,7 +18,7 @@
 
 <p align="center">
   <a href="https://github.com/Chenkeliang/duckdb-query/releases/latest"><strong>下载稳定版</strong></a>
-  · <a href="https://github.com/Chenkeliang/duckdb-query/releases">2.0 Preview 发布列表（发布后可下载）</a>
+  · <a href="https://github.com/Chenkeliang/duckdb-query/releases">全部版本</a>
   · <a href="#立即开始">Docker 自托管</a>
   · <a href="README_en.md">English</a>
 </p>
@@ -48,7 +48,8 @@
 - 扩展管理区分 UI 名、`LOAD` 名与实际 artifact；MySQL / PostgreSQL 扩展可在关闭 autoinstall 后离线加载；
 - 内置且正常的 Excel 扩展不再重复展示，缺失时仍可从扩展页修复；
 - About 页分别展示应用版本、Python DuckDB 包、实际 engine 和 storage compatibility；浏览器 Demo 单独展示自己的 Wasm engine。
-- Agent 与 MCP 读取同一份版本化能力契约；MCP 0.4.0 使用后端安全分类并兼容缺少该接口的旧后端。PyPI 与 v2.0.0 Pre-release 均已提供 0.4.0。
+- Agent 与 MCP 读取同一份版本化能力契约；MCP 0.4.0 使用后端安全分类并兼容缺少该接口的旧后端。PyPI 与 v2.0.0 Release 均已提供 0.4.0。
+- 修复外部 DuckDB 连接表在透视表零列/多列模式下丢失 catalog 的问题；迁移采用持久化恢复标记，进程中断或任一数据库失败时整套恢复数据库与 WAL。
 
 升级注意事项：
 
