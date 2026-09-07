@@ -73,6 +73,9 @@ def test_system_connection_close_is_idempotent():
 def test_shutdown_all_duckdb_connections_does_not_create_a_pool_on_its_own(monkeypatch):
     """进程还没碰过任何一次查询（全局连接池从未初始化）时调用 shutdown，不应该现开一个新
     连接池/新连接——那只是白白打开又立刻关闭，没有意义。"""
+    existing = pool_module._connection_pool
+    if existing is not None:
+        existing.close_all()
     monkeypatch.setattr(pool_module, "_connection_pool", None)
 
     shutdown_all_duckdb_connections()
@@ -81,6 +84,9 @@ def test_shutdown_all_duckdb_connections_does_not_create_a_pool_on_its_own(monke
 
 
 def test_shutdown_all_duckdb_connections_closes_an_existing_pool(monkeypatch):
+    existing = pool_module._connection_pool
+    if existing is not None:
+        existing.close_all()
     p = DuckDBConnectionPool(min_connections=1, max_connections=2)
     monkeypatch.setattr(pool_module, "_connection_pool", p)
     try:
