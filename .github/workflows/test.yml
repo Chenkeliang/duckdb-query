@@ -9,7 +9,7 @@ on:
 
 jobs:
   backend-test:
-    name: Backend Pytest (DuckDB 2.0)
+    name: Backend Pytest
     runs-on: ubuntu-latest
     timeout-minutes: 30
 
