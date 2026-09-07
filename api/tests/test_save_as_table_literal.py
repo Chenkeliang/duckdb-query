@@ -91,3 +91,26 @@ def test_publication_failure_reuses_materialized_preview(monkeypatch):
     assert error == "publication failed"
     assert con.execute("SELECT currval('publish_once')").fetchone() == (1,)
     assert con.execute("SHOW TABLES").fetchall() == []
+
+
+def test_local_inline_save_preview_preserves_explicit_order():
+    """Regression 2026-09-07: local parallel CTAS cannot scramble preview."""
+    con = duckdb.connect(":memory:")
+    con.execute("SET threads=8")
+    con.execute("SET preserve_insertion_order=false")
+
+    columns, rows, *_types, saved, error = _run_query_maybe_save(
+        con,
+        "SELECT range AS id FROM range(1000000) ORDER BY id DESC",
+        "local_ordered_result",
+        3,
+    )
+
+    assert columns == ["id"]
+    assert rows == [{"id": 999999}, {"id": 999998}, {"id": 999997}]
+    assert saved == "local_ordered_result"
+    assert error is None
+    assert con.execute(
+        "SELECT column_name FROM duckdb_columns() "
+        "WHERE table_name='local_ordered_result' ORDER BY column_index"
+    ).fetchall() == [("id",)]

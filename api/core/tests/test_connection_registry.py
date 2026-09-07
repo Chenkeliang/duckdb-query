@@ -97,6 +97,18 @@ class TestConnectionRegistry(unittest.TestCase):
             self.registry.register_remote_interrupt("missing", Mock())
         )
 
+    def test_register_remote_interrupt_rejects_cancelled_task(self):
+        connection = MagicMock()
+        callback = Mock()
+        task_id = "cancelled-before-remote-registration"
+        self.registry.register(task_id, connection, "SELECT 1")
+        self.assertTrue(self.registry.interrupt_with_remote(task_id))
+
+        self.assertFalse(
+            self.registry.register_remote_interrupt(task_id, callback)
+        )
+        callback.assert_not_called()
+
     def test_interrupt_with_remote_accepts_successful_remote_fallback(self):
         """本地 interrupt 失败时，远端已成功终止查询仍应报告取消已提交。"""
         conn = MagicMock()

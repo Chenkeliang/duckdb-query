@@ -19,9 +19,11 @@ import {
 import { Braces } from 'lucide-react';
 import type { CellRendererProps } from '../types';
 
-export const JSON_FORMAT_LIMIT = 1_000_000;
+export const JSON_FORMAT_LIMIT = 100_000;
 export const JSON_VISIBLE_CHARACTER_LIMIT = 200_000;
 export const JSON_PATH_PARSE_LIMIT = 500_000;
+export const JSON_MAX_NESTING_DEPTH = 256;
+export const JSON_FORMATTED_OUTPUT_BUDGET = 500_000;
 
 export interface JsonViewerText {
   text: string;
@@ -33,6 +35,70 @@ export interface JsonPointerEntry {
   id: string;
   pointer: string;
   label: string;
+}
+
+function exceedsJsonNestingBudget(
+  text: string,
+  maxDepth = JSON_MAX_NESTING_DEPTH
+): boolean {
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (const character of text) {
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (character === '\\') {
+        escaped = true;
+      } else if (character === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (character === '"') {
+      inString = true;
+    } else if (character === '{' || character === '[') {
+      depth += 1;
+      if (depth > maxDepth) return true;
+    } else if (character === '}' || character === ']') {
+      depth = Math.max(0, depth - 1);
+    }
+  }
+  return false;
+}
+
+function exceedsJsonFormattingBudget(text: string): boolean {
+  let depth = 0;
+  let estimatedCharacters = text.length;
+  let inString = false;
+  let escaped = false;
+  for (const character of text) {
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (character === '\\') {
+        escaped = true;
+      } else if (character === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (character === '"') {
+      inString = true;
+    } else if (character === '{' || character === '[') {
+      depth += 1;
+      estimatedCharacters += depth * 2 + 1;
+    } else if (character === '}' || character === ']') {
+      depth = Math.max(0, depth - 1);
+      estimatedCharacters += depth * 2 + 1;
+    } else if (character === ',') {
+      estimatedCharacters += depth * 2 + 1;
+    } else if (character === ':') {
+      estimatedCharacters += 1;
+    }
+    if (estimatedCharacters > JSON_FORMATTED_OUTPUT_BUDGET) return true;
+  }
+  return false;
 }
 
 export function isJsonViewable(value: unknown): boolean {
@@ -68,7 +134,11 @@ export function isJsonViewable(value: unknown): boolean {
 export function toFormattedJson(value: unknown): string {
   if (typeof value === 'string') {
     const trimmed = value.trim();
-    if (trimmed.length > JSON_FORMAT_LIMIT) return value;
+    if (
+      trimmed.length > JSON_FORMAT_LIMIT ||
+      exceedsJsonNestingBudget(trimmed) ||
+      exceedsJsonFormattingBudget(trimmed)
+    ) return value;
     try {
       // Validate with the platform parser, but keep the original text as the
       // formatting source. Parsing and stringifying would round large JSON
@@ -124,12 +194,22 @@ export function listJsonPointerPaths(
   maxEntries = 200
 ): JsonPointerEntry[] {
   const raw = toRawJsonText(value).trim();
-  if (!raw || raw.length > JSON_PATH_PARSE_LIMIT || maxEntries <= 0) return [];
+  if (
+    !raw ||
+    raw.length > JSON_PATH_PARSE_LIMIT ||
+    maxEntries <= 0 ||
+    exceedsJsonNestingBudget(raw)
+  ) return [];
   const errors: ParseError[] = [];
-  const root = parseTree(raw, errors, {
-    allowTrailingComma: false,
-    disallowComments: true,
-  });
+  let root: JsonNode | undefined;
+  try {
+    root = parseTree(raw, errors, {
+      allowTrailingComma: false,
+      disallowComments: true,
+    });
+  } catch {
+    return [];
+  }
   if (!root || errors.length > 0) return [];
 
   const entries: JsonPointerEntry[] = [];

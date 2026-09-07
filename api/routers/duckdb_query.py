@@ -50,9 +50,10 @@ from core.database.duckdb_engine import (
 from core.database.federated_attach import (
     attach_databases_on_connection,
     configure_mysql_fresh_connections,
-    create_query_staging_table,
+    create_ordered_query_staging_table,
     detach_databases_on_connection,
     drop_query_staging_table,
+    finalize_query_if_not_cancelled,
     remote_cancellation_scope,
     publish_query_staging_table,
     resolve_attach_configs,
@@ -210,9 +211,15 @@ def _run_query_maybe_save(
         staging_name = None
         preview_result = None
         try:
-            staging_name = create_query_staging_table(conn, save_sql)
-            snapshot = build_table_metadata_snapshot(conn, staging_name)
-            preview_sql = f"SELECT * FROM {quote_identifier(staging_name)}"
+            staging_name, order_column = create_ordered_query_staging_table(
+                conn,
+                save_sql,
+            )
+            preview_sql = (
+                f"SELECT * EXCLUDE ({quote_identifier(order_column)}) "
+                f"FROM {quote_identifier(staging_name)} "
+                f"ORDER BY {quote_identifier(order_column)}"
+            )
             if limit:
                 preview_sql = f"{preview_sql} LIMIT {limit}"
             cols, recs, cur_types = fetch_query_records(conn, preview_sql)
@@ -222,6 +229,11 @@ def _run_query_maybe_save(
                 cur_types,
                 _types(cur_types, preview_sql),
             )
+            conn.execute(
+                f"ALTER TABLE {quote_identifier(staging_name)} "
+                f"DROP COLUMN {quote_identifier(order_column)}"
+            )
+            snapshot = build_table_metadata_snapshot(conn, staging_name)
             publish_query_staging_table(
                 conn, staging_name, table_name, query_id=query_id
             )
@@ -576,6 +588,7 @@ def execute_duckdb_query(
                     execution_time = _log_query_metrics_in_conn(
                         conn, sql_query, start_time, len(result_records)
                     )
+                    finalize_query_if_not_cancelled(query_id)
         else:
             with with_duckdb_connection() as con:
                 with structured_duckdb_errors(con):
@@ -954,13 +967,11 @@ def execute_federated_query(
                             # response preview is read from this same staging
                             # table, so volatile/remote data cannot diverge
                             # from the table that will be published.
-                            order_column = f"__duckquery_row_order_{uuid4().hex}"
-                            ordered_materialization_sql = (
-                                f"SELECT row_number() OVER () AS {quote_identifier(order_column)}, "
-                                f"source.* FROM ({base_sql_query}) AS source"
-                            )
-                            staging_name = create_query_staging_table(
-                                conn, ordered_materialization_sql
+                            staging_name, order_column = (
+                                create_ordered_query_staging_table(
+                                    conn,
+                                    base_sql_query,
+                                )
                             )
                             preview_sql = (
                                 f"SELECT * EXCLUDE ({quote_identifier(order_column)}) "
@@ -1001,6 +1012,7 @@ def execute_federated_query(
                             table_name,
                         )
 
+                    finalize_query_if_not_cancelled(query_id)
                     return result_triplet
                 except Exception as query_error:
                     drop_query_staging_table(conn, staging_name)

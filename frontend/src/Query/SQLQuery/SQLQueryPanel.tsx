@@ -119,6 +119,10 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
   const [sqlDiagnostic, setSqlDiagnostic] = useState<SQLErrorDiagnostic | null>(null);
   const sqlRevisionRef = React.useRef(0);
   const latestExecutionRef = React.useRef(0);
+  const invalidateSqlDiagnostic = useCallback(() => {
+    sqlRevisionRef.current += 1;
+    setSqlDiagnostic(null);
+  }, []);
 
   // Global History
   const { addToHistory } = useGlobalHistory();
@@ -282,21 +286,30 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
       const baseSql = `SELECT * FROM ${qualifiedName}`;
       const displaySql = `${baseSql} LIMIT ${maxQueryRows}`;
       setSystemLimitedSql({ displaySql, baseSql });
+      invalidateSqlDiagnostic();
       setSQL(displaySql);
       setLastSelectedTableKey(currentTableKey);
     }
-  }, [currentTableKey, lastSelectedTableKey, setSQL, maxQueryRows, selectedTables]);
+  }, [
+    currentTableKey,
+    invalidateSqlDiagnostic,
+    lastSelectedTableKey,
+    maxQueryRows,
+    selectedTables,
+    setSQL,
+  ]);
 
   // 处理预览 SQL（仅预填不自动执行）；previewNonce 保证同串重复加载也能回填
   useEffect(() => {
     if (previewSQL) {
       setSystemLimitedSql(null);
       if (previewSQL !== sql) {
+        invalidateSqlDiagnostic();
         setSQL(previewSQL);
       }
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [previewSQL, previewNonce, setSQL]);
+  }, [previewSQL, previewNonce, setSQL, invalidateSqlDiagnostic]);
 
   // 页面预览只在最外层没有 LIMIT 时追加系统默认值；用户 LIMIT 永不改写。
   const applyDisplayLimit = useCallback((sqlStr: string): {
@@ -365,8 +378,7 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
   }, [maxQueryRows, systemLimitedSql]);
 
   const handleSQLChange = useCallback((nextSql: string) => {
-    sqlRevisionRef.current += 1;
-    setSqlDiagnostic(null);
+    invalidateSqlDiagnostic();
     if (systemLimitedSql) {
       const tokens = tokenizeSQL(nextSql);
       let depth = 0;
@@ -404,7 +416,7 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
       }
     }
     setSQL(nextSql);
-  }, [maxQueryRows, setSQL, systemLimitedSql]);
+  }, [invalidateSqlDiagnostic, maxQueryRows, setSQL, systemLimitedSql]);
 
   // 全局对话抽屉的「插入编辑器」经总线回填到本编辑器;编辑器内容同步给
   // 抽屉的「解释/优化当前 SQL」快捷动作
@@ -425,12 +437,21 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
       const formattedBaseSql = formatSQLDataGrip(systemLimitedSql.baseSql);
       const { displaySql, baseSql } = applyDisplayLimit(formattedBaseSql);
       setSystemLimitedSql({ displaySql, baseSql });
+      invalidateSqlDiagnostic();
       setSQL(displaySql);
       return;
     }
     setSystemLimitedSql(null);
+    invalidateSqlDiagnostic();
     formatSQL();
-  }, [applyDisplayLimit, formatSQL, setSQL, sql, systemLimitedSql]);
+  }, [
+    applyDisplayLimit,
+    formatSQL,
+    invalidateSqlDiagnostic,
+    setSQL,
+    sql,
+    systemLimitedSql,
+  ]);
 
   // 计算查询类型
   const queryType = useMemo(() => {
@@ -470,6 +491,7 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
       if (systemLimitApplied) {
         setSystemLimitedSql({ displaySql, baseSql });
         if (displaySql !== sql.trim()) {
+          invalidateSqlDiagnostic();
           setSQL(displaySql);
         }
       } else {
@@ -520,7 +542,8 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
       execute({ isPreview: true });
     }
   }, [sql, onExecute, execute, onExecuteError, tableSourceInfo, applyDisplayLimit,
-    requiresFederatedQuery, attachDatabases, unrecognizedPrefixes, dismissedWarning, addToHistory, setSQL]);
+    requiresFederatedQuery, attachDatabases, unrecognizedPrefixes, dismissedWarning, addToHistory,
+    invalidateSqlDiagnostic, setSQL]);
 
   // 处理忽略未识别前缀并执行
   const handleIgnoreAndExecute = useCallback(() => {

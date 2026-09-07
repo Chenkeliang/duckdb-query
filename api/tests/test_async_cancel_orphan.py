@@ -64,6 +64,50 @@ class TestDiscardPersistedResult:
 
 
 class TestCancelDuringPersistRace:
+    def test_no_overwrite_permission_rejects_concurrent_target_creation(
+        self,
+        monkeypatch,
+    ):
+        """Regression 2026-09-07: publication rechecks no-overwrite atomically."""
+        from core.data import file_datasource_manager as datasource_module
+
+        table = "no_overwrite_publish_race_tbl"
+        task_id = task_manager.create_task("SELECT 42 AS n", task_type="query")
+        original_snapshot = datasource_module.build_table_metadata_snapshot
+
+        def create_competing_target(connection, staging_name):
+            snapshot = original_snapshot(connection, staging_name)
+            with get_connection_pool().get_connection() as competitor:
+                competitor.execute(
+                    f'CREATE TABLE "{table}" AS SELECT 99 AS n'
+                )
+            return snapshot
+
+        monkeypatch.setattr(
+            datasource_module,
+            "build_table_metadata_snapshot",
+            create_competing_target,
+        )
+        try:
+            execute_async_query(
+                task_id,
+                "SELECT 42 AS n",
+                custom_table_name=table,
+                overwrite=False,
+            )
+
+            with get_connection_pool().get_connection() as connection:
+                assert connection.execute(
+                    f'SELECT n FROM "{table}"'
+                ).fetchall() == [(99,)]
+                assert not any(
+                    name.startswith("__stage_")
+                    for (name,) in connection.execute("SHOW TABLES").fetchall()
+                )
+            assert task_manager.get_task(task_id).status == TaskStatus.FAILED
+        finally:
+            _cleanup(table)
+
     def test_cancel_between_checkpoint_and_connection_registration_stops_query(
         self,
         monkeypatch,

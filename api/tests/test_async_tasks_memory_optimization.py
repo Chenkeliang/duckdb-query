@@ -192,6 +192,7 @@ class TestAsyncQueryMemoryOptimization:
             "async_result_test_task_123",
             None,
             query_id=task_id,
+            overwrite=False,
         )
 
         # 验证任务状态更新

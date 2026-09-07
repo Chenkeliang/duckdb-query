@@ -37,6 +37,7 @@ from core.database.federated_attach import (
     attach_databases_on_connection,
     detach_databases_on_connection,
     execute_sql_and_persist,
+    finalize_query_if_not_cancelled,
     federated_source_sql_alias,
     format_qualified_table_reference,
     remote_cancellation_scope,
@@ -630,7 +631,12 @@ def perform_query(
     x_request_id: Optional[str] = Header(None, alias="X-Request-ID"),
 ):
     """Performs a join query on the specified data sources."""
-    query_id = f"sync:{x_request_id}" if x_request_id else None
+    federated_attach = bool(query_request.attach_databases)
+    query_id = (
+        f"sync:{x_request_id}"
+        if x_request_id
+        else (f"join:{uuid.uuid4()}" if federated_attach else None)
+    )
     if x_request_id:
         logger.info(f"Query with request ID: {x_request_id}")
     timeout_s = int(config_manager.get_app_config().federated_query_timeout or 300)
@@ -648,7 +654,6 @@ def perform_query(
             "Query request must contain at least one data source"
         )
 
-    federated_attach = bool(query_request.attach_databases)
     conn_ctx = (
         interruptible_connection(query_id, "")
         if query_id
@@ -761,6 +766,7 @@ def perform_query(
                         {"name": name, "duckdb_type": dtype}
                         for name, dtype in cursor_types
                     ]
+            finalize_query_if_not_cancelled(query_id)
 
             return create_success_response(
                 data={

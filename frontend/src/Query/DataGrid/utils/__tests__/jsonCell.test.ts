@@ -150,4 +150,19 @@ describe('JSON Pointer paths', () => {
     expect(entries).toHaveLength(3);
     expect(entries.filter((entry) => entry.pointer === '/value')).toHaveLength(2);
   });
+
+  it('fails closed instead of throwing on adversarial nesting depth', () => {
+    const deeplyNested = `${'['.repeat(10_000)}1${']'.repeat(10_000)}`;
+
+    expect(() => listJsonPointerPaths(deeplyNested)).not.toThrow();
+    expect(listJsonPointerPaths(deeplyNested)).toEqual([]);
+    expect(toFormattedJson(deeplyNested)).toBe(deeplyNested);
+    expect(getJsonViewerText(deeplyNested).text).toBe(deeplyNested);
+  });
+
+  it('skips formatting when indentation expansion exceeds the output budget', () => {
+    const expanding = `${'['.repeat(60)}${Array(5_000).fill('0').join(',')}${']'.repeat(60)}`;
+
+    expect(toFormattedJson(expanding)).toBe(expanding);
+  });
 });

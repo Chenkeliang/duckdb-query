@@ -123,6 +123,8 @@ class ConnectionRegistry:
             record = self._registry.get(task_id)
             if not record:
                 return False
+            if record.cancel_requested:
+                return False
             record.remote_interrupts.append(remote_interrupt)
             return True
 

@@ -1085,6 +1085,7 @@ def execute_async_query(
             table_name,
             attach_list,
             query_id=task_id,
+            overwrite=overwrite,
         )
         row_count = metadata_snapshot.get("row_count", 0)
         columns = [
@@ -1308,6 +1309,7 @@ def execute_async_federated_query(
             table_name,
             attach_databases,
             query_id=task_id,
+            overwrite=overwrite,
         )
         row_count = metadata_snapshot.get("row_count", 0)
         columns = [

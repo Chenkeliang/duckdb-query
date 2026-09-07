@@ -497,6 +497,7 @@ class TestExecuteAsyncFederatedQuery:
             "async_mysql_retry",
             attach_databases,
             query_id=task_id,
+            overwrite=True,
         )
         fake_task_manager.complete_task.assert_called_once()
         fake_task_manager.force_fail_task.assert_not_called()

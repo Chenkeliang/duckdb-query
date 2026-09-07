@@ -24,6 +24,7 @@ from core.database.duckdb_pool import interruptible_connection
 from core.database.federated_attach import (
     attach_databases_on_connection,
     detach_databases_on_connection,
+    finalize_query_if_not_cancelled,
     format_qualified_table_reference,
     remote_cancellation_scope,
 )
@@ -532,12 +533,14 @@ def _execute_guarded(
                     ctx.run_id,
                     ctx.attach_configs,
                 ):
-                    return _execute_guarded_query(
+                    result = _execute_guarded_query(
                         ctx,
                         sql,
                         con,
                         started_at,
                     )
+            finalize_query_if_not_cancelled(ctx.run_id)
+            return result
         finally:
             if attached:
                 detach_databases_on_connection(con, attached)

@@ -20,6 +20,7 @@ from core.database.duckdb_pool import interruptible_connection
 from core.database.federated_attach import (
     attach_databases_on_connection,
     detach_databases_on_connection,
+    finalize_query_if_not_cancelled,
     remote_cancellation_scope,
     resolve_attach_configs,
 )
@@ -132,6 +133,7 @@ def export_query_results(
                     ):
                         copy_result = con.execute(copy_sql).fetchone()
                         row_count = int(copy_result[0]) if copy_result else 0
+                finalize_query_if_not_cancelled(query_id)
             finally:
                 timer.cancel()
                 if attached_aliases:

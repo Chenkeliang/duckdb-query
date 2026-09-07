@@ -9,6 +9,7 @@ import duckdb
 import pytest
 
 from core.common.exceptions import DatabaseConnectionError
+from core.common.sql_error_location import structured_duckdb_errors
 from core.database.duckdb_engine import with_duckdb_connection
 from core.database.federated_attach import (
     attach_databases_on_connection,
@@ -113,7 +114,8 @@ def test_failed_postgres_attach_does_not_leak_quoted_password():
             pytest.skip("postgres extension unavailable in this environment")
 
         with pytest.raises(DatabaseConnectionError) as exc_info:
-            attach_databases_on_connection(con, [("p", db_config)])
+            with structured_duckdb_errors(con):
+                attach_databases_on_connection(con, [("p", db_config)])
 
     output = str(exc_info.value)
     for fragment in ("alpha", "bravo", "charlie", "delta"):

@@ -159,7 +159,7 @@
 |------|------|--------|----------|
 | GET | `/api/async-tasks` | **列表** | `listAsyncTasks`（`limit`, `offset`, `order_by`） |
 | GET | `/api/async-tasks/{id}` | 对象 | `getAsyncTask`；404 `RESOURCE_NOT_FOUND` |
-| POST | `/api/async-tasks` | 对象 | `submitAsyncQuery`（`task_id`；可 `attach_databases` 或由 `datasource` 推导）；`apply_row_limit`（默认 `false`）为最终行数选择：`false`＝移除查询页面最外层 `LIMIT` 后全量执行（子查询 `LIMIT` 保留），`true`＝保留已有最外层 `LIMIT`，没有时补默认 `max_query_rows`（默认值不是硬上限）；判定走 sqlglot AST，禁止按 LIMIT 数值猜来源；retry 保留原任务选择；400 空 SQL / attach 校验 |
+| POST | `/api/async-tasks` | 对象 | `submitAsyncQuery`（`task_id`；可 `attach_databases` 或由 `datasource` 推导）；`apply_row_limit`（默认 `false`）为最终行数选择：`false`＝移除查询页面最外层 `LIMIT` 后全量执行（子查询 `LIMIT` 保留），`true`＝保留已有最外层 `LIMIT`，没有时补默认 `max_query_rows`（默认值不是硬上限）；判定走 sqlglot AST，禁止按 LIMIT 数值猜来源；`overwrite=false` 在 staging 发布事务内再次强制，竞态出现同名表时拒绝替换；retry 保留原任务选择；400 空 SQL / attach 校验 |
 | POST | `/api/async-tasks/{id}/cancel` | 对象 | `cancelAsyncTask`；404 任务不存在；400 `TASK_CANCEL_NOT_ALLOWED` |
 | POST | `/api/async-tasks/{id}/retry` | 对象 | `retryAsyncTask`；404 / 400 缺 SQL |
 | GET / POST | `/api/async-tasks/{id}/download` | **blob** 或 JSON 错误体 | `getAsyncDownloadUrl`（query / body：`format=csv\|parquet\|json\|xlsx`）；JSON 为标准数组；XLSX 含表头且最多 1,048,575 条数据；400 格式或 XLSX 行数超限；404 文件 |
@@ -222,7 +222,7 @@ BY NAME、LIMIT、预览 vs 执行语义见 [QUERY_BEHAVIOR_ZH.md](QUERY_BEHAVIO
 | POST | `/api/set-operations/generate` | 对象 | `generateSetOperation`；400 `VALIDATION_ERROR`；500 `OPERATION_FAILED` |
 | POST | `/api/set-operations/preview` | 对象 | `previewSetOperation`；400 / 500（同上） |
 | POST | `/api/set-operations/validate` | 对象 | `validateSetOperation`；500 服务异常 |
-| POST | `/api/set-operations/execute` | 对象 | `executeSetOperation`（`save_as_table` / `preview`）；保存分支经本地 staging 原子发布，取消或失败保留旧目标表；400 / 499 / 500 |
+| POST | `/api/set-operations/execute` | 对象 | `executeSetOperation`（`save_as_table` / `preview`）；保存分支经本地 staging 原子发布，取消或失败保留旧目标表；联邦执行使用服务端截止时间与 watchdog；400 / 499 / 500 / 504 |
 | POST | `/api/set-operations/simple-union` | 对象 | `simpleUnionSetOperation` |
 
 ## 9.1 查询结果服务端导出（`queryExportApi.ts`）

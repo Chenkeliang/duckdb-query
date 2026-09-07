@@ -13,6 +13,7 @@ import pytest
 from core.database.federated_attach import (
     cancel_postgres_queries,
     execute_sql_and_persist,
+    finalize_query_if_not_cancelled,
     kill_mysql_query,
     mysql_remote_cancellation_scope,
     remote_cancellation_scope,
@@ -227,6 +228,45 @@ def test_postgres_remote_cancel_lease_expires_with_attempt(monkeypatch):
     cancel.assert_called_once()
 
 
+def test_cancel_while_connection_idle_prevents_remote_scope_body(monkeypatch):
+    """Regression 2026-09-07: idle interrupt cannot be lost before remote SQL."""
+    from core.database import federated_attach
+
+    registry = ConnectionRegistry()
+    connection = MagicMock()
+    query_id = "sync:idle-before-remote"
+    registry.register(query_id, connection, "SELECT 42")
+    monkeypatch.setattr(federated_attach, "connection_registry", registry)
+
+    assert registry.interrupt_with_remote(query_id)
+    entered = False
+    with pytest.raises(duckdb.InterruptException):
+        with federated_attach.remote_cancellation_scope(
+            connection,
+            query_id,
+            [],
+        ):
+            entered = True
+
+    assert entered is False
+
+
+def test_preview_completion_linearizes_against_late_cancel(monkeypatch):
+    """Regression 2026-09-07: preview success has an atomic completion point."""
+    from core.database import federated_attach
+
+    registry = ConnectionRegistry()
+    connection = MagicMock()
+    monkeypatch.setattr(federated_attach, "connection_registry", registry)
+    query_id = "sync:preview-completion"
+    registry.register(query_id, connection, "SELECT 42")
+
+    finalize_query_if_not_cancelled(query_id)
+
+    assert not registry.interrupt_with_remote(query_id)
+    connection.interrupt.assert_not_called()
+
+
 def test_standalone_persist_cancellation_removes_staging(monkeypatch):
     """Regression 2026-09-07: pre-publication cancel leaves no __stage table."""
     connection = duckdb.connect(":memory:")
@@ -249,6 +289,51 @@ def test_standalone_persist_cancellation_removes_staging(monkeypatch):
             "cancelled_persist",
             [],
             query_id="async:cancelled-persist",
+        )
+
+    assert connection.execute("SHOW TABLES").fetchall() == []
+    connection.close()
+
+
+def test_standalone_persist_watchdog_reports_timeout(monkeypatch):
+    """Regression 2026-09-07: async persistence has a wall-clock deadline."""
+    connection = duckdb.connect(":memory:")
+
+    @contextmanager
+    def connection_scope(_query_id, _sql, **_kwargs):
+        from core.database.federated_attach import connection_registry
+
+        connection_registry.register(_query_id, connection, _sql)
+        try:
+            yield connection
+        finally:
+            connection_registry.unregister(_query_id)
+
+    class ImmediateTimer:
+        def __init__(self, _delay, callback):
+            self.callback = callback
+
+        def start(self):
+            self.callback()
+
+        def cancel(self):
+            return None
+
+    monkeypatch.setattr(
+        "core.database.federated_attach.interruptible_connection",
+        connection_scope,
+    )
+    monkeypatch.setattr(
+        "core.database.federated_attach.threading.Timer",
+        ImmediateTimer,
+    )
+
+    with pytest.raises(TimeoutError, match="exceeded"):
+        execute_sql_and_persist(
+            "SELECT * FROM range(10)",
+            "timed_out_persist",
+            [],
+            query_id="async:persist-timeout",
         )
 
     assert connection.execute("SHOW TABLES").fetchall() == []

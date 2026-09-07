@@ -1,7 +1,9 @@
 # pylint: disable=too-many-lines,broad-exception-caught,logging-fstring-interpolation,import-outside-toplevel,line-too-long,unused-argument,bare-except
 """Set operations HTTP routes (extracted from join_query.py)."""
 import logging
+import threading
 import time
+import uuid
 from contextlib import contextmanager
 from typing import Any, Iterator, Optional, Set
 
@@ -16,11 +18,13 @@ from core.database.duckdb_engine import (
     with_duckdb_connection,
 )
 from core.database.duckdb_pool import interruptible_connection
+from core.database.connection_registry import connection_registry
 from core.database.federated_attach import (
     attach_databases_on_connection,
     create_query_staging_table,
     detach_databases_on_connection,
     drop_query_staging_table,
+    finalize_query_if_not_cancelled,
     publish_query_staging_table,
     remote_cancellation_scope,
     resolve_attach_configs,
@@ -287,7 +291,26 @@ def execute_set_operation(
 
     执行完整的集合操作并返回结果
     """
-    query_id = f"sync:{x_request_id}" if x_request_id else None
+    query_id = (
+        f"sync:{x_request_id}"
+        if x_request_id
+        else (f"set:{uuid.uuid4()}" if request.attach_databases else None)
+    )
+    timeout_s = int(config_manager.get_app_config().federated_query_timeout or 300)
+    timed_out = False
+
+    def _on_timeout() -> None:
+        nonlocal timed_out
+        timed_out = True
+        if query_id:
+            connection_registry.interrupt_with_remote(
+                query_id,
+                pending_if_missing=True,
+            )
+
+    timer = threading.Timer(timeout_s, _on_timeout) if query_id else None
+    if timer:
+        timer.start()
     try:
         config = request.config
 
@@ -317,6 +340,7 @@ def execute_set_operation(
                     c["name"]: c["duckdb_type"]
                     for c in describe_query_column_types(con, preview_sql)
                 }
+                finalize_query_if_not_cancelled(query_id)
                 columns = [
                     {"name": name, "type": described.get(name, "")}
                     for name in col_names
@@ -426,6 +450,7 @@ def execute_set_operation(
                     c["name"]: c["duckdb_type"]
                     for c in describe_query_column_types(con, preview_sql)
                 }
+                finalize_query_if_not_cancelled(query_id)
                 columns = [
                     {"name": name, "type": described.get(name, "")}
                     for name in col_names
@@ -456,6 +481,13 @@ def execute_set_operation(
 
     except duckdb.InterruptException as e:
         logger.info("Set operation %s cancelled by user", query_id)
+        if timed_out:
+            return error_json_response(
+                504,
+                MessageCode.QUERY_TIMEOUT,
+                f"Set operation exceeded {timeout_s}s and was aborted",
+                details={"query_id": query_id, "timeout_s": timeout_s},
+            )
         return error_json_response(
             499,
             MessageCode.QUERY_CANCELLED,
@@ -479,6 +511,9 @@ def execute_set_operation(
             f"Failed to execute: {str(e)}",
             details={"errors": [f"Failed to execute: {str(e)}"]},
         )
+    finally:
+        if timer:
+            timer.cancel()
 
 
 @router.post("/api/set-operations/simple-union", tags=["Set Operations"])

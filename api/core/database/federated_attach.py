@@ -19,7 +19,10 @@ import pymysql
 from core.common.connection_alias import normalize_connection_id
 from core.common.config_manager import config_manager
 from core.common.sql_identifiers import escape_string_literal
-from core.common.sql_error_location import structured_duckdb_errors
+from core.common.sql_error_location import (
+    duckdb_error_message,
+    structured_duckdb_errors,
+)
 from core.database.database_manager import db_manager
 from core.database.duckdb_engine import (
     _is_federated_connection_lost,
@@ -129,10 +132,36 @@ def create_query_staging_table(
 ) -> str:
     """Materialize one query execution into a uniquely named local table."""
     name = staging_name or f"__stage_{uuid.uuid4().hex}"
-    conn.execute(
+    execution_sql = (
         f"CREATE OR REPLACE TABLE {_quote_identifier(name)} AS ({sql.rstrip().rstrip(';')})"
     )
+    try:
+        conn.execute(execution_sql)
+    except duckdb.Error as error:
+        error.duckquery_execution_sql = execution_sql
+        raise
     return name
+
+
+def create_ordered_query_staging_table(
+    conn: Any,
+    sql: str,
+) -> Tuple[str, str]:
+    """Materialize once and retain source row order for a staging preview."""
+    order_column = f"__duckquery_row_order_{uuid.uuid4().hex}"
+    wrapped_sql = (
+        f"SELECT row_number() OVER () AS {_quote_identifier(order_column)}, "
+        f"source.* FROM ({sql.rstrip().rstrip(';')}) AS source"
+    )
+    try:
+        staging_name = create_query_staging_table(conn, wrapped_sql)
+    except duckdb.Error as error:
+        # Preserve the actual wrapper for build_sql_error_details while keeping
+        # the original DuckDB exception class used by retry/cancel handling.
+        if not hasattr(error, "duckquery_execution_sql"):
+            error.duckquery_execution_sql = wrapped_sql
+        raise
+    return staging_name, order_column
 
 
 def drop_query_staging_table(conn: Any, staging_name: Optional[str]) -> None:
@@ -146,6 +175,8 @@ def publish_query_staging_table(
     staging_name: str,
     table_name: str,
     query_id: Optional[str] = None,
+    *,
+    overwrite: bool = True,
 ) -> None:
     """Atomically replace a local result table with a completed staging table."""
     if query_id and connection_registry.is_cancel_requested(query_id):
@@ -154,7 +185,8 @@ def publish_query_staging_table(
     quoted_table = _quote_identifier(table_name)
     conn.execute("BEGIN TRANSACTION")
     try:
-        conn.execute(f"DROP TABLE IF EXISTS {quoted_table}")
+        if overwrite:
+            conn.execute(f"DROP TABLE IF EXISTS {quoted_table}")
         conn.execute(f"ALTER TABLE {quoted_staging} RENAME TO {quoted_table}")
         if query_id:
             committed = connection_registry.commit_if_not_cancelled(
@@ -273,7 +305,9 @@ def attach_databases_on_connection(
                 )
                 attached.append(alias)
                 continue
-            safe_error = redact_connection_secrets(attach_error)
+            safe_error = redact_connection_secrets(
+                duckdb_error_message(attach_error)
+            )
             logger.error("ATTACH database %s failed: %s", alias, safe_error)
             # from None：切断 __cause__ 链，否则未脱敏的原始异常仍会随
             # traceback.format_exc() 一起被打印/存储
@@ -355,6 +389,24 @@ def _rollback_quietly(conn: Any) -> None:
         logger.debug("Remote cancellation transaction rollback skipped: %s", rollback_error)
 
 
+def _raise_if_cancel_requested(query_id: Optional[str]) -> None:
+    if query_id and connection_registry.is_cancel_requested(query_id):
+        raise duckdb.InterruptException(
+            "INTERRUPT Error: cancelled before remote query execution"
+        )
+
+
+def finalize_query_if_not_cancelled(query_id: Optional[str]) -> None:
+    """Linearize a non-publishing query result against concurrent cancellation."""
+    if query_id and not connection_registry.commit_if_not_cancelled(
+        query_id,
+        lambda: None,
+    ):
+        raise duckdb.InterruptException(
+            "INTERRUPT Error: cancelled before query completion"
+        )
+
+
 @contextmanager
 def mysql_remote_cancellation_scope(
     conn: Any,
@@ -372,6 +424,7 @@ def mysql_remote_cancellation_scope(
         for alias, config in attach_configs
         if str(config.get("type", "")).lower() == "mysql"
     ]
+    _raise_if_cancel_requested(query_id)
     if not query_id or not mysql_configs:
         yield
         return
@@ -415,6 +468,7 @@ def mysql_remote_cancellation_scope(
 
     try:
         try:
+            _raise_if_cancel_requested(query_id)
             yield
             conn.execute("COMMIT")
         except Exception:
@@ -433,6 +487,7 @@ def remote_cancellation_scope(
     attach_configs: List[Tuple[str, Dict[str, Any]]],
 ) -> Iterator[None]:
     """Register attempt-scoped MySQL and PostgreSQL remote cancellation."""
+    _raise_if_cancel_requested(query_id)
     leases: List[_RemoteInterruptLease] = []
     if query_id:
         application_name = _postgres_application_name(query_id)
@@ -454,6 +509,7 @@ def remote_cancellation_scope(
 
     try:
         with mysql_remote_cancellation_scope(conn, query_id, attach_configs):
+            _raise_if_cancel_requested(query_id)
             yield
     finally:
         for lease in leases:
@@ -493,7 +549,9 @@ def execute_sql_with_attach(
                 )
             with structured_duckdb_errors(conn):
                 with remote_cancellation_scope(conn, query_id, attach_configs):
-                    return fetch_query_records(conn, cleaned_sql)
+                    result = fetch_query_records(conn, cleaned_sql)
+            finalize_query_if_not_cancelled(query_id)
+            return result
         finally:
             if attached:
                 detach_databases_on_connection(conn, attached)
@@ -512,6 +570,7 @@ def execute_sql_and_persist(
     attach_databases: Optional[List[Any]] = None,
     query_id: Optional[str] = None,
     reject_empty: bool = False,
+    overwrite: bool = True,
 ) -> Dict[str, Any]:
     """在一个连接内 ATTACH(如有)→ 执行到临时表 → 视 reject_empty 决定是否
     DROP+RENAME 覆盖目标表 → 取行数/列信息 → DETACH。
@@ -594,7 +653,11 @@ def execute_sql_and_persist(
                 drop_query_staging_table(conn, staging_name)
             else:
                 publish_query_staging_table(
-                    conn, staging_name, table_name, query_id=query_id
+                    conn,
+                    staging_name,
+                    table_name,
+                    query_id=query_id,
+                    overwrite=overwrite,
                 )
             return snapshot
         except Exception:
@@ -620,8 +683,28 @@ def execute_sql_and_persist(
                 cleaned_sql,
                 retain_publication=True,
             ) as conn:
-                with structured_duckdb_errors(conn):
-                    return _run(conn)
+                timed_out = threading.Event()
+
+                def _on_timeout() -> None:
+                    timed_out.set()
+                    connection_registry.interrupt_with_remote(query_id)
+
+                timer = threading.Timer(
+                    max(0.001, deadline - time.monotonic()),
+                    _on_timeout,
+                )
+                timer.start()
+                try:
+                    with structured_duckdb_errors(conn):
+                        return _run(conn)
+                except duckdb.InterruptException as error:
+                    if timed_out.is_set():
+                        raise TimeoutError(
+                            f"Query exceeded {timeout_seconds}s and was aborted"
+                        ) from error
+                    raise
+                finally:
+                    timer.cancel()
 
         with with_duckdb_connection() as conn:
             with structured_duckdb_errors(conn):

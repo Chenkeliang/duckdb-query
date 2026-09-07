@@ -55,9 +55,9 @@ DuckDB 2.0 原样读取，不在启动时静默改写。显式迁移后不支持
 
 | 验证项 | 结果 |
 |---|---|
-| 2.0 alpha / Python 3.13（默认依赖） | 1354 passed，6 skipped |
+| 2.0 alpha / Python 3.13（默认依赖） | 1360 passed，6 skipped |
 | 2.0 alpha / Python 3.11 | CI 默认任务（待远端运行） |
-| 前端全量（改造后） | 1258 passed，1 skipped |
+| 前端全量（改造后） | 1261 passed，1 skipped |
 | MCP 全量 | 77 passed，1 skipped |
 | MySQL 8.4 / PostgreSQL 18.4 隔离语义矩阵 | 3 passed；覆盖精度/类型、筛选/排序、只读、本地 staging 保存、NUMERIC/数组/JSONB、截止时间与用户取消 |
 | macOS ARM64 Tauri Rust | 9 passed；`.app` 构建与深度签名校验通过 |

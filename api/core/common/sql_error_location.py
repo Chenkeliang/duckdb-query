@@ -136,7 +136,8 @@ def build_sql_error_details(
 ) -> dict[str, Any]:
     """Bind a mapped SQL diagnostic to the exact submitted statement identity."""
     original = str(original_sql or "")
-    execution = str(execution_sql if execution_sql is not None else original)
+    actual_execution = getattr(error, "duckquery_execution_sql", execution_sql)
+    execution = str(actual_execution if actual_execution is not None else original)
     details: dict[str, Any] = {
         "sql_identity": {
             "sha256": hashlib.sha256(original.encode("utf-8")).hexdigest(),
