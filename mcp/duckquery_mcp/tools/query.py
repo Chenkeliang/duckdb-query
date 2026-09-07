@@ -1,6 +1,7 @@
 from typing import Any
 
 from duckquery_mcp.client import DuckQueryClient
+from duckquery_mcp.client import BackendError
 from duckquery_mcp.config import Config
 
 
@@ -16,18 +17,33 @@ def _truncate(data: dict, cfg: Config) -> dict:
     }
 
 
+async def _is_mutating(client: DuckQueryClient | None, sql: str) -> bool:
+    """Prefer the backend classifier; preserve conservative old-backend fallback."""
+    from duckquery_mcp.safety import is_write_sql
+    fallback = is_write_sql(sql)
+    if client is None:
+        return fallback
+    try:
+        result = await client.call("POST", "/api/sql/classify", json_body={"sql": sql})
+    except BackendError:
+        return fallback
+    if not isinstance(result, dict) or not isinstance(result.get("read_only"), bool):
+        return True
+    return not result["read_only"]
+
+
 async def run_sql(
     client: DuckQueryClient, cfg: Config, *, sql: str, preview: bool = True, confirm: bool = False
 ) -> Any:
     """Run DuckDB SQL against local tables. Returns columns + (capped) rows.
 
-    DDL/DML (anything that isn't SELECT/WITH/EXPLAIN/PRAGMA/DESCRIBE/SHOW) needs
-    confirm=true outside read-only mode — this can drop/alter/delete real tables,
-    it gets the same confirmation gate as the generic passthrough tool, not a
-    lighter one just because it has a dedicated name.
+    Any SQL the backend classifies as mutating or unknown needs confirm=true outside
+    read-only mode. The query endpoint independently permits only read queries and
+    direct CREATE TABLE; DROP/ALTER/DELETE and other side effects remain blocked even
+    after confirmation.
     """
-    from duckquery_mcp.safety import confirm_required, is_write_sql
-    blocked = confirm_required(cfg, is_write_sql(sql), confirm)
+    from duckquery_mcp.safety import confirm_required
+    blocked = confirm_required(cfg, await _is_mutating(client, sql), confirm)
     if blocked:
         return blocked
     data = await client.call("POST", "/api/duckdb/execute",
@@ -44,10 +60,11 @@ async def federated_query(
     list_connections (e.g. "db_SORDER") are accepted — the "db_" prefix is normalized.
     Reference an attached table as alias.table, e.g. SELECT * FROM m.orders LIMIT 100.
 
-    DDL/DML needs confirm=true outside read-only mode — see run_sql.
+    Mutating or unknown SQL needs confirmation, then remains subject to the backend's
+    stricter query policy — see run_sql.
     """
-    from duckquery_mcp.safety import confirm_required, is_write_sql
-    blocked = confirm_required(cfg, is_write_sql(sql), confirm)
+    from duckquery_mcp.safety import confirm_required
+    blocked = confirm_required(cfg, await _is_mutating(client, sql), confirm)
     if blocked:
         return blocked
     data = await client.call("POST", "/api/duckdb/federated-query",

@@ -48,6 +48,7 @@ What this release adds:
 - extension metadata that separates UI, `LOAD`, and artifact names; MySQL/PostgreSQL artifacts are verified with autoinstall disabled;
 - healthy bundled Excel is hidden from the optional-extension page, while a missing artifact remains repairable;
 - explicit app, Python package, engine, and storage versions in About; the browser demo reports its independent Wasm engine.
+- a versioned capability contract shared by Agent and MCP; MCP 0.4.0 uses backend SQL classification and falls back safely with older backends.
 
 Upgrade notes:
 
@@ -114,7 +115,7 @@ Full details: [v2.0.0 Release Notes](docs/releases/v2.0.0_en.md) · [DuckDB 2.0 
 <tr>
   <td><strong>MCP automation</strong></td>
   <td>AI coding tools such as Claude Code, Codex, Cursor, OpenCode or Pi need direct access to local data sources</td>
-  <td>24 tools exposed over MCP, with <code>read-only</code> / <code>normal</code> / <code>full</code> permission modes</td>
+  <td>25 tools exposed over MCP, with <code>read-only</code> / <code>normal</code> / <code>full</code> permission modes</td>
 </tr>
 </table>
 

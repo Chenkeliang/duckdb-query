@@ -1,12 +1,14 @@
 # 前后端 API 契约（真相表）
 
-## 资源与备份管理（2026-09-07）
+## 引擎能力、资源与备份管理（2026-09-07）
 
 | 方法 | 路径 | data | 语义 |
 |---|---|---|---|
 | GET | `/api/resource-budget` | `memory_limit_bytes, memory_capacity_bytes, temp_limit_bytes, max_connections, min_free_disk_bytes` | 按启动配置计算的用户库预算；非整个进程 RSS 限额 |
 | GET | `/api/storage-upgrade/backup` | `available, directory, files[], error?` | 最近迁移备份成套文件只读可打开性检查，不恢复 |
 | POST | `/api/storage-upgrade/open-backup` | `opened` | 仅桌面，无路径参数；打开核验后的最近备份目录 |
+| GET | `/api/capabilities` | `contract_version, product_version, engine, agent, mcp, features[]` | DuckDB 引擎能力与应用各执行面的唯一能力契约；状态为 `supported\|blocked\|not-applicable`，调用方不得只按版本号猜测 |
+| POST | `/api/sql/classify` | `classification, read_only, requires_confirmation` | 单条 SQL 的服务端安全分类；`mutation-or-unknown` 采用失败关闭，供 MCP 与其他调用方统一确认门控 |
 
 > 2026-09-07 读取边界：URL 导入与 `/api/url_info` 共用逐跳 HTTP(S) 地址校验；禁止 loopback、link-local、保留地址和 URL 凭据。URL 导入先流式暂存并按实际字节限制，再交给本地解析器，`prefer_native` 保留为兼容字段。普通上传同样按流式累计字节限制，超限返回 413 `FILE_TOO_LARGE`，失败清理候选文件。
 

@@ -114,6 +114,22 @@ def test_lambda_breaking_change_and_json_arrow_are_unambiguous():
     assert con.execute("SELECT json('{\"a\":1}')->'a'").fetchone() == ("1",)
 
 
+def test_engine_trigger_and_dml_cte_support_are_real():
+    """2026-09-07: capability contract support is verified on the pinned build."""
+    with duckdb.connect() as con:
+        con.execute("CREATE TABLE target(i INTEGER)")
+        con.execute("CREATE TABLE audit(i INTEGER)")
+        con.execute(
+            "CREATE TRIGGER trg AFTER INSERT ON target FOR EACH ROW "
+            "INSERT INTO audit VALUES (new.i)"
+        )
+        con.execute("INSERT INTO target VALUES (7)")
+        assert con.execute("SELECT * FROM audit").fetchall() == [(7,)]
+        assert con.execute(
+            "WITH moved AS MATERIALIZED (DELETE FROM target RETURNING *) SELECT * FROM moved"
+        ).fetchall() == [(7,)]
+
+
 def test_icu_timezone_and_collation_work_with_autoinstall_disabled():
     con = duckdb.connect(":memory:")
     con.execute("SET autoinstall_known_extensions=false")

@@ -24,6 +24,7 @@ from typing import List, Mapping, Optional, Sequence, Tuple
 
 import sqlglot
 from sqlglot import exp
+from core.common.duckdb_capabilities import blocked_agent_sql_feature
 
 logger = logging.getLogger(__name__)
 
@@ -172,6 +173,9 @@ def check_sql(
 
     limits 为用户选定的问数范围(默认 None = 不逐表限制,与改动前一致)。
     """
+    blocked_feature = blocked_agent_sql_feature(sql)
+    if blocked_feature:
+        return False, f"SQL capability is not enabled for Agent execution: {blocked_feature}"
     allowed = _LOCAL_QUALIFIERS | {str(a).lower() for a in authorized_aliases}
     limits = limits or ScopeLimits()
     try:

@@ -55,3 +55,14 @@ def test_release_docs_and_default_duckdb_engine_pin_are_consistent():
     assert "new-database storage" in english_release_notes.read_text(
         encoding="utf-8"
     ).lower()
+
+
+def test_mcp_capability_version_matches_package_metadata():
+    mcp_project = tomllib.loads((ROOT / "mcp/pyproject.toml").read_text(encoding="utf-8"))
+    mcp_init = (ROOT / "mcp/duckquery_mcp/__init__.py").read_text(encoding="utf-8")
+    capability_source = (ROOT / "api/core/common/duckdb_capabilities.py").read_text(
+        encoding="utf-8"
+    )
+    assert mcp_project["project"]["version"] == "0.4.0"
+    assert '__version__ = "0.4.0"' in mcp_init
+    assert '"package_version": "0.4.0"' in capability_source

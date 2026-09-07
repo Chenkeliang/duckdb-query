@@ -30,6 +30,10 @@ from core.services import ai_agent_tools
 from core.services.ai_agent_tools import AgentRunCtx, ToolResult
 from core.services.ai_json_protocol import extract_json, recover_sql_action
 from core.services.ai_profiles import AgentProfile
+from core.common.duckdb_capabilities import (
+    current_capability_contract,
+    render_agent_capabilities,
+)
 
 logger = logging.getLogger(__name__)
 
@@ -42,7 +46,7 @@ def new_run_id() -> str:
 
 def build_system_prompt(profile: AgentProfile, context_text: str, locale: str) -> str:
     registry = ai_agent_tools.build_registry()
-    return profile.system_prompt.format(
+    prompt = profile.system_prompt.format(
         tools=ai_agent_tools.render_tools_for_prompt(registry, profile.allowed_tools),
         context=context_text or "(none)",
         lang="中文" if locale == "zh" else "English",
@@ -50,6 +54,8 @@ def build_system_prompt(profile: AgentProfile, context_text: str, locale: str) -
         max_sql=profile.max_sql_calls,
         max_seconds=profile.max_seconds,
     )
+    capabilities = render_agent_capabilities(current_capability_contract())
+    return f"{prompt}\n\n# DuckDB runtime capabilities\n{capabilities}"
 
 
 def _obs(payload: Any, *, steps_left: int, sql_left: int, seconds_left: float) -> str:
