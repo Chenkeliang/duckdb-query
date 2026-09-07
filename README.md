@@ -48,7 +48,7 @@
 - 扩展管理区分 UI 名、`LOAD` 名与实际 artifact；MySQL / PostgreSQL 扩展可在关闭 autoinstall 后离线加载；
 - 内置且正常的 Excel 扩展不再重复展示，缺失时仍可从扩展页修复；
 - About 页分别展示应用版本、Python DuckDB 包、实际 engine 和 storage compatibility；浏览器 Demo 单独展示自己的 Wasm engine。
-- Agent 与 MCP 读取同一份版本化能力契约；MCP 0.4.0 使用后端安全分类并兼容缺少该接口的旧后端。
+- Agent 与 MCP 读取同一份版本化能力契约；MCP 0.4.0 使用后端安全分类并兼容缺少该接口的旧后端。0.4.0 wheel 已附在 v2.0.0 Pre-release，PyPI 当前仍为 0.3.1。
 
 升级注意事项：
 
