@@ -46,8 +46,11 @@ from core.database.duckdb_engine import (
 from core.database.federated_attach import (
     attach_databases_on_connection,
     configure_mysql_fresh_connections,
+    create_query_staging_table,
     detach_databases_on_connection,
+    drop_query_staging_table,
     mysql_remote_cancellation_scope,
+    publish_query_staging_table,
     resolve_attach_configs,
     single_threaded_mysql_persistence,
 )
@@ -193,13 +196,13 @@ def _run_query_maybe_save(conn, sql_query, save_as_table, limit, original_sql=No
     table_name = (save_as_table or "").strip()
     if table_name:
         save_sql = (original_sql if original_sql is not None else sql_query).strip().rstrip(";")
+        staging_name = None
         try:
-            conn.execute(
-                f"CREATE OR REPLACE TABLE {quote_identifier(table_name)} AS ({save_sql})"
-            )
+            staging_name = create_query_staging_table(conn, save_sql)
+            snapshot = build_table_metadata_snapshot(conn, staging_name)
+            publish_query_staging_table(conn, staging_name, table_name)
             logger.info("Query result saved as table: %s", table_name)
             try:
-                snapshot = build_table_metadata_snapshot(conn, table_name)
                 file_datasource_manager.save_file_datasource({
                     "source_id": table_name,
                     "filename": "sql_query_result",
@@ -218,6 +221,7 @@ def _run_query_maybe_save(conn, sql_query, save_as_table, limit, original_sql=No
             cols, recs, cur_types = fetch_query_records(conn, preview_sql)
             return cols, recs, cur_types, _types(cur_types, preview_sql), table_name, None
         except Exception as save_error:  # pylint: disable=broad-except
+            drop_query_staging_table(conn, staging_name)
             logger.warning("Failed to save query result as table: %s", save_error)
             # 保存失败 → 退回直接执行原查询,至少把数据返回,并将错误带回响应
             cols, recs, cur_types = fetch_query_records(conn, sql_query)
@@ -841,9 +845,10 @@ def execute_federated_query(
     attach_configs = resolve_attach_configs(request.attach_databases)
 
     # 处理 SQL 查询（MySQL 风格双引号字符串 → DuckDB 单引号）
-    sql_query = normalize_mysql_double_quoted_strings_for_duckdb(
+    base_sql_query = normalize_mysql_double_quoted_strings_for_duckdb(
         request.sql.strip()
-    )
+    ).rstrip().rstrip(";")
+    sql_query = base_sql_query
     # 预览:最外层缺用户 LIMIT 时补默认——判定走 has_top_level_limit(AST,注释/字面量/
     # 子查询天然正确),与本地 execute 同一口径(复审 P1);换行追加,行尾注释安全
     limit = None
@@ -856,10 +861,11 @@ def execute_federated_query(
 
     # 捕获优化器输出（通过 dict 跨闭包传递，避免 nonlocal 嵌套问题）
     _opt = {"sql": sql_query, "suggestions": None}
+    saved_table = None
 
     def execute_in_connection(conn):
         """在连接内执行 ATTACH/QUERY/DETACH"""
-        nonlocal attached_aliases, warnings
+        nonlocal attached_aliases, warnings, saved_table
 
         # 1. ATTACH 所有外部数据库（连接池复用时会容忍已挂载别名）
         if attach_configs:
@@ -871,6 +877,7 @@ def execute_federated_query(
         # ATTACH 回到池里被后续请求复用(Codex S-13)
         try:
             for attempt in range(2):
+                staging_name = None
                 try:
                     with mysql_remote_cancellation_scope(conn, query_id, attach_configs):
                         # 2. 智能下推：半连接键下推(保持结果) + 时间界建议(不改 SQL)
@@ -892,34 +899,48 @@ def execute_federated_query(
                         if opt_warnings:
                             warnings.extend(str(w) for w in opt_warnings)
 
-                        # 3. 执行用户 SQL（使用优化后的语句）
-                        result_triplet = fetch_query_records(
-                            conn,
-                            opt_sql,
-                            # DESCRIBE(mysql_query(...)) 会在 MySQL 上真实执行 SQL，且使用
-                            # 独立于事务扫描的连接；取消器无法精确命中。实际游标 description
-                            # 已提供同样的列类型，因此该表函数直接执行一次即可。
-                            describe_before_execute=not _uses_mysql_query_table_function(opt_sql),
+                        table_name = (request.save_as_table or "").strip()
+                        if table_name:
+                            # Materialize the unbounded user query once.  The
+                            # response preview is read from this same staging
+                            # table, so volatile/remote data cannot diverge
+                            # from the table that will be published.
+                            staging_name = create_query_staging_table(
+                                conn, base_sql_query
+                            )
+                            preview_sql = (
+                                f"SELECT * FROM {quote_identifier(staging_name)}"
+                            )
+                            if limit:
+                                preview_sql = f"{preview_sql} LIMIT {limit}"
+                            result_triplet = fetch_query_records(conn, preview_sql)
+                            _opt["sql"] = base_sql_query
+                        else:
+                            # DESCRIBE(mysql_query(...)) executes the remote
+                            # SQL while binding. Use the actual cursor type so
+                            # the user query remains single-execution.
+                            result_triplet = fetch_query_records(
+                                conn,
+                                opt_sql,
+                                describe_before_execute=(
+                                    not _uses_mysql_query_table_function(opt_sql)
+                                ),
+                            )
+
+                    if staging_name:
+                        publish_query_staging_table(
+                            conn, staging_name, table_name
+                        )
+                        saved_table = table_name
+                        table_registry.record_creation(table_name)
+                        logger.info(
+                            "Federated query result saved as table: %s",
+                            table_name,
                         )
 
-                        # 4. 可选：保存查询结果为新表（使用原始 SQL，确保语义不变）
-                        if request.save_as_table:
-                            table_name = request.save_as_table.strip()
-                            if table_name:
-                                try:
-                                    save_sql = request.sql.strip().rstrip(";")
-                                    create_sql = (
-                                        f'CREATE OR REPLACE TABLE {quote_identifier(table_name)} AS ({save_sql})'
-                                    )
-                                    conn.execute(create_sql)
-                                    table_registry.record_creation(table_name)
-                                    logger.info(f"Query result saved as table: {table_name}")
-                                except Exception as save_error:
-                                    logger.warning(f"Failed to save query result as table: {str(save_error)}")
-                                    warnings.append(f"Failed to save result as table: {str(save_error)}")
-
-                        return result_triplet
+                    return result_triplet
                 except Exception as query_error:
+                    drop_query_staging_table(conn, staging_name)
                     if (
                         attempt > 0
                         or not is_read_only_query(sql_query)
@@ -959,9 +980,14 @@ def execute_federated_query(
                     result_columns, result_records, cursor_types = (
                         execute_in_connection(conn)
                     )
-                    query_column_types = describe_query_column_types(
-                        conn, _opt["sql"]
-                    ) or [
+                    describe_types = None
+                    if not saved_table and not _uses_mysql_query_table_function(
+                        _opt["sql"]
+                    ):
+                        describe_types = describe_query_column_types(
+                            conn, _opt["sql"]
+                        )
+                    query_column_types = describe_types or [
                         {"name": name, "duckdb_type": dtype}
                         for name, dtype in cursor_types
                     ]
@@ -983,6 +1009,8 @@ def execute_federated_query(
             "suggestions": _opt["suggestions"],
             "warnings": warnings if warnings else None,
             "preview_limit_applied": limit,
+            "saved_table": saved_table,
+            "save_error": None,
         }
 
         return create_success_response(

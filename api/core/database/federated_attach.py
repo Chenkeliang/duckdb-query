@@ -115,6 +115,39 @@ def single_threaded_mysql_persistence(
 from core.common.sql_identifiers import quote_identifier as _quote_identifier  # noqa: E402
 
 
+def create_query_staging_table(
+    conn: Any, sql: str, staging_name: Optional[str] = None
+) -> str:
+    """Materialize one query execution into a uniquely named local table."""
+    name = staging_name or f"__stage_{uuid.uuid4().hex}"
+    conn.execute(
+        f"CREATE OR REPLACE TABLE {_quote_identifier(name)} AS ({sql.rstrip().rstrip(';')})"
+    )
+    return name
+
+
+def drop_query_staging_table(conn: Any, staging_name: Optional[str]) -> None:
+    """Remove a staging table when an attempt fails or is rejected."""
+    if staging_name:
+        conn.execute(f"DROP TABLE IF EXISTS {_quote_identifier(staging_name)}")
+
+
+def publish_query_staging_table(
+    conn: Any, staging_name: str, table_name: str
+) -> None:
+    """Atomically replace a local result table with a completed staging table."""
+    quoted_staging = _quote_identifier(staging_name)
+    quoted_table = _quote_identifier(table_name)
+    conn.execute("BEGIN TRANSACTION")
+    try:
+        conn.execute(f"DROP TABLE IF EXISTS {quoted_table}")
+        conn.execute(f"ALTER TABLE {quoted_staging} RENAME TO {quoted_table}")
+        conn.execute("COMMIT")
+    except Exception:
+        conn.execute("ROLLBACK")
+        raise
+
+
 def resolve_attach_configs(
     attach_databases: Optional[List[Any]],
 ) -> List[Tuple[str, Dict[str, Any]]]:
@@ -364,9 +397,7 @@ def execute_sql_and_persist(
     cleaned_sql = sql.rstrip().rstrip(";")
     if attach_configs:
         cleaned_sql = normalize_mysql_double_quoted_strings_for_duckdb(cleaned_sql)
-    quoted_table = _quote_identifier(table_name)
     staging_name = f"__stage_{uuid.uuid4().hex}"
-    quoted_staging = _quote_identifier(staging_name)
 
     def _run(conn: Any) -> Dict[str, Any]:
         attached: List[str] = []
@@ -374,9 +405,6 @@ def execute_sql_and_persist(
             if attach_configs:
                 configure_mysql_fresh_connections(conn, attach_configs)
                 attached = attach_databases_on_connection(conn, attach_configs)
-            staging_sql = (
-                f'CREATE OR REPLACE TABLE {quoted_staging} AS ({cleaned_sql})'
-            )
             snapshot = None
             for attempt in range(2):
                 try:
@@ -387,11 +415,13 @@ def execute_sql_and_persist(
                     with mysql_remote_cancellation_scope(
                         conn, query_id, attach_configs
                     ):
-                        conn.execute(staging_sql)
+                        create_query_staging_table(
+                            conn, cleaned_sql, staging_name
+                        )
                         snapshot = build_table_metadata_snapshot(conn, staging_name)
                     break
                 except Exception as staging_error:
-                    conn.execute(f'DROP TABLE IF EXISTS {quoted_staging}')
+                    drop_query_staging_table(conn, staging_name)
                     if not (
                         attempt == 0
                         and attach_configs
@@ -408,19 +438,9 @@ def execute_sql_and_persist(
             if snapshot is None:
                 raise RuntimeError("Query staging completed without metadata")
             if reject_empty and snapshot["row_count"] == 0:
-                conn.execute(f'DROP TABLE IF EXISTS {quoted_staging}')
+                drop_query_staging_table(conn, staging_name)
             else:
-                # DROP+RENAME 包在真事务里：ALTER 失败(如取消/中断)时 ROLLBACK
-                # 撤销 DROP，target 不会凭空消失。与 file_datasource_manager.py
-                # 的 _create_table_atomically 用同一模式。
-                conn.execute("BEGIN TRANSACTION")
-                try:
-                    conn.execute(f'DROP TABLE IF EXISTS {quoted_table}')
-                    conn.execute(f'ALTER TABLE {quoted_staging} RENAME TO {quoted_table}')
-                    conn.execute("COMMIT")
-                except Exception:
-                    conn.execute("ROLLBACK")
-                    raise
+                publish_query_staging_table(conn, staging_name, table_name)
             return snapshot
         finally:
             if attached:
