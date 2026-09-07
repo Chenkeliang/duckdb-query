@@ -46,6 +46,7 @@ DuckDB 2.0 原样读取，不在启动时静默改写。显式迁移后不支持
 | 自定义扩展仓库 | ❌ 不做 | 当前没有可信源、签名/哈希、权限与升级回滚模型；ExtensionSpec 已预留 `source` |
 | 稳定 C API | ❌ 不做 | 项目运行时只使用 Python API/Wasm；没有原生插件 ABI 消费者，新增 C 层会扩大三平台发布面而无现有收益 |
 | Quack `CONNECT` | ❌ 不做 | 会话会残留在连接池并引入远端副作用，普通查询端点显式封禁 |
+| MySQL/PostgreSQL 远端执行 | 🟡 按验证范围 | 不使用 `CONNECT` 切换会话；当前 MySQL 原生聚合下推存在 DECIMAL 精度回归，默认禁用并保留应用层已验证下推；真实数据库矩阵通过后才按引擎/扩展/平台放行 |
 | Triggers / DML-in-CTE | ❌ 不做 | 产品查询面保持只读；无写入授权、审计和事务 UX |
 
 ## 3. 已验证事实
@@ -54,14 +55,16 @@ DuckDB 2.0 原样读取，不在启动时静默改写。显式迁移后不支持
 
 | 验证项 | 结果 |
 |---|---|
-| 2.0 alpha / Python 3.13（默认依赖） | 1246 passed，3 skipped |
+| 2.0 alpha / Python 3.13（默认依赖） | 1328 passed，5 skipped |
 | 2.0 alpha / Python 3.11 | CI 默认任务（待远端运行） |
-| 前端全量（改造后） | 1236 passed，1 skipped |
-| MCP 全量 | 73 passed，1 skipped |
+| 前端全量（改造后） | 1252 passed，1 skipped |
+| MCP 全量 | 77 passed，1 skipped |
+| MySQL 8.4 / PostgreSQL 18.4 隔离语义矩阵 | 2 passed |
+| macOS ARM64 Tauri Rust | 9 passed；`.app` 构建与深度签名校验通过 |
 | Docker Python 3.12 ARM64 | 镜像构建、独立 API 启动、离线 MySQL LOAD 通过 |
 | Linux ARM64 PyInstaller / Python 3.12 | 2.0 冻结包保真冒烟全部通过 |
 
-原六个 2.0 失败均已修复：动态 Pivot 2 个、旧 JSON `->>` 错误假设 2 个、存储版本断言 1 个、无序 JSON 导出断言 1 个。当前 alpha Python binding 在 pytest 进程退出时仍打印 nanobind reference-leak warning，但退出码为 0、所有测试通过；正式切换前需用 GA wheel 复核该上游预览版告警。
+原六个 2.0 失败均已修复：动态 Pivot 2 个、旧 JSON `->>` 错误假设 2 个、存储版本断言 1 个、无序 JSON 导出断言 1 个。连接池关停现会停止维护线程并释放共享连接，全量 pytest 退出不再打印 nanobind reference-leak warning；GA wheel 发布后仍需复跑矩阵。
 
 ### 3.2 SQL
 
