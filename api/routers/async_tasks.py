@@ -18,6 +18,7 @@ from typing import Any, Dict, List, Optional
 
 from core.common.config_manager import config_manager
 from core.common.timezone_utils import get_current_time, get_current_time_iso
+from core.common.sql_error_location import duckdb_error_message
 from core.data.file_datasource_manager import (
     build_table_metadata_snapshot,
     create_table_from_file,
@@ -1010,7 +1011,7 @@ def execute_async_query(
     支持查询中断：使用 interruptible_connection 包装连接，支持取消操作。
     """
     import duckdb
-    from core.database.duckdb_pool import get_connection_pool, interruptible_connection
+    from core.database.duckdb_pool import get_connection_pool
 
     pool = get_connection_pool()
 
@@ -1021,7 +1022,6 @@ def execute_async_query(
     metadata_snapshot = {}
     source_datasource_id = None
     datasource_type = ""
-    query_success = False
     start_time = time.time()
 
     try:
@@ -1056,81 +1056,51 @@ def execute_async_query(
         logger.info(f"[{task_id}] Creating persistent table to store query result: {table_name}")
         logger.debug(f"[{task_id}] Preparing to execute SQL: {clean_sql[:200]}...")
 
-        # 第二步：执行查询（使用可中断连接）
-        with interruptible_connection(task_id, clean_sql) as con:
-            # 自定义名撞已有表且未显式允许覆盖 → 报错，绝不静默 CREATE OR REPLACE 毁用户表
-            if is_custom and not overwrite:
-                _raise_if_table_exists(con, table_name)
-            if use_external_source:
-                from core.common.connection_alias import build_attach_list_from_datasource
-
-                attach_list = build_attach_list_from_datasource(datasource_info)
-                if not attach_list:
-                    raise ValueError(
-                        "External datasource async task requires attach_databases or "
-                        "a resolvable mysql/postgresql/sqlite datasource"
-                    )
-                logger.info(
-                    "Async task using ATTACH for external datasource %s (%s), aliases=%s",
-                    source_datasource_id,
-                    datasource_type,
-                    [a["alias"] for a in attach_list],
-                )
-                attached_aliases = _attach_external_databases(con, attach_list)
-                try:
-                    create_sql = (
-                        f'CREATE OR REPLACE TABLE "{table_name}" AS ({clean_sql})'
-                    )
-                    con.execute(create_sql)
-                    logger.info(
-                        "External federated result written to DuckDB table: %s",
-                        table_name,
-                    )
-                finally:
-                    _detach_databases(con, attached_aliases)
-            else:
-                create_sql = f'CREATE OR REPLACE TABLE "{table_name}" AS ({clean_sql})'
-                logger.debug(f"[{task_id}] Starting CREATE TABLE AS SELECT...")
-                con.execute(create_sql)
-                logger.info(f"[{task_id}] Persistent table created successfully: {table_name}")
-
-            # 获取元数据（在同一连接中）
-            metadata_snapshot = build_table_metadata_snapshot(con, table_name)
-            row_count = metadata_snapshot.get("row_count", 0)
-            logger.info(f"Query result row count: {row_count}")
-
-            columns_sql = f'DESCRIBE "{table_name}"'
-            columns_info = con.execute(columns_sql).fetchall()
-            columns = [{"name": col[0], "type": col[1]} for col in columns_info]
-            logger.info(f"[{task_id}] Query result column count: {len(columns)}")
-
-            logger.debug(f"[{task_id}] Resource release checkpoint - about to release connection")
-
-            # 内存清理
-            try:
-                # 显式触发GC回收内存
-                import gc
-
-                gc.collect()
-                logger.info("Memory cleanup completed")
-            except Exception as cleanup_error:
-                logger.warning(f"Memory cleanup failed: {str(cleanup_error)}")
-
-            query_success = True
-        # 连接池连接在这里释放
-
-        # 取消检查点 2: 查询完成后检查
-        if task_manager.is_cancellation_requested(task_id):
-            logger.info(f"Task was cancelled after query completion: {task_id}, cleaning created table")
-            # 使用新连接清理表
+        # 第二步：通过共享 staging 路径执行一次并原子发布。取消/失败只清理
+        # staging，既有目标表始终保留。
+        if is_custom and not overwrite:
             with pool.get_connection() as con:
-                try:
-                    con.execute(f'DROP TABLE IF EXISTS "{table_name}"')
-                    logger.info(f"Cleaned table for cancelled task: {table_name}")
-                except Exception as drop_error:
-                    logger.warning(f"Failed to clean table: {drop_error}")
-            task_manager.mark_cancelled(task_id, "User cancelled after query completion")
-            return
+                _raise_if_table_exists(con, table_name)
+        attach_list = None
+        if use_external_source:
+            from core.common.connection_alias import build_attach_list_from_datasource
+
+            attach_list = build_attach_list_from_datasource(datasource_info)
+            if not attach_list:
+                raise ValueError(
+                    "External datasource async task requires attach_databases or "
+                    "a resolvable mysql/postgresql/sqlite datasource"
+                )
+            logger.info(
+                "Async task using ATTACH for external datasource %s (%s), aliases=%s",
+                source_datasource_id,
+                datasource_type,
+                [item["alias"] for item in attach_list],
+            )
+
+        from core.database.federated_attach import execute_sql_and_persist
+
+        metadata_snapshot = execute_sql_and_persist(
+            clean_sql,
+            table_name,
+            attach_list,
+            query_id=task_id,
+            overwrite=overwrite,
+        )
+        row_count = metadata_snapshot.get("row_count", 0)
+        columns = [
+            {"name": profile["name"], "type": profile["duckdb_type"]}
+            for profile in metadata_snapshot.get("column_profiles", [])
+        ]
+        logger.info("[%s] Persistent result published with %s rows", task_id, row_count)
+
+        try:
+            import gc
+
+            gc.collect()
+            logger.info("Memory cleanup completed")
+        except Exception as cleanup_error:
+            logger.warning(f"Memory cleanup failed: {str(cleanup_error)}")
 
         # 第三步：保存元数据（连接池连接已释放，可以安全使用其他连接）
         logger.info(f"[ASYNC_DEBUG] [{task_id}] Step 3: Saving metadata")
@@ -1217,28 +1187,19 @@ def execute_async_query(
     except duckdb.InterruptException:
         # 查询被中断（用户取消）
         logger.info(f"Task {task_id} query interrupted")
-
-        # 清理可能已创建的表
-        if table_name:
-            try:
-                with pool.get_connection() as con:
-                    con.execute(f'DROP TABLE IF EXISTS "{table_name}"')
-                    logger.info(f"Cleaned table for interrupted task: {table_name}")
-            except Exception as drop_error:
-                logger.warning(f"Failed to clean table: {drop_error}")
-
-        # 标记为取消状态
+        # Shared staging publication keeps any pre-existing target intact.
         task_manager.mark_cancelled(task_id, "Query interrupted by user")
 
     except Exception as e:
-        logger.error(f"Async query task failed: {task_id}, error: {str(e)}")
+        error_message = duckdb_error_message(e)
+        logger.error("Async query task failed: %s, error: %s", task_id, error_message)
         logger.error(traceback.format_exc())
 
         # 检查是否因取消而异常
         if task_manager.is_cancellation_requested(task_id):
             task_manager.mark_cancelled(task_id, "Cancelled by user")
         else:
-            if not task_manager.fail_task(task_id, str(e)):
+            if not task_manager.fail_task(task_id, error_message):
                 # fail_task 仅在 status IN (QUEUED, RUNNING) 时生效。若在上面的
                 # is_cancellation_requested 检查(返回 False)之后、这次 UPDATE 之前,
                 # 并发取消把状态推到了 CANCELLING,fail_task 守卫落空、只记日志会让
@@ -1249,6 +1210,10 @@ def execute_async_query(
                     task_manager.mark_cancelled(task_id, "Cancelled by user")
                 else:
                     logger.error(f"Unable to mark task as failed: {task_id}")
+    finally:
+        from core.database.connection_registry import connection_registry
+
+        connection_registry.forget_publication(task_id)
 
 
 def execute_async_federated_query(
@@ -1344,6 +1309,7 @@ def execute_async_federated_query(
             table_name,
             attach_databases,
             query_id=task_id,
+            overwrite=overwrite,
         )
         row_count = metadata_snapshot.get("row_count", 0)
         columns = [
@@ -1452,21 +1418,16 @@ def execute_async_federated_query(
     except duckdb.InterruptException:
         # 查询被中断（用户取消）
         logger.info(f"Federated query task {task_id} was interrupted")
-
-        # 清理可能已创建的表
-        if table_name:
-            try:
-                with pool.get_connection() as con:
-                    con.execute(f'DROP TABLE IF EXISTS "{table_name}"')
-                    logger.info(f"Cleaned table for interrupted federated query: {table_name}")
-            except Exception as drop_error:
-                logger.warning(f"Failed to clean table: {drop_error}")
-
-        # 标记为取消状态
+        # Shared staging publication keeps any pre-existing target intact.
         task_manager.mark_cancelled(task_id, "Federated query interrupted by user")
 
     except Exception as e:
-        logger.error(f"Async federated query task failed: {task_id}, error: {str(e)}")
+        error_message = duckdb_error_message(e)
+        logger.error(
+            "Async federated query task failed: %s, error: %s",
+            task_id,
+            error_message,
+        )
         logger.error(traceback.format_exc())
 
         # 检查是否因取消而异常
@@ -1474,8 +1435,7 @@ def execute_async_federated_query(
             task_manager.mark_cancelled(task_id, "Cancelled by user")
         else:
             # 根据错误类型分类错误代码
-            error_message = str(e)
-            error_str = str(e).lower()
+            error_str = error_message.lower()
             if "不存在" in error_message or "not found" in error_str:
                 error_code = "CONNECTION_NOT_FOUND"
             elif "不支持" in error_message or "unsupported" in error_str:
@@ -1510,6 +1470,13 @@ def execute_async_federated_query(
                 task_id, error_message, metadata_update=error_metadata
             ):
                 logger.error(f"Unable to mark federated query task as failed: {task_id}")
+    finally:
+        # execute_sql_and_persist unregisters its connection before this caller
+        # writes the terminal task state. Release the publication handoff only
+        # after every success/cancel/failure branch has finished.
+        from core.database.connection_registry import connection_registry
+
+        connection_registry.forget_publication(task_id)
 
 
 def generate_download_file(task_id: str, format: str = "csv", target_path: Optional[str] = None):

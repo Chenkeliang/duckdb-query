@@ -11,9 +11,14 @@ import duckdb
 import pytest
 
 from core.database.federated_attach import (
+    cancel_postgres_queries,
+    execute_sql_and_persist,
+    finalize_query_if_not_cancelled,
     kill_mysql_query,
     mysql_remote_cancellation_scope,
+    remote_cancellation_scope,
 )
+from core.database.connection_registry import ConnectionRegistry
 from core.database.duckdb_engine import fetch_query_records
 from routers.duckdb_query import _uses_mysql_query_table_function
 
@@ -56,6 +61,359 @@ def test_mysql_remote_cancellation_scope_registers_same_transaction_session():
     assert executed_sql[-1] == "COMMIT"
     register_remote.assert_called_once()
     assert register_remote.call_args.args[0] == "sync:test-query"
+
+
+def test_registry_removes_only_the_completed_attempt_remote_interrupt():
+    registry = ConnectionRegistry()
+    connection = MagicMock()
+    first = MagicMock(return_value=True)
+    second = MagicMock(return_value=True)
+    registry.register("sync:retry", connection, "SELECT 1")
+    assert registry.register_remote_interrupt("sync:retry", first)
+    assert registry.register_remote_interrupt("sync:retry", second)
+
+    assert registry.unregister_remote_interrupt("sync:retry", first)
+    assert registry.interrupt_with_remote("sync:retry")
+
+    first.assert_not_called()
+    second.assert_called_once_with()
+
+
+def test_cancel_wins_before_publication_commit():
+    registry = ConnectionRegistry()
+    connection = MagicMock()
+    commit = MagicMock()
+    registry.register("async:before-commit", connection, "SELECT 1")
+
+    assert registry.interrupt_with_remote("async:before-commit")
+
+    assert not registry.commit_if_not_cancelled("async:before-commit", commit)
+    commit.assert_not_called()
+
+
+def test_publication_commit_wins_before_late_cancel():
+    registry = ConnectionRegistry()
+    connection = MagicMock()
+    commit = MagicMock()
+    registry.register("async:committed", connection, "SELECT 1")
+
+    assert registry.commit_if_not_cancelled("async:committed", commit)
+    assert not registry.interrupt_with_remote("async:committed")
+
+    commit.assert_called_once_with()
+    connection.interrupt.assert_not_called()
+
+
+def test_task_state_transition_is_rejected_after_publication():
+    """Regression 2026-09-07: late cancellation cannot mutate async task state."""
+    registry = ConnectionRegistry()
+    connection = MagicMock()
+    accept = MagicMock(return_value=True)
+    registry.register("async:already-published", connection, "SELECT 1")
+    assert registry.commit_if_not_cancelled("async:already-published", lambda: None)
+
+    assert not registry.cancel_if_not_published("async:already-published", accept)
+
+    accept.assert_not_called()
+    connection.interrupt.assert_not_called()
+
+
+def test_publication_marker_survives_connection_unregister_until_acknowledged():
+    """Regression 2026-09-07: unregister-to-task-complete window rejects cancel."""
+    registry = ConnectionRegistry()
+    connection = MagicMock()
+    accept = MagicMock(return_value=True)
+    task_id = "async:published-unregistered"
+    registry.register(
+        task_id,
+        connection,
+        "SELECT 1",
+        retain_publication=True,
+    )
+    assert registry.commit_if_not_cancelled(task_id, lambda: None)
+    assert registry.unregister(task_id)
+
+    assert not registry.cancel_if_not_published(task_id, accept)
+    accept.assert_not_called()
+
+    registry.forget_publication(task_id)
+    assert registry.cancel_if_not_published(task_id, accept)
+    accept.assert_called_once_with()
+
+
+def test_accepted_task_cancellation_runs_remote_interrupts():
+    """Regression 2026-09-07: async cancellation uses attempt-scoped remote cancel."""
+    registry = ConnectionRegistry()
+    connection = MagicMock()
+    remote = MagicMock(return_value=True)
+    registry.register("async:remote", connection, "SELECT 1")
+    registry.register_remote_interrupt("async:remote", remote)
+
+    assert registry.cancel_if_not_published("async:remote", lambda: True)
+
+    connection.interrupt.assert_called_once_with()
+    remote.assert_called_once_with()
+
+
+def test_cancellation_accepted_before_registration_blocks_execution_and_commit():
+    """Regression 2026-09-07: a pre-registration cancel survives handoff."""
+    registry = ConnectionRegistry()
+    connection = MagicMock()
+    assert registry.cancel_if_not_published("async:early", lambda: True)
+
+    registry.register("async:early", connection, "SELECT expensive()")
+
+    assert registry.is_cancel_requested("async:early")
+    commit = MagicMock()
+    assert not registry.commit_if_not_cancelled("async:early", commit)
+    commit.assert_not_called()
+
+
+def test_cancel_postgres_queries_targets_only_attempt_application_name(monkeypatch):
+    controller = MagicMock()
+    cursor = MagicMock()
+    controller.cursor.return_value.__enter__.return_value = cursor
+    cursor.fetchall.return_value = [(True,), (False,)]
+    connect = MagicMock(return_value=controller)
+    monkeypatch.setattr(
+        "core.database.federated_attach.psycopg2.connect",
+        connect,
+    )
+    config = {
+        "type": "postgresql",
+        "host": "postgres.example",
+        "port": 5432,
+        "username": "reader",
+        "password": "secret",
+        "database": "analytics",
+    }
+
+    assert cancel_postgres_queries(config, "duckquery_attempt")
+
+    assert cursor.execute.call_args.args[1] == ["duckquery_attempt"]
+    controller.close.assert_called_once_with()
+
+
+def test_postgres_remote_cancel_lease_expires_with_attempt(monkeypatch):
+    cancel = MagicMock(return_value=True)
+    registered = []
+    monkeypatch.setattr(
+        "core.database.federated_attach.cancel_postgres_queries",
+        cancel,
+    )
+    monkeypatch.setattr(
+        "core.database.federated_attach.connection_registry.register_remote_interrupt",
+        lambda _query_id, callback: registered.append(callback) or True,
+    )
+    monkeypatch.setattr(
+        "core.database.federated_attach.connection_registry.unregister_remote_interrupt",
+        lambda *_args: True,
+    )
+    config = {
+        "type": "postgresql",
+        "host": "postgres.example",
+        "username": "reader",
+        "password": "secret",
+        "database": "analytics",
+    }
+
+    with remote_cancellation_scope(
+        MagicMock(),
+        "sync:pg-attempt",
+        [("pg", config)],
+    ):
+        assert registered[0]()
+
+    assert not registered[0]()
+    cancel.assert_called_once()
+
+
+def test_cancel_while_connection_idle_prevents_remote_scope_body(monkeypatch):
+    """Regression 2026-09-07: idle interrupt cannot be lost before remote SQL."""
+    from core.database import federated_attach
+
+    registry = ConnectionRegistry()
+    connection = MagicMock()
+    query_id = "sync:idle-before-remote"
+    registry.register(query_id, connection, "SELECT 42")
+    monkeypatch.setattr(federated_attach, "connection_registry", registry)
+
+    assert registry.interrupt_with_remote(query_id)
+    entered = False
+    with pytest.raises(duckdb.InterruptException):
+        with federated_attach.remote_cancellation_scope(
+            connection,
+            query_id,
+            [],
+        ):
+            entered = True
+
+    assert entered is False
+
+
+def test_preview_completion_linearizes_against_late_cancel(monkeypatch):
+    """Regression 2026-09-07: preview success has an atomic completion point."""
+    from core.database import federated_attach
+
+    registry = ConnectionRegistry()
+    connection = MagicMock()
+    monkeypatch.setattr(federated_attach, "connection_registry", registry)
+    query_id = "sync:preview-completion"
+    registry.register(query_id, connection, "SELECT 42")
+
+    finalize_query_if_not_cancelled(query_id)
+
+    assert not registry.interrupt_with_remote(query_id)
+    connection.interrupt.assert_not_called()
+
+
+def test_standalone_persist_cancellation_removes_staging(monkeypatch):
+    """Regression 2026-09-07: pre-publication cancel leaves no __stage table."""
+    connection = duckdb.connect(":memory:")
+
+    @contextmanager
+    def connection_scope(_query_id, _sql, **_kwargs):
+        yield connection
+
+    monkeypatch.setattr(
+        "core.database.federated_attach.interruptible_connection",
+        connection_scope,
+    )
+    monkeypatch.setattr(
+        "core.database.federated_attach.connection_registry.is_cancel_requested",
+        lambda _query_id: True,
+    )
+    with pytest.raises(duckdb.InterruptException):
+        execute_sql_and_persist(
+            "SELECT * FROM range(10)",
+            "cancelled_persist",
+            [],
+            query_id="async:cancelled-persist",
+        )
+
+    assert connection.execute("SHOW TABLES").fetchall() == []
+    connection.close()
+
+
+@pytest.mark.parametrize("federated", [False, True])
+def test_standalone_persist_watchdog_reports_timeout(monkeypatch, federated):
+    """Regression 2026-09-08: only federated persistence gets its watchdog."""
+    connection = duckdb.connect(":memory:")
+
+    @contextmanager
+    def connection_scope(_query_id, _sql, **_kwargs):
+        from core.database.federated_attach import connection_registry
+
+        connection_registry.register(_query_id, connection, _sql)
+        try:
+            yield connection
+        finally:
+            connection_registry.unregister(_query_id)
+
+    class ImmediateTimer:
+        def __init__(self, _delay, callback):
+            self.callback = callback
+
+        def start(self):
+            self.callback()
+
+        def cancel(self):
+            return None
+
+    monkeypatch.setattr(
+        "core.database.federated_attach.interruptible_connection",
+        connection_scope,
+    )
+    monkeypatch.setattr(
+        "core.database.federated_attach.threading.Timer",
+        ImmediateTimer,
+    )
+
+    if federated:
+        monkeypatch.setattr(
+            "core.database.federated_attach.resolve_attach_configs",
+            lambda _items: [("external", {"type": "sqlite"})],
+        )
+        monkeypatch.setattr(
+            "core.database.federated_attach.attach_databases_on_connection",
+            lambda *_args, **_kwargs: [],
+        )
+
+    try:
+        if federated:
+            with pytest.raises(TimeoutError, match="exceeded"):
+                execute_sql_and_persist(
+                    "SELECT * FROM range(10)",
+                    "timed_out_persist",
+                    [],
+                    query_id="async:persist-timeout",
+                )
+            assert connection.execute("SHOW TABLES").fetchall() == []
+        else:
+            execute_sql_and_persist(
+                "SELECT * FROM range(10)",
+                "local_persist",
+                [],
+                query_id="async:local-persist",
+            )
+            assert connection.execute("SELECT count(*) FROM local_persist").fetchone() == (10,)
+    finally:
+        connection.close()
+
+
+def test_mysql_remote_interrupt_lease_is_inactive_after_scope_exit():
+    connection = MagicMock()
+    session_result = MagicMock()
+    session_result.fetchone.return_value = (12345,)
+
+    def execute(sql):
+        if "SELECT CONNECTION_ID()" in sql:
+            return session_result
+        return MagicMock()
+
+    connection.execute.side_effect = execute
+    config = {
+        "type": "mysql",
+        "host": "mysql.example",
+        "user": "reader",
+        "password": "secret",
+        "database": "analytics",
+    }
+    registered = []
+
+    def register_remote(_query_id, callback):
+        registered.append(callback)
+        return True
+
+    with (
+        patch(
+            "core.database.federated_attach.connection_registry.register_remote_interrupt",
+            side_effect=register_remote,
+        ),
+        patch(
+            "core.database.federated_attach.connection_registry.unregister_remote_interrupt",
+            create=True,
+            return_value=True,
+        ) as unregister_remote,
+        patch(
+            "core.database.federated_attach.kill_mysql_query",
+            return_value=True,
+        ) as kill_remote,
+    ):
+        with mysql_remote_cancellation_scope(
+            connection,
+            "sync:finished-attempt",
+            [("mysql_prod", config)],
+        ):
+            pass
+
+        assert len(registered) == 1
+        assert registered[0]() is False
+
+    unregister_remote.assert_called_once_with(
+        "sync:finished-attempt", registered[0]
+    )
+    kill_remote.assert_not_called()
 
 
 def test_kill_mysql_query_uses_second_connection_without_exposing_credentials():
@@ -191,7 +549,7 @@ def test_federated_endpoint_retries_mysql_disconnect_after_transaction_rollback(
     session_result = MagicMock()
     session_result.fetchone.return_value = (12345,)
 
-    def execute(sql):
+    def execute(sql, *_params):
         if "SELECT CONNECTION_ID()" in sql:
             return session_result
         return MagicMock()
@@ -222,14 +580,13 @@ def test_federated_endpoint_retries_mysql_disconnect_after_transaction_rollback(
     monkeypatch.setattr(
         duckdb_query,
         "attach_databases_on_connection",
-        lambda _connection, _configs: ["mysql_sorting"],
+        lambda _connection, _configs, **_kwargs: ["mysql_sorting"],
     )
     monkeypatch.setattr(
         duckdb_query, "detach_databases_on_connection", lambda _connection, _aliases: None
     )
     monkeypatch.setattr(
-        duckdb_query,
-        "optimize_federated_sql",
+        "core.database.federated_execution.optimize_federated_sql",
         lambda _connection, sql, _aliases, _cfg, **_kwargs: (sql, [], []),
     )
     fetch = MagicMock(
@@ -331,7 +688,7 @@ def test_federated_endpoint_temporarily_serializes_mysql_scan(monkeypatch):
         duckdb_query, "configure_mysql_fresh_connections", lambda *_args: None
     )
 
-    def attach(_connection, _configs):
+    def attach(_connection, _configs, **_kwargs):
         events.append("ATTACH")
         return ["mysql_sorting"]
 
@@ -340,11 +697,10 @@ def test_federated_endpoint_temporarily_serializes_mysql_scan(monkeypatch):
         duckdb_query, "detach_databases_on_connection", lambda *_args: None
     )
     monkeypatch.setattr(
-        duckdb_query, "mysql_remote_cancellation_scope", cancellation_scope
+        "core.database.federated_execution.remote_cancellation_scope", cancellation_scope
     )
     monkeypatch.setattr(
-        duckdb_query,
-        "optimize_federated_sql",
+        "core.database.federated_execution.optimize_federated_sql",
         lambda _connection, sql, _aliases, _cfg, **_kwargs: (sql, [], []),
     )
 

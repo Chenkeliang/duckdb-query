@@ -693,35 +693,33 @@ class TaskManager:
         """
         from core.database.connection_registry import connection_registry
 
-        with with_system_connection() as connection:
-            rows = connection.execute(
-                f"""
-                UPDATE {ASYNC_TASKS_TABLE}
-                SET status = ?
-                WHERE task_id = ? AND status IN (?, ?)
-                RETURNING task_id
-                """,
-                [
-                    TaskStatus.CANCELLING.value,
-                    task_id,
-                    TaskStatus.QUEUED.value,
-                    TaskStatus.RUNNING.value,
-                ],
-            ).fetchall()
+        def _accept_cancellation() -> bool:
+            with with_system_connection() as connection:
+                rows = connection.execute(
+                    f"""
+                    UPDATE {ASYNC_TASKS_TABLE}
+                    SET status = ?
+                    WHERE task_id = ? AND status IN (?, ?)
+                    RETURNING task_id
+                    """,
+                    [
+                        TaskStatus.CANCELLING.value,
+                        task_id,
+                        TaskStatus.QUEUED.value,
+                        TaskStatus.RUNNING.value,
+                    ],
+                ).fetchall()
+            return bool(rows)
 
-        success = bool(rows)
+        try:
+            success = connection_registry.cancel_if_not_published(
+                task_id, _accept_cancellation
+            )
+        except Exception as exc:
+            logger.warning("Failed to request task cancellation %s: %s", task_id, exc)
+            success = False
         if success:
             logger.info("Task cancellation request set: %s, reason: %s", task_id, reason)
-
-            # 尝试中断正在执行的查询
-            try:
-                interrupted = connection_registry.interrupt(task_id)
-                if interrupted:
-                    logger.info("Interrupted query execution for task %s", task_id)
-                else:
-                    logger.info("Task %s not in registry (possibly completed or not started yet)", task_id)
-            except Exception as exc:
-                logger.warning("Failed to interrupt task %s: %s", task_id, exc)
 
             # Update cancellation metadata
             try:

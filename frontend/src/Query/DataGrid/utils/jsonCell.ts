@@ -9,8 +9,97 @@
 
 import * as React from 'react';
 import i18next from 'i18next';
+import {
+  applyEdits,
+  format,
+  parseTree,
+  type Node as JsonNode,
+  type ParseError,
+} from 'jsonc-parser';
 import { Braces } from 'lucide-react';
 import type { CellRendererProps } from '../types';
+
+export const JSON_FORMAT_LIMIT = 100_000;
+export const JSON_VISIBLE_CHARACTER_LIMIT = 200_000;
+export const JSON_PATH_PARSE_LIMIT = 500_000;
+export const JSON_MAX_NESTING_DEPTH = 256;
+export const JSON_FORMATTED_OUTPUT_BUDGET = 500_000;
+
+export interface JsonViewerText {
+  text: string;
+  truncated: boolean;
+  totalCharacters: number;
+}
+
+export interface JsonPointerEntry {
+  id: string;
+  pointer: string;
+  label: string;
+}
+
+function exceedsJsonNestingBudget(
+  text: string,
+  maxDepth = JSON_MAX_NESTING_DEPTH
+): boolean {
+  let depth = 0;
+  let inString = false;
+  let escaped = false;
+  for (const character of text) {
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (character === '\\') {
+        escaped = true;
+      } else if (character === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (character === '"') {
+      inString = true;
+    } else if (character === '{' || character === '[') {
+      depth += 1;
+      if (depth > maxDepth) return true;
+    } else if (character === '}' || character === ']') {
+      depth = Math.max(0, depth - 1);
+    }
+  }
+  return false;
+}
+
+function exceedsJsonFormattingBudget(text: string): boolean {
+  let depth = 0;
+  let estimatedCharacters = text.length;
+  let inString = false;
+  let escaped = false;
+  for (const character of text) {
+    if (inString) {
+      if (escaped) {
+        escaped = false;
+      } else if (character === '\\') {
+        escaped = true;
+      } else if (character === '"') {
+        inString = false;
+      }
+      continue;
+    }
+    if (character === '"') {
+      inString = true;
+    } else if (character === '{' || character === '[') {
+      depth += 1;
+      estimatedCharacters += depth * 2 + 1;
+    } else if (character === '}' || character === ']') {
+      depth = Math.max(0, depth - 1);
+      estimatedCharacters += depth * 2 + 1;
+    } else if (character === ',') {
+      estimatedCharacters += depth * 2 + 1;
+    } else if (character === ':') {
+      estimatedCharacters += 1;
+    }
+    if (estimatedCharacters > JSON_FORMATTED_OUTPUT_BUDGET) return true;
+  }
+  return false;
+}
 
 export function isJsonViewable(value: unknown): boolean {
   if (value === null || value === undefined) return false;
@@ -43,12 +132,132 @@ export function isJsonViewable(value: unknown): boolean {
  * 若值已是字符串则先 parse，再 stringify。
  */
 export function toFormattedJson(value: unknown): string {
+  if (typeof value === 'string') {
+    const trimmed = value.trim();
+    if (
+      trimmed.length > JSON_FORMAT_LIMIT ||
+      exceedsJsonNestingBudget(trimmed) ||
+      exceedsJsonFormattingBudget(trimmed)
+    ) return value;
+    try {
+      // Validate with the platform parser, but keep the original text as the
+      // formatting source. Parsing and stringifying would round large JSON
+      // numbers and collapse duplicate object keys.
+      JSON.parse(trimmed);
+      return applyEdits(
+        trimmed,
+        format(trimmed, undefined, {
+          insertSpaces: true,
+          tabSize: 2,
+          eol: '\n',
+        })
+      );
+    } catch {
+      return value;
+    }
+  }
+
   try {
-    const obj =
-      typeof value === 'string' ? (JSON.parse(value.trim()) as unknown) : value;
-    return JSON.stringify(obj, null, 2);
+    return JSON.stringify(value, null, 2);
   } catch {
-    return typeof value === 'string' ? value : String(value);
+    return String(value);
+  }
+}
+
+/** Build a bounded display string while keeping full raw copy independent. */
+export function getJsonViewerText(
+  value: unknown,
+  visibleLimit = JSON_VISIBLE_CHARACTER_LIMIT
+): JsonViewerText {
+  const raw = toRawJsonText(value);
+  const formatted = raw.length <= JSON_FORMAT_LIMIT ? toFormattedJson(value) : raw;
+  return {
+    text: formatted.slice(0, visibleLimit),
+    truncated: formatted.length > visibleLimit,
+    totalCharacters: raw.length,
+  };
+}
+
+function jsonPointerSegment(value: string): string {
+  return value.replace(/~/g, '~0').replace(/\//g, '~1');
+}
+
+function pointerFromSegments(segments: string[]): string {
+  return segments.length
+    ? `/${segments.map(jsonPointerSegment).join('/')}`
+    : '';
+}
+
+/** List JSON Pointer paths without converting number tokens through JS Number. */
+export function listJsonPointerPaths(
+  value: unknown,
+  maxEntries = 200
+): JsonPointerEntry[] {
+  const raw = toRawJsonText(value).trim();
+  if (
+    !raw ||
+    raw.length > JSON_PATH_PARSE_LIMIT ||
+    maxEntries <= 0 ||
+    exceedsJsonNestingBudget(raw)
+  ) return [];
+  const errors: ParseError[] = [];
+  let root: JsonNode | undefined;
+  try {
+    root = parseTree(raw, errors, {
+      allowTrailingComma: false,
+      disallowComments: true,
+    });
+  } catch {
+    return [];
+  }
+  if (!root || errors.length > 0) return [];
+
+  const entries: JsonPointerEntry[] = [];
+  const stack: Array<{ node: JsonNode; segments: string[] }> = [
+    { node: root, segments: [] },
+  ];
+  while (stack.length > 0 && entries.length < maxEntries) {
+    const current = stack.pop();
+    if (!current) break;
+    const pointer = pointerFromSegments(current.segments);
+    entries.push({
+      id: `${entries.length}:${pointer}`,
+      pointer,
+      label: pointer || '$',
+    });
+
+    if (current.node.type === 'object') {
+      const properties = current.node.children ?? [];
+      for (let index = properties.length - 1; index >= 0; index -= 1) {
+        const property = properties[index];
+        const keyNode = property.children?.[0];
+        const valueNode = property.children?.[1];
+        if (!keyNode || !valueNode || typeof keyNode.value !== 'string') continue;
+        stack.push({
+          node: valueNode,
+          segments: [...current.segments, keyNode.value],
+        });
+      }
+    } else if (current.node.type === 'array') {
+      const children = current.node.children ?? [];
+      for (let index = children.length - 1; index >= 0; index -= 1) {
+        stack.push({
+          node: children[index],
+          segments: [...current.segments, String(index)],
+        });
+      }
+    }
+  }
+  return entries;
+}
+
+/** Return the exact JSON text received from the API for lossless copying. */
+export function toRawJsonText(value: unknown): string {
+  if (typeof value === 'string') return value;
+  try {
+    return JSON.stringify(value);
+  } catch {
+    return String(value);
   }
 }
 

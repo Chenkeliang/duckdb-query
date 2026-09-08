@@ -12,6 +12,7 @@ app-config.json —— 2026-07 实际发生过:桌面端重启后按毒化路径
 
 from __future__ import annotations
 
+import gc
 import os
 import tempfile
 from pathlib import Path
@@ -25,3 +26,24 @@ os.environ.setdefault("CONFIG_DIR", str(_test_root / "config"))
 os.environ.setdefault("TEMP_FILES_DIR", str(_test_root / "temp_files"))
 os.environ.setdefault("DUCKDB_DATA_DIR", str(_duck_base))
 os.environ.setdefault("DUCKDB_DATABASE_PATH", str(_duck_base / "main.db"))
+
+
+def _shutdown_duckdb_test_state() -> None:
+    try:
+        from core.database.duckdb_pool import shutdown_all_duckdb_connections
+
+        shutdown_all_duckdb_connections()
+    finally:
+        gc.collect()
+
+
+def pytest_sessionfinish(session, exitstatus):
+    """Close shared DuckDB state after tests have stopped using it."""
+    del session, exitstatus
+    _shutdown_duckdb_test_state()
+
+
+def pytest_unconfigure(config):
+    """Repeat cleanup after plugin teardown, immediately before interpreter exit."""
+    del config
+    _shutdown_duckdb_test_state()

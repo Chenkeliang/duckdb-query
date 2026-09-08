@@ -22,7 +22,11 @@ from core.common.enhanced_error_handler import get_error_handler
 from core.common.config_manager import config_manager
 from core.common.sql_identifiers import quote_identifier
 from core.common.sql_capabilities import is_read_only_sql
-from core.common.sql_error_location import parse_sql_error_location
+from core.common.sql_error_location import (
+    build_sql_error_details,
+    duckdb_error_message,
+    structured_duckdb_errors,
+)
 from core.common.timezone_utils import (
     format_storage_time_for_response,
     get_current_time_iso,
@@ -46,14 +50,17 @@ from core.database.duckdb_engine import (
 from core.database.federated_attach import (
     attach_databases_on_connection,
     configure_mysql_fresh_connections,
+    create_ordered_query_staging_table,
     detach_databases_on_connection,
-    mysql_remote_cancellation_scope,
+    drop_query_staging_table,
+    finalize_query_if_not_cancelled,
+    publish_query_staging_table,
     resolve_attach_configs,
     single_threaded_mysql_persistence,
 )
 from core.database.duckdb_pool import interruptible_connection
 from core.database.connection_registry import connection_registry
-from core.database.federated_optimizer import optimize_federated_sql
+from core.database.federated_execution import federated_execution_scope
 from core.services.resource_manager import save_upload_file
 from core.services.table_metadata_service import get_table_metadata
 from core.common.exceptions import (
@@ -173,7 +180,14 @@ def _main_table_create_target(sql: str) -> tuple[Optional[str], bool]:
     return target.name or None, bool(tree.args.get("exists"))
 
 
-def _run_query_maybe_save(conn, sql_query, save_as_table, limit, original_sql=None):
+def _run_query_maybe_save(
+    conn,
+    sql_query,
+    save_as_table,
+    limit,
+    original_sql=None,
+    query_id=None,
+):
     """执行查询;若指定 save_as_table 则先 CTAS 物化(原查询只执行这一次),
     预览行改从已建的表读取——既避免为预览重跑昂贵/有副作用的查询,也保证预览行
     与落库数据一致(非确定性查询如 random()/now() 不再"预览≠落库",Codex P1-11)。
@@ -193,13 +207,37 @@ def _run_query_maybe_save(conn, sql_query, save_as_table, limit, original_sql=No
     table_name = (save_as_table or "").strip()
     if table_name:
         save_sql = (original_sql if original_sql is not None else sql_query).strip().rstrip(";")
+        staging_name = None
+        preview_result = None
         try:
+            staging_name, order_column = create_ordered_query_staging_table(
+                conn,
+                save_sql,
+            )
+            preview_sql = (
+                f"SELECT * EXCLUDE ({quote_identifier(order_column)}) "
+                f"FROM {quote_identifier(staging_name)} "
+                f"ORDER BY {quote_identifier(order_column)}"
+            )
+            if limit:
+                preview_sql = f"{preview_sql} LIMIT {limit}"
+            cols, recs, cur_types = fetch_query_records(conn, preview_sql)
+            preview_result = (
+                cols,
+                recs,
+                cur_types,
+                _types(cur_types, preview_sql),
+            )
             conn.execute(
-                f"CREATE OR REPLACE TABLE {quote_identifier(table_name)} AS ({save_sql})"
+                f"ALTER TABLE {quote_identifier(staging_name)} "
+                f"DROP COLUMN {quote_identifier(order_column)}"
+            )
+            snapshot = build_table_metadata_snapshot(conn, staging_name)
+            publish_query_staging_table(
+                conn, staging_name, table_name, query_id=query_id
             )
             logger.info("Query result saved as table: %s", table_name)
             try:
-                snapshot = build_table_metadata_snapshot(conn, table_name)
                 file_datasource_manager.save_file_datasource({
                     "source_id": table_name,
                     "filename": "sql_query_result",
@@ -212,16 +250,18 @@ def _run_query_maybe_save(conn, sql_query, save_as_table, limit, original_sql=No
                 })
             except Exception as meta_error:  # pylint: disable=broad-except
                 logger.warning("Failed to save table metadata (non-fatal): %s", meta_error)
-            preview_sql = f"SELECT * FROM {quote_identifier(table_name)}"
-            if limit:
-                preview_sql = f"{preview_sql} LIMIT {limit}"
-            cols, recs, cur_types = fetch_query_records(conn, preview_sql)
-            return cols, recs, cur_types, _types(cur_types, preview_sql), table_name, None
+            return (*preview_result, table_name, None)
+        except duckdb.InterruptException:
+            drop_query_staging_table(conn, staging_name)
+            raise
         except Exception as save_error:  # pylint: disable=broad-except
+            drop_query_staging_table(conn, staging_name)
             logger.warning("Failed to save query result as table: %s", save_error)
-            # 保存失败 → 退回直接执行原查询,至少把数据返回,并将错误带回响应
-            cols, recs, cur_types = fetch_query_records(conn, sql_query)
-            return cols, recs, cur_types, _types(cur_types, sql_query), None, str(save_error)
+            # Materialization succeeded, so reuse its preview rather than
+            # replaying a volatile or remote user query after publication fails.
+            if preview_result is not None:
+                return (*preview_result, None, str(save_error))
+            raise
 
     created_table, if_not_exists = _main_table_create_target(sql_query)
     table_existed = False
@@ -534,20 +574,35 @@ def execute_duckdb_query(
         # 使用可中断连接执行查询（如果有 query_id）
         if query_id:
             with interruptible_connection(query_id, sql_query) as conn:
-                (result_columns, result_records, _cursor_types, query_column_types,
-                 saved_table, save_error) = _run_query_maybe_save(
-                    conn, sql_query, request.save_as_table, limit, original_sql=request.sql)
-                execution_time = _log_query_metrics_in_conn(
-                    conn, sql_query, start_time, len(result_records)
-                )
+                with structured_duckdb_errors(conn):
+                    (result_columns, result_records, _cursor_types, query_column_types,
+                     saved_table, save_error) = _run_query_maybe_save(
+                        conn,
+                        sql_query,
+                        request.save_as_table,
+                        limit,
+                        original_sql=request.sql,
+                        query_id=query_id,
+                    )
+                    execution_time = _log_query_metrics_in_conn(
+                        conn, sql_query, start_time, len(result_records)
+                    )
+                    finalize_query_if_not_cancelled(query_id)
         else:
             with with_duckdb_connection() as con:
-                (result_columns, result_records, _cursor_types, query_column_types,
-                 saved_table, save_error) = _run_query_maybe_save(
-                    con, sql_query, request.save_as_table, limit, original_sql=request.sql)
-                execution_time = _log_query_metrics_in_conn(
-                    con, sql_query, start_time, len(result_records)
-                )
+                with structured_duckdb_errors(con):
+                    (result_columns, result_records, _cursor_types, query_column_types,
+                     saved_table, save_error) = _run_query_maybe_save(
+                        con,
+                        sql_query,
+                        request.save_as_table,
+                        limit,
+                        original_sql=request.sql,
+                        query_id=query_id,
+                    )
+                    execution_time = _log_query_metrics_in_conn(
+                        con, sql_query, start_time, len(result_records)
+                    )
 
         # 构建响应
         response_payload = {
@@ -583,16 +638,19 @@ def execute_duckdb_query(
     except BaseAPIException:
         raise
     except Exception as e:
-        logger.error(f"DuckDB query execution failed: {str(e)}")
+        safe_message = duckdb_error_message(e)
+        logger.error("DuckDB query execution failed: %s", safe_message)
         logger.error(f"Stack trace: {traceback.format_exc()}")
-        details = {"query_id": query_id}
-        sql_location = parse_sql_error_location(str(e), sql_query)
-        if sql_location:
-            details["sql_location"] = sql_location
+        details = build_sql_error_details(
+            e,
+            request.sql,
+            sql_query,
+            query_id,
+        )
         return error_json_response(
             500,
             MessageCode.QUERY_FAILED,
-            f"Query execution failed: {str(e)}",
+            f"Query execution failed: {safe_message}",
             details=details,
         )
 
@@ -830,6 +888,8 @@ def execute_federated_query(
     attached_aliases = []
     warnings = []
     query_id = f"sync:{x_request_id}" if x_request_id else None
+    timeout_s = int(config_manager.get_app_config().federated_query_timeout or 300)
+    deadline = time.monotonic() + timeout_s
 
     # 写拦截:此端点独立于 /execute,历史上漏了这道门,MCP federated_query
     # 可借多语句/CTE 绕过只读判定送达写操作(Codex P0-4)。与 /execute 同 helper。
@@ -841,9 +901,10 @@ def execute_federated_query(
     attach_configs = resolve_attach_configs(request.attach_databases)
 
     # 处理 SQL 查询（MySQL 风格双引号字符串 → DuckDB 单引号）
-    sql_query = normalize_mysql_double_quoted_strings_for_duckdb(
+    base_sql_query = normalize_mysql_double_quoted_strings_for_duckdb(
         request.sql.strip()
-    )
+    ).rstrip().rstrip(";")
+    sql_query = base_sql_query
     # 预览:最外层缺用户 LIMIT 时补默认——判定走 has_top_level_limit(AST,注释/字面量/
     # 子查询天然正确),与本地 execute 同一口径(复审 P1);换行追加,行尾注释安全
     limit = None
@@ -856,74 +917,88 @@ def execute_federated_query(
 
     # 捕获优化器输出（通过 dict 跨闭包传递，避免 nonlocal 嵌套问题）
     _opt = {"sql": sql_query, "suggestions": None}
+    saved_table = None
 
     def execute_in_connection(conn):
         """在连接内执行 ATTACH/QUERY/DETACH"""
-        nonlocal attached_aliases, warnings
+        nonlocal attached_aliases, warnings, saved_table
 
         # 1. ATTACH 所有外部数据库（连接池复用时会容忍已挂载别名）
         if attach_configs:
             configure_mysql_fresh_connections(conn, attach_configs)
-            attached_aliases = attach_databases_on_connection(conn, attach_configs)
+            attached_aliases = attach_databases_on_connection(
+                conn,
+                attach_configs,
+                deadline_monotonic=deadline,
+                query_id=query_id,
+            )
             logger.info(f"Attached databases: {attached_aliases}")
 
         # DETACH 必须放 finally:查询/保存中途抛错时,若不清理,连接会带着
         # ATTACH 回到池里被后续请求复用(Codex S-13)
         try:
             for attempt in range(2):
+                staging_name = None
                 try:
-                    with mysql_remote_cancellation_scope(conn, query_id, attach_configs):
-                        # 2. 智能下推：半连接键下推(保持结果) + 时间界建议(不改 SQL)
-                        attach_aliases = {alias for (alias, _cfg) in attach_configs}
-                        mysql_aliases = {
-                            alias
-                            for alias, db_config in attach_configs
-                            if str(db_config.get("type", "")).lower() == "mysql"
-                        }
-                        opt_sql, suggestions, opt_warnings = optimize_federated_sql(
+                    table_name = (request.save_as_table or "").strip()
+                    execution_input = base_sql_query if table_name else sql_query
+                    with federated_execution_scope(
+                        conn, execution_input, attach_configs, query_id,
+                        include_suggestions=True,
+                        materialize_result=not bool(table_name),
+                    ) as execution:
+                        _opt["sql"] = execution.display_sql
+                        _opt["suggestions"] = execution.suggestions or None
+                        warnings.extend(execution.warnings)
+                        if table_name:
+                            # Materialize the unbounded user query once.  The
+                            # response preview is read from this same staging
+                            # table, so volatile/remote data cannot diverge
+                            # from the table that will be published.
+                            staging_name, order_column = (
+                                create_ordered_query_staging_table(
+                                    conn,
+                                    execution.sql,
+                                )
+                            )
+                            preview_sql = (
+                                f"SELECT * EXCLUDE ({quote_identifier(order_column)}) "
+                                f"FROM {quote_identifier(staging_name)} "
+                                f"ORDER BY {quote_identifier(order_column)}"
+                            )
+                            if limit:
+                                preview_sql = f"{preview_sql} LIMIT {limit}"
+                            result_triplet = fetch_query_records(conn, preview_sql)
+                            conn.execute(
+                                f"ALTER TABLE {quote_identifier(staging_name)} "
+                                f"DROP COLUMN {quote_identifier(order_column)}"
+                            )
+                        else:
+                            result_triplet = fetch_query_records(conn, execution.sql)
+
+                    if staging_name:
+                        publish_query_staging_table(
                             conn,
-                            sql_query,
-                            attach_aliases,
-                            config_manager.get_app_config(),
-                            mysql_aliases=mysql_aliases,
+                            staging_name,
+                            table_name,
+                            query_id=query_id,
                         )
-                        _opt["sql"] = opt_sql
-                        _opt["suggestions"] = suggestions or None
-                        if opt_warnings:
-                            warnings.extend(str(w) for w in opt_warnings)
-
-                        # 3. 执行用户 SQL（使用优化后的语句）
-                        result_triplet = fetch_query_records(
-                            conn,
-                            opt_sql,
-                            # DESCRIBE(mysql_query(...)) 会在 MySQL 上真实执行 SQL，且使用
-                            # 独立于事务扫描的连接；取消器无法精确命中。实际游标 description
-                            # 已提供同样的列类型，因此该表函数直接执行一次即可。
-                            describe_before_execute=not _uses_mysql_query_table_function(opt_sql),
+                        saved_table = table_name
+                        table_registry.record_creation(table_name)
+                        logger.info(
+                            "Federated query result saved as table: %s",
+                            table_name,
                         )
 
-                        # 4. 可选：保存查询结果为新表（使用原始 SQL，确保语义不变）
-                        if request.save_as_table:
-                            table_name = request.save_as_table.strip()
-                            if table_name:
-                                try:
-                                    save_sql = request.sql.strip().rstrip(";")
-                                    create_sql = (
-                                        f'CREATE OR REPLACE TABLE {quote_identifier(table_name)} AS ({save_sql})'
-                                    )
-                                    conn.execute(create_sql)
-                                    table_registry.record_creation(table_name)
-                                    logger.info(f"Query result saved as table: {table_name}")
-                                except Exception as save_error:
-                                    logger.warning(f"Failed to save query result as table: {str(save_error)}")
-                                    warnings.append(f"Failed to save result as table: {str(save_error)}")
-
-                        return result_triplet
+                    finalize_query_if_not_cancelled(query_id)
+                    return result_triplet
                 except Exception as query_error:
+                    drop_query_staging_table(conn, staging_name)
                     if (
                         attempt > 0
                         or not is_read_only_query(sql_query)
                         or not is_federated_connection_lost(query_error)
+                        or not getattr(query_error, "duckquery_retry_safe", True)
                     ):
                         raise
                     logger.warning(
@@ -939,7 +1014,6 @@ def execute_federated_query(
             if attached_aliases:
                 detach_databases_on_connection(conn, attached_aliases)
 
-    timeout_s = int(config_manager.get_app_config().federated_query_timeout or 300)
     query_id = query_id or f"fed:{uuid4().hex}"
     timed_out = {"v": False}
 
@@ -956,15 +1030,14 @@ def execute_federated_query(
                 timer = threading.Timer(timeout_s, _on_timeout)
                 timer.start()
                 try:
-                    result_columns, result_records, cursor_types = (
-                        execute_in_connection(conn)
-                    )
-                    query_column_types = describe_query_column_types(
-                        conn, _opt["sql"]
-                    ) or [
-                        {"name": name, "duckdb_type": dtype}
-                        for name, dtype in cursor_types
-                    ]
+                    with structured_duckdb_errors(conn):
+                        result_columns, result_records, cursor_types = (
+                            execute_in_connection(conn)
+                        )
+                        query_column_types = [
+                            {"name": name, "duckdb_type": dtype}
+                            for name, dtype in cursor_types
+                        ]
                 finally:
                     timer.cancel()
                 execution_time = _log_query_metrics_in_conn(
@@ -983,6 +1056,8 @@ def execute_federated_query(
             "suggestions": _opt["suggestions"],
             "warnings": warnings if warnings else None,
             "preview_limit_applied": limit,
+            "saved_table": saved_table,
+            "save_error": None,
         }
 
         return create_success_response(
@@ -1020,15 +1095,18 @@ def execute_federated_query(
     except BaseAPIException:
         raise
     except Exception as e:
-        logger.error(f"Federated query execution failed: {str(e)}")
+        safe_message = duckdb_error_message(e)
+        logger.error("Federated query execution failed: %s", safe_message)
         logger.error(f"Stack trace: {traceback.format_exc()}")
-        details = {"query_id": query_id}
-        sql_location = parse_sql_error_location(str(e), sql_query)
-        if sql_location:
-            details["sql_location"] = sql_location
+        details = build_sql_error_details(
+            e,
+            request.sql,
+            sql_query,
+            query_id,
+        )
         return error_json_response(
             500,
             MessageCode.QUERY_FAILED,
-            f"Federated query failed: {str(e)}",
+            f"Federated query failed: {safe_message}",
             details=details,
         )

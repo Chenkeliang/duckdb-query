@@ -50,7 +50,29 @@ def test_duckdb_execute_includes_structured_sql_error_location():
     assert body["error"]["details"]["sql_location"] == {
         "line": 1,
         "column": 12,
-        "end_column": 13,
+        "end_column": 19,
+    }
+    identity = body["error"]["details"]["sql_identity"]
+    assert identity["sha256"]
+    assert not body["error"]["message"].lstrip().startswith("{")
+
+
+def test_saved_query_maps_ctas_wrapper_error_to_original_sql():
+    """Regression 2026-09-07: hidden order wrapper cannot shift diagnostics."""
+    response = client.post(
+        "/api/duckdb/execute",
+        json={
+            "sql": "SELECT missing",
+            "save_as_table": "diagnostic_target",
+            "is_preview": False,
+        },
+    )
+
+    assert response.status_code == 500
+    assert response.json()["error"]["details"]["sql_location"] == {
+        "line": 1,
+        "column": 8,
+        "end_column": 15,
     }
 
 

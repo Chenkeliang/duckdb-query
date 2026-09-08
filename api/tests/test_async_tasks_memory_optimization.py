@@ -174,12 +174,26 @@ class TestAsyncQueryMemoryOptimization:
         ]  # 列信息
 
         # 执行异步查询
-        execute_async_query(task_id, sql)
+        snapshot = {
+            "row_count": 100,
+            "column_profiles": [
+                {"name": "id", "duckdb_type": "INTEGER"},
+                {"name": "name", "duckdb_type": "VARCHAR"},
+            ],
+        }
+        with patch(
+            "core.database.federated_attach.execute_sql_and_persist",
+            return_value=snapshot,
+        ) as persist:
+            execute_async_query(task_id, sql)
 
-        # 验证持久表创建
-        create_table_sql = f'CREATE OR REPLACE TABLE "async_result_{task_id.replace("-", "_")}" AS ({sql})'
-        executed_calls = [str(call) for call in mock_con.execute.call_args_list]
-        assert any(create_table_sql in call for call in executed_calls), f"应该执行: {create_table_sql}, 实际调用: {executed_calls}"
+        persist.assert_called_once_with(
+            sql,
+            "async_result_test_task_123",
+            None,
+            query_id=task_id,
+            overwrite=False,
+        )
 
         # 验证任务状态更新
         mock_task_manager.complete_task.assert_called_once()
@@ -210,7 +224,16 @@ class TestAsyncQueryMemoryOptimization:
         mock_con.execute.return_value.fetchall.return_value = [("col1", "VARCHAR")]
 
         # 执行异步查询
-        execute_async_query(task_id, sql)
+        with patch(
+            "core.database.federated_attach.execute_sql_and_persist",
+            return_value={
+                "row_count": 500,
+                "column_profiles": [
+                    {"name": "col1", "duckdb_type": "VARCHAR"},
+                ],
+            },
+        ):
+            execute_async_query(task_id, sql)
 
         # 验证任务完成
         mock_task_manager.complete_task.assert_called_once()
@@ -556,7 +579,18 @@ class TestMemoryOptimizationIntegration:
         ]
 
         # 执行异步查询
-        execute_async_query(task_id, sql)
+        with patch(
+            "core.database.federated_attach.execute_sql_and_persist",
+            return_value={
+                "row_count": 1000000,
+                "column_profiles": [
+                    {"name": "col1", "duckdb_type": "VARCHAR"},
+                    {"name": "col2", "duckdb_type": "INTEGER"},
+                    {"name": "col3", "duckdb_type": "DOUBLE"},
+                ],
+            },
+        ):
+            execute_async_query(task_id, sql)
 
         # 验证任务完成
         mock_task_manager.complete_task.assert_called_once()
@@ -589,7 +623,11 @@ class TestErrorHandling:
         mock_interruptible.return_value.__exit__ = Mock(return_value=False)
 
         # 执行异步查询
-        execute_async_query(task_id, sql)
+        with patch(
+            "core.database.federated_attach.execute_sql_and_persist",
+            side_effect=Exception("Table 'nonexistent_table' does not exist"),
+        ):
+            execute_async_query(task_id, sql)
 
         # 验证任务被标记为失败
         mock_task_manager.fail_task.assert_called_once()

@@ -9,6 +9,7 @@ import duckdb
 import pytest
 
 from core.common.exceptions import DatabaseConnectionError
+from core.common.sql_error_location import structured_duckdb_errors
 from core.database.duckdb_engine import with_duckdb_connection
 from core.database.federated_attach import (
     attach_databases_on_connection,
@@ -34,6 +35,31 @@ def test_redact_helper_masks_password_token():
 def test_redact_helper_case_insensitive_and_non_string():
     assert redact_connection_secrets("PASSWORD=abc def") == "PASSWORD=*** def"
     assert redact_connection_secrets(ValueError("password=xyz")) == "password=***"
+
+
+@pytest.mark.parametrize(
+    ("raw", "secrets"),
+    [
+        (
+            "host='db' password='alpha bravo charlie' port='5432'",
+            ("alpha", "bravo", "charlie"),
+        ),
+        (
+            r"host='db' password='a\'b\\c d' port='5432'",
+            (r"a\'b", r"\\c d"),
+        ),
+        (
+            "ATTACH 'host=''db'' password=''alpha bravo'' port=''5432''' AS p",
+            ("alpha", "bravo"),
+        ),
+    ],
+)
+def test_redact_helper_masks_quoted_conninfo_values(raw, secrets):
+    """Regression 2026-09-07: quoted libpq passwords may contain whitespace."""
+    output = redact_connection_secrets(raw)
+    assert "password=***" in output
+    assert all(secret not in output for secret in secrets)
+    assert "port=" in output
 
 
 def test_failed_attach_error_does_not_leak_password():
@@ -68,3 +94,30 @@ def test_failed_attach_error_does_not_leak_password():
         traceback.format_exception(type(err), err, err.__traceback__)
     )
     assert SECRET not in chain
+
+
+def test_failed_postgres_attach_does_not_leak_quoted_password():
+    """Regression 2026-09-07: the full quoted password is removed from API errors."""
+    secret = "alpha bravo 'charlie' \\ delta"
+    db_config = {
+        "type": "postgresql",
+        "host": "127.0.0.1",
+        "username": "reader",
+        "password": secret,
+        "database": "prod",
+        "port": 1,
+    }
+    with with_duckdb_connection() as con:
+        try:
+            con.execute("LOAD postgres")
+        except Exception:
+            pytest.skip("postgres extension unavailable in this environment")
+
+        with pytest.raises(DatabaseConnectionError) as exc_info:
+            with structured_duckdb_errors(con):
+                attach_databases_on_connection(con, [("p", db_config)])
+
+    output = str(exc_info.value)
+    for fragment in ("alpha", "bravo", "charlie", "delta"):
+        assert fragment not in output
+    assert "password=***" in output

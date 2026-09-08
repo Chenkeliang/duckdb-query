@@ -24,6 +24,8 @@ from typing import Callable, Dict, List, Optional
 import duckdb
 
 logger = logging.getLogger(__name__)
+_PENDING_CANCELLATION_TTL_SECONDS = 60.0
+_MAX_PENDING_CANCELLATIONS = 2048
 
 
 @dataclass
@@ -35,6 +37,9 @@ class ConnectionRecord:
     start_time: float
     sql_preview: str  # 前 200 字符，用于调试
     remote_interrupts: List[Callable[[], bool]] = field(default_factory=list)
+    cancel_requested: bool = False
+    publication_completed: bool = False
+    retain_publication: bool = False
 
 
 class ConnectionRegistry:
@@ -46,16 +51,37 @@ class ConnectionRegistry:
     
     def __init__(self):
         self._registry: Dict[str, ConnectionRecord] = {}
+        self._published: Dict[str, float] = {}
+        self._pending_cancellations: Dict[str, float] = {}
+        # Accepted task cancellations live until terminal-state acknowledgement,
+        # independently of bounded, best-effort early sync cancellation hints.
+        self._task_cancellations: set[str] = set()
         self._lock = threading.RLock()
-    
+
+    def _prune_pending_cancellations_locked(self) -> None:
+        cutoff = time.time() - _PENDING_CANCELLATION_TTL_SECONDS
+        for task_id, requested_at in list(self._pending_cancellations.items()):
+            if requested_at < cutoff:
+                self._pending_cancellations.pop(task_id, None)
+        while len(self._pending_cancellations) >= _MAX_PENDING_CANCELLATIONS:
+            self._pending_cancellations.pop(next(iter(self._pending_cancellations)))
+
     def register(
         self, 
         task_id: str, 
         connection: duckdb.DuckDBPyConnection,
-        sql: str = ""
+        sql: str = "",
+        retain_publication: bool = False,
     ) -> None:
         """注册连接到注册表"""
         with self._lock:
+            self._prune_pending_cancellations_locked()
+            self._published.pop(task_id, None)
+            cancel_requested = (
+                task_id in self._task_cancellations
+                or task_id in self._pending_cancellations
+            )
+            self._pending_cancellations.pop(task_id, None)
             if task_id in self._registry:
                 logger.warning(f"Task {task_id} already registered, overwriting")
             
@@ -64,18 +90,32 @@ class ConnectionRegistry:
                 task_id=task_id,
                 thread_id=threading.current_thread().ident or 0,
                 start_time=time.time(),
-                sql_preview=sql[:200] if sql else ""
+                sql_preview=sql[:200] if sql else "",
+                cancel_requested=cancel_requested,
+                retain_publication=retain_publication,
             )
             logger.info(f"Registered connection for task {task_id}")
     
     def unregister(self, task_id: str) -> bool:
         """从注册表移除连接"""
         with self._lock:
-            if task_id in self._registry:
-                del self._registry[task_id]
+            record = self._registry.pop(task_id, None)
+            if record:
+                if record.publication_completed and record.retain_publication:
+                    # Keep a connection-free handoff marker until the async
+                    # caller records its terminal task state. This closes the
+                    # unregister-to-complete cancellation race.
+                    self._published[task_id] = time.time()
                 logger.info(f"Unregistered connection for task {task_id}")
                 return True
             return False
+
+    def forget_publication(self, task_id: str) -> None:
+        """Release publication/cancellation handoff state after task finalization."""
+        with self._lock:
+            self._published.pop(task_id, None)
+            self._pending_cancellations.pop(task_id, None)
+            self._task_cancellations.discard(task_id)
     
     def get(self, task_id: str) -> Optional[ConnectionRecord]:
         """获取连接记录"""
@@ -90,16 +130,119 @@ class ConnectionRegistry:
             record = self._registry.get(task_id)
             if not record:
                 return False
+            if record.cancel_requested:
+                return False
             record.remote_interrupts.append(remote_interrupt)
             return True
 
-    def interrupt_with_remote(self, task_id: str) -> bool:
+    def unregister_remote_interrupt(
+        self, task_id: str, remote_interrupt: Callable[[], bool]
+    ) -> bool:
+        """Remove one attempt-scoped remote cancellation callback by identity."""
+        with self._lock:
+            record = self._registry.get(task_id)
+            if not record:
+                return False
+            for index, callback in enumerate(record.remote_interrupts):
+                if callback is remote_interrupt:
+                    record.remote_interrupts.pop(index)
+                    return True
+            return False
+
+    def is_cancel_requested(self, task_id: str) -> bool:
+        """Return whether cancellation won before the result commit point."""
+        with self._lock:
+            record = self._registry.get(task_id)
+            return bool(record and record.cancel_requested)
+
+    def commit_if_not_cancelled(
+        self, task_id: str, commit: Callable[[], None]
+    ) -> bool:
+        """Linearize final publication against concurrent cancellation.
+
+        The registry lock defines the commit point: cancellation that records
+        first prevents the commit; a completed commit makes a later cancel too
+        late to interrupt or misreport the published result.
+        """
+        with self._lock:
+            record = self._registry.get(task_id)
+            if record and record.cancel_requested:
+                return False
+            commit()
+            if record:
+                record.publication_completed = True
+            return True
+
+    def cancel_if_not_published(
+        self,
+        task_id: str,
+        accept_cancellation: Callable[[], bool],
+    ) -> bool:
+        """Atomically accept task cancellation before result publication.
+
+        The task-state transition runs under the same lock as the publication
+        commit point. A late request therefore cannot set CANCELLING after a
+        result has committed, while an accepted request blocks publication and
+        interrupts both the local query and its attempt-scoped remote session.
+        """
+        with self._lock:
+            record = self._registry.get(task_id)
+            if task_id in self._published or (
+                record and record.publication_completed
+            ):
+                logger.info("Cancellation arrived after task %s publication", task_id)
+                return False
+            if not accept_cancellation():
+                return False
+            self._task_cancellations.add(task_id)
+            if record:
+                record.cancel_requested = True
+                connection = record.connection
+                remote_interrupts = list(record.remote_interrupts)
+            else:
+                connection = None
+                remote_interrupts = []
+
+        if connection is None:
+            return True
+
+        try:
+            connection.interrupt()
+            logger.info("Interrupted local query for task %s", task_id)
+        except Exception as exc:  # pylint: disable=broad-exception-caught
+            logger.warning("Failed to interrupt local query for task %s: %s", task_id, exc)
+
+        for remote_interrupt in remote_interrupts:
+            try:
+                remote_interrupt()
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                logger.warning("Failed to interrupt remote query for task %s: %s", task_id, exc)
+        return True
+
+    def interrupt_with_remote(
+        self,
+        task_id: str,
+        *,
+        pending_if_missing: bool = False,
+    ) -> bool:
         """中断 DuckDB，并调用查询已登记的远端数据库取消器。"""
         with self._lock:
             record = self._registry.get(task_id)
             if not record:
+                if pending_if_missing:
+                    self._prune_pending_cancellations_locked()
+                    self._pending_cancellations[task_id] = time.time()
+                    logger.info(
+                        "Queued cancellation until task %s registers",
+                        task_id,
+                    )
+                    return True
                 logger.warning("Cannot interrupt task %s: not found in registry", task_id)
                 return False
+            if record.publication_completed:
+                logger.info("Cancellation arrived after task %s publication", task_id)
+                return False
+            record.cancel_requested = True
             connection = record.connection
             remote_interrupts = list(record.remote_interrupts)
 
@@ -133,6 +276,10 @@ class ConnectionRegistry:
             if not record:
                 logger.warning(f"Cannot interrupt task {task_id}: not found in registry")
                 return False
+            if record.publication_completed:
+                logger.info("Cancellation arrived after task %s publication", task_id)
+                return False
+            record.cancel_requested = True
             
             try:
                 record.connection.interrupt()
@@ -155,6 +302,9 @@ class ConnectionRegistry:
             interrupted = 0
             for task_id, record in list(self._registry.items()):
                 try:
+                    if record.publication_completed:
+                        continue
+                    record.cancel_requested = True
                     record.connection.interrupt()
                     interrupted += 1
                 except Exception as e:  # pylint: disable=broad-exception-caught

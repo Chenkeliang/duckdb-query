@@ -32,3 +32,18 @@ def test_watchdog_interrupts_slow_query():
         finally:
             timer.cancel()
     assert timed_out["v"] is True
+
+
+def test_cancel_before_registration_prevents_user_sql_from_starting():
+    """Regression 2026-09-07: early cancellation stops before context yield."""
+    task_id = "sync:cancel-before-register"
+    assert connection_registry.interrupt_with_remote(
+        task_id,
+        pending_if_missing=True,
+    )
+
+    with pytest.raises(duckdb.InterruptException):
+        with interruptible_connection(task_id, "SELECT expensive()"):
+            raise AssertionError("cancelled connection must never reach user SQL")
+
+    assert connection_registry.get(task_id) is None

@@ -1,20 +1,32 @@
 # pylint: disable=too-many-lines,broad-exception-caught,logging-fstring-interpolation,import-outside-toplevel,line-too-long,unused-argument,bare-except
 """Set operations HTTP routes (extracted from join_query.py)."""
 import logging
+import threading
+import time
+import uuid
 from contextlib import contextmanager
 from typing import Any, Iterator, Optional, Set
 
 import duckdb
 from core.common.sql_identifiers import quote_identifier
+from core.common.sql_error_location import structured_duckdb_errors
 from core.common.utils import describe_query_column_types
+from core.common.config_manager import config_manager
+from core.data.file_datasource_manager import build_table_metadata_snapshot
 from core.database.duckdb_engine import (
     timed_fetch_query_records,
     with_duckdb_connection,
 )
 from core.database.duckdb_pool import interruptible_connection
+from core.database.connection_registry import connection_registry
+from core.database.federated_execution import federated_execution_scope
 from core.database.federated_attach import (
     attach_databases_on_connection,
+    create_query_staging_table,
     detach_databases_on_connection,
+    drop_query_staging_table,
+    finalize_query_if_not_cancelled,
+    publish_query_staging_table,
     resolve_attach_configs,
 )
 from core.services.set_operation_generator import format_set_table_reference
@@ -66,7 +78,13 @@ def _set_operation_connection(
         try:
             if request.attach_databases:
                 attach_configs = resolve_attach_configs(request.attach_databases)
-                attached_aliases = attach_databases_on_connection(con, attach_configs)
+                timeout_s = int(config_manager.get_app_config().federated_query_timeout or 300)
+                attached_aliases = attach_databases_on_connection(
+                    con,
+                    attach_configs,
+                    deadline_monotonic=time.monotonic() + timeout_s,
+                    query_id=query_id,
+                )
                 alias_set = {alias.strip() for alias in attached_aliases if alias}
             yield con, alias_set
         finally:
@@ -153,7 +171,9 @@ def preview_set_operation(request: SetOperationRequest):
         with _set_operation_connection(request) as (con, alias_set):
             sql = generate_set_operation_sql(config, attach_aliases=alias_set)
             preview_sql = f"{sql} LIMIT {preview_limit}"
-            _, preview_data = _timed_execute_fetch(con, preview_sql)
+            attach_configs = resolve_attach_configs(request.attach_databases) if request.attach_databases else []
+            with federated_execution_scope(con, preview_sql, attach_configs) as execution:
+                _, preview_data = _timed_execute_fetch(con, execution.sql)
             estimated_rows = estimate_set_operation_rows(
                 config, con, alias_set
             )
@@ -273,15 +293,37 @@ def execute_set_operation(
 
     执行完整的集合操作并返回结果
     """
-    query_id = f"sync:{x_request_id}" if x_request_id else None
+    query_id = (
+        f"sync:{x_request_id}"
+        if x_request_id
+        else (f"set:{uuid.uuid4()}" if request.attach_databases else None)
+    )
+    timeout_s = int(config_manager.get_app_config().federated_query_timeout or 300)
+    timed_out = False
+
+    def _on_timeout() -> None:
+        nonlocal timed_out
+        timed_out = True
+        if query_id:
+            connection_registry.interrupt_with_remote(
+                query_id,
+                pending_if_missing=True,
+            )
+
+    timer = threading.Timer(timeout_s, _on_timeout) if query_id else None
+    if timer:
+        timer.start()
     try:
         config = request.config
-
-        from core.common.config_manager import config_manager
 
         limit = config_manager.get_app_config().max_query_rows
 
         with _set_operation_connection(request, query_id) as (con, alias_set):
+            attach_configs = (
+                resolve_attach_configs(request.attach_databases)
+                if request.attach_databases
+                else []
+            )
             # 基础 SQL 统一不带系统 LIMIT(分支/整体都不带):预览时只在最外层追加一次。
             # 旧写法既让生成器按 preview_limit 加、下面又拼一层,分支截断还会改变
             # EXCEPT/INTERSECT 的结果(复审验收 #11)。
@@ -289,17 +331,18 @@ def execute_set_operation(
 
             if request.preview:
                 # 预览模式：使用配置的max_query_rows限制
-                from core.common.config_manager import config_manager
-
                 limit = config_manager.get_app_config().max_query_rows
                 preview_sql = f"{sql} LIMIT {limit}"
-                col_names, data = _timed_execute_fetch(con, preview_sql)
-                # 列类型用 DESCRIBE 的真实 DuckDB 类型（此前的 pandas dtype
-                # 字符串在保真帧下会大面积显示 "object"，信息是错的）
-                described = {
-                    c["name"]: c["duckdb_type"]
-                    for c in describe_query_column_types(con, preview_sql)
-                }
+                with structured_duckdb_errors(con):
+                    with federated_execution_scope(
+                        con, preview_sql, attach_configs, query_id
+                    ) as execution:
+                        col_names, data = _timed_execute_fetch(con, execution.sql)
+                        described = {
+                            c["name"]: c["duckdb_type"]
+                            for c in describe_query_column_types(con, execution.sql)
+                        }
+                finalize_query_if_not_cancelled(query_id)
                 columns = [
                     {"name": name, "type": described.get(name, "")}
                     for name in col_names
@@ -340,28 +383,33 @@ def execute_set_operation(
                 if table_name in existing_table_names:
                     logger.warning(f"Table {table_name} already exists，will be replaced")
 
-                # 直接创建表，不使用fetchdf(表名走 quote_identifier 转义防注入)
-                create_sql = f'CREATE OR REPLACE TABLE {quote_identifier(table_name)} AS ({sql})'
-                logger.info(f"Executing create table SQL: {create_sql}")
-                con.execute(create_sql)
+                staging_name = None
+                try:
+                    with structured_duckdb_errors(con):
+                        with federated_execution_scope(
+                            con, sql, attach_configs, query_id,
+                            materialize_result=False,
+                        ) as execution:
+                            staging_name = create_query_staging_table(con, execution.sql)
+                            snapshot = build_table_metadata_snapshot(
+                                con,
+                                staging_name,
+                            )
+                    publish_query_staging_table(
+                        con,
+                        staging_name,
+                        table_name,
+                        query_id=query_id,
+                    )
+                except Exception:
+                    drop_query_staging_table(con, staging_name)
+                    raise
                 table_registry.record_creation(table_name)
 
-                # 获取统计信息（不使用fetchdf）
-                row_count_result = con.execute(
-                    f'SELECT COUNT(*) FROM "{table_name}"'
-                ).fetchone()
-                row_count = row_count_result[0] if row_count_result else 0
-
-                # 获取列信息（使用LIMIT 1避免大数据集问题）
-                sample_sql = f'SELECT * FROM "{table_name}" LIMIT 1'
-                sample_columns, _sample_rows = _timed_execute_fetch(con, sample_sql)
-                described = {
-                    c["name"]: c["duckdb_type"]
-                    for c in describe_query_column_types(con, sample_sql)
-                }
+                row_count = int(snapshot.get("row_count", 0))
                 columns = [
-                    {"name": name, "type": described.get(name, "")}
-                    for name in sample_columns
+                    {"name": profile["name"], "type": profile["duckdb_type"]}
+                    for profile in snapshot.get("column_profiles", [])
                 ]
 
                 logger.info(f"Table {table_name} created successfully，rows: {row_count}")
@@ -392,17 +440,18 @@ def execute_set_operation(
                 )
             else:
                 # 默认行为：执行集合操作预览，使用配置的max_query_rows限制
-                from core.common.config_manager import config_manager
-
                 limit = config_manager.get_app_config().max_query_rows
                 preview_sql = f"{sql} LIMIT {limit}"
-                col_names, data = _timed_execute_fetch(con, preview_sql)
-                # 列类型用 DESCRIBE 的真实 DuckDB 类型（此前的 pandas dtype
-                # 字符串在保真帧下会大面积显示 "object"，信息是错的）
-                described = {
-                    c["name"]: c["duckdb_type"]
-                    for c in describe_query_column_types(con, preview_sql)
-                }
+                with structured_duckdb_errors(con):
+                    with federated_execution_scope(
+                        con, preview_sql, attach_configs, query_id
+                    ) as execution:
+                        col_names, data = _timed_execute_fetch(con, execution.sql)
+                        described = {
+                            c["name"]: c["duckdb_type"]
+                            for c in describe_query_column_types(con, execution.sql)
+                        }
+                finalize_query_if_not_cancelled(query_id)
                 columns = [
                     {"name": name, "type": described.get(name, "")}
                     for name in col_names
@@ -433,6 +482,13 @@ def execute_set_operation(
 
     except duckdb.InterruptException as e:
         logger.info("Set operation %s cancelled by user", query_id)
+        if timed_out:
+            return error_json_response(
+                504,
+                MessageCode.QUERY_TIMEOUT,
+                f"Set operation exceeded {timeout_s}s and was aborted",
+                details={"query_id": query_id, "timeout_s": timeout_s},
+            )
         return error_json_response(
             499,
             MessageCode.QUERY_CANCELLED,
@@ -456,6 +512,9 @@ def execute_set_operation(
             f"Failed to execute: {str(e)}",
             details={"errors": [f"Failed to execute: {str(e)}"]},
         )
+    finally:
+        if timer:
+            timer.cancel()
 
 
 @router.post("/api/set-operations/simple-union", tags=["Set Operations"])

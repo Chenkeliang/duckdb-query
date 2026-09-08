@@ -817,10 +817,15 @@
       "dragFieldsPlaceholder": "拖放字段到此处"
     },
     "json": {
+      "viewerDescription": "查看 JSON 内容并复制原文或路径",
       "viewerTitle": "JSON 查看器",
       "view": "查看 JSON",
       "copy": "复制",
-      "copied": "已复制"
+      "copied": "已复制",
+      "path": "JSON 路径",
+      "copyPath": "复制路径",
+      "pathCopied": "路径已复制",
+      "previewTruncated": "内容共 {{count}} 个字符；当前只显示前一部分，复制仍包含完整原文"
     },
     "generating": "生成中…",
     "execute": "执行",
@@ -1292,6 +1297,12 @@
       "loadFailed": "获取引擎兼容性配置失败"
     },
     "storageUpgrade": {
+      "capabilityTitle": "运行时能力",
+      "capabilityRuntime": "DuckDB {{version}} · {{stage}}",
+      "stagePreview": "预览版",
+      "stageStable": "稳定版",
+      "optimizerSafe": "远端优化仅在通过结果语义验证后启用，当前使用安全执行路径。",
+      "optimizerVerified": "远端优化已通过当前引擎、扩展和平台的结果语义验证。",
       "budgetTitle": "资源预算",
       "statusUnavailable": "数据库状态暂不可用，可继续检查备份。",
       "budgetValues": "引擎内存 {{memory}} GiB · 溢写上限 {{temp}} GiB · 最多 {{concurrent}} 个用户库连接 · 磁盘至少保留 {{reserve}} MiB",

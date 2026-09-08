@@ -5,7 +5,9 @@
 原始查询 original_sql,不做任何文本反推。
 """
 import duckdb
+import pytest
 
+from routers import duckdb_query
 from routers.duckdb_query import _run_query_maybe_save
 
 
@@ -43,3 +45,72 @@ def test_ctas_respects_user_written_limit():
     )
     assert saved == "userlimit_tbl" and err is None
     assert con.execute("SELECT count(*) FROM userlimit_tbl").fetchone()[0] == 2
+
+
+def test_cancel_before_publication_propagates_without_reexecuting(monkeypatch):
+    """Regression 2026-09-07: publication cancellation must not replay the query."""
+    con = duckdb.connect(":memory:")
+    con.execute("CREATE SEQUENCE cancel_once START 1")
+
+    def cancel_publish(*_args, **_kwargs):
+        raise duckdb.InterruptException("cancelled before publication")
+
+    monkeypatch.setattr(duckdb_query, "publish_query_staging_table", cancel_publish)
+    with pytest.raises(duckdb.InterruptException):
+        _run_query_maybe_save(
+            con,
+            "SELECT nextval('cancel_once') AS value",
+            "cancelled_result",
+            None,
+            query_id="sync:cancel-before-publish",
+        )
+
+    assert con.execute("SELECT currval('cancel_once')").fetchone() == (1,)
+    assert con.execute("SHOW TABLES").fetchall() == []
+
+
+def test_publication_failure_reuses_materialized_preview(monkeypatch):
+    """Regression 2026-09-07: publication failure must not replay a volatile query."""
+    con = duckdb.connect(":memory:")
+    con.execute("CREATE SEQUENCE publish_once START 1")
+
+    def fail_publish(*_args, **_kwargs):
+        raise RuntimeError("publication failed")
+
+    monkeypatch.setattr(duckdb_query, "publish_query_staging_table", fail_publish)
+    columns, rows, *_types, saved, error = _run_query_maybe_save(
+        con,
+        "SELECT nextval('publish_once') AS value",
+        "failed_result",
+        None,
+    )
+
+    assert columns == ["value"]
+    assert rows == [{"value": 1}]
+    assert saved is None
+    assert error == "publication failed"
+    assert con.execute("SELECT currval('publish_once')").fetchone() == (1,)
+    assert con.execute("SHOW TABLES").fetchall() == []
+
+
+def test_local_inline_save_preview_preserves_explicit_order():
+    """Regression 2026-09-07: local parallel CTAS cannot scramble preview."""
+    con = duckdb.connect(":memory:")
+    con.execute("SET threads=8")
+    con.execute("SET preserve_insertion_order=false")
+
+    columns, rows, *_types, saved, error = _run_query_maybe_save(
+        con,
+        "SELECT range AS id FROM range(1000000) ORDER BY id DESC",
+        "local_ordered_result",
+        3,
+    )
+
+    assert columns == ["id"]
+    assert rows == [{"id": 999999}, {"id": 999998}, {"id": 999997}]
+    assert saved == "local_ordered_result"
+    assert error is None
+    assert con.execute(
+        "SELECT column_name FROM duckdb_columns() "
+        "WHERE table_name='local_ordered_result' ORDER BY column_index"
+    ).fetchall() == [("id",)]

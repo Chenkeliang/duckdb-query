@@ -9,9 +9,10 @@ from typing import Any
 import sqlglot
 
 
-CONTRACT_VERSION = 1
+CONTRACT_VERSION = 2
 AGENT_PROFILE_REVISION = "duckdb-2-preview-v1"
 VERIFIED_ENGINE_VERSION = "v2.0.0-alpha39998"
+VERIFIED_REMOTE_PUSHDOWN_BUILDS: frozenset[tuple[str, str, str]] = frozenset()
 
 _AGENT_BLOCKED_SQL = (
     ("approx_nearest", re.compile(r"\bJOIN\b[\s\S]*?\bAPPROX\s+NEAREST\b", re.I)),
@@ -45,12 +46,53 @@ def blocked_agent_sql_feature(sql: str) -> str | None:
     return None
 
 
+def remote_pushdown_verified(
+    engine_version: str,
+    platform: str,
+    extensions: dict[str, dict[str, Any]] | None = None,
+) -> bool:
+    """Return whether this exact runtime passed the remote semantic matrix."""
+    extension_version = str(
+        (extensions or {}).get("mysql_scanner", {}).get("version") or ""
+    )
+    return (
+        str(engine_version),
+        extension_version,
+        str(platform),
+    ) in VERIFIED_REMOTE_PUSHDOWN_BUILDS
+
+
+def extension_manifest_from_connection(connection) -> dict[str, dict[str, Any]]:
+    """Return installed/loaded extension identities without connection data."""
+    rows = connection.execute(
+        "SELECT extension_name, installed, loaded, extension_version "
+        "FROM duckdb_extensions() WHERE installed OR loaded"
+    ).fetchall()
+    return {
+        str(name): {
+            "installed": bool(installed),
+            "loaded": bool(loaded),
+            "version": str(version) if version is not None else None,
+        }
+        for name, installed, loaded, version in rows
+    }
+
+
 def build_capability_contract(
-    *, python_version: str, engine_version: str, storage_version: str
+    *,
+    python_version: str,
+    engine_version: str,
+    storage_version: str,
+    platform: str = "unknown",
+    extensions: dict[str, dict[str, Any]] | None = None,
 ) -> dict[str, Any]:
     """Describe actual product support without inferring it from engine version alone."""
     preview = "alpha" in engine_version.lower() or "dev" in python_version.lower()
     verified_build = engine_version == VERIFIED_ENGINE_VERSION
+    extension_manifest = extensions or {}
+    pushdown_verified = remote_pushdown_verified(
+        engine_version, platform, extension_manifest
+    )
 
     def engine_surface(feature_id: str) -> dict[str, Any]:
         if not verified_build:
@@ -69,7 +111,50 @@ def build_capability_contract(
         return _surface(status, reason)
     ast_reason = "Agent table-scope auditing cannot yet parse this DuckDB 2.0 syntax"
     blocked_write = "Blocked by DuckQuery's SQL safety policy"
+    automatic_features = (
+        "storage_v2",
+        "parser_error_locations",
+        "aggregation_spill",
+        "storage_optimizations",
+        "query_optimizer_optimizations",
+        "async_io",
+    )
     features = [
+        {
+            "id": feature_id,
+            "kind": "automatic",
+            "engine": engine_surface(feature_id),
+            "direct_sql": _surface("not-applicable"),
+            "agent": _surface("not-applicable"),
+            "mcp": _surface("not-applicable"),
+            "extension": None,
+        }
+        for feature_id in automatic_features
+    ] + [
+        {
+            "id": "automatic_remote_pushdown",
+            "kind": "optimization",
+            "engine": engine_surface("automatic_remote_pushdown"),
+            "direct_sql": _surface(
+                "supported" if pushdown_verified else "blocked",
+                None
+                if pushdown_verified
+                else "Disabled until this engine, extension and platform pass the semantic matrix",
+            ),
+            "agent": _surface(
+                "supported" if pushdown_verified else "blocked",
+                None
+                if pushdown_verified
+                else "Disabled by the verified optimizer safety policy",
+            ),
+            "mcp": _surface(
+                "supported" if pushdown_verified else "blocked",
+                None
+                if pushdown_verified
+                else "Disabled by the verified optimizer safety policy",
+            ),
+            "extension": "mysql_scanner",
+        },
         {
             "id": "approx_nearest",
             "kind": "sql",
@@ -163,12 +248,29 @@ def build_capability_contract(
     ]
     return {
         "contract_version": CONTRACT_VERSION,
-        "product_version": "2.0.0",
+        "product_version": "2.0.1",
         "engine": {
             "python_version": python_version,
             "version": engine_version,
             "release_stage": "preview" if preview else "stable",
             "default_storage_version": storage_version,
+            "platform": platform,
+            "extensions": extension_manifest,
+        },
+        "optimizer_policy": {
+            "remote_pushdown": {
+                "status": "supported" if pushdown_verified else "blocked",
+                "reason_code": (
+                    None
+                    if pushdown_verified
+                    else "SEMANTIC_MATRIX_NOT_VERIFIED"
+                ),
+                "reason": (
+                    None
+                    if pushdown_verified
+                    else "Automatic remote pushdown is disabled to preserve result types and numeric precision"
+                ),
+            }
         },
         "agent": {"profile_revision": AGENT_PROFILE_REVISION, "execution": "read-only"},
         "mcp": {"package_version": "0.4.0", "execution_modes": ["read-only", "normal", "full"]},
@@ -180,16 +282,19 @@ def build_capability_contract(
 def current_capability_contract() -> dict[str, Any]:
     """Build the contract from the engine actually loaded by this process."""
     import duckdb
+    from core.database.duckdb_engine import with_duckdb_connection
     from core.database.duckdb_storage import DUCKDB_STORAGE_COMPATIBILITY_VERSION
-    connection = duckdb.connect(":memory:")
-    try:
+
+    with with_duckdb_connection() as connection:
         engine_version = str(connection.execute("SELECT version()").fetchone()[0])
-    finally:
-        connection.close()
+        platform = str(connection.execute("PRAGMA platform").fetchone()[0])
+        extensions = extension_manifest_from_connection(connection)
     return build_capability_contract(
         python_version=str(duckdb.__version__),
         engine_version=engine_version,
         storage_version=DUCKDB_STORAGE_COMPATIBILITY_VERSION,
+        platform=platform,
+        extensions=extensions,
     )
 
 

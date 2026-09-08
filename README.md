@@ -31,7 +31,9 @@
   <img src="docs/assets/readme/hero-cross-source-zh.gif" alt="DuckQuery 查询工作台执行 DuckDB 本地表与 MySQL 表的跨源 JOIN" width="900">
 </p>
 
-## 最新版：v2.0.0（全面支持 DuckDB 2.0）
+## 最新版：v2.0.1（MySQL 联邦查询与桌面修复）
+
+v2.0.1 改进 MySQL 候选筛选并保留 DuckDB 的精确比较、JOIN、排序及 LIMIT；修复 typed NULL 慢查询、独立 `mysql_query` 连接识别及同连接多别名绑定。查询、保存、异步执行和导出共用执行边界，保留金额与纳秒精度。
 
 本地 Docker 默认仅监听 `127.0.0.1`。需要共享访问时，在带认证的反向代理后部署；设置 `DUCKQUERY_BIND_HOST` 会改变监听范围，应用本身不提供多用户鉴权。URL 导入经过逐跳地址校验和流式大小限制；配置的 HTTP(S) 代理属于可信网络边界。
 
@@ -60,7 +62,7 @@
 4. 浏览器 Demo 使用独立 DuckDB-Wasm，并不等同于桌面版 / Docker 的 DuckDB 2.0 后端；界面会显示各自真实版本。
 5. 旧 lambda `x -> x + 1` 在 2.0 默认禁用，请改成 `lambda x: x + 1`。`CONNECT`、Triggers、DML-in-CTE、自定义扩展仓库和任意 `INSTALL/LOAD` SQL 仍未开放。
 
-完整说明：[v2.0.0 发布说明](docs/releases/v2.0.0.md) · [DuckDB 2.0 技术方案](docs/specs/duckdb-2-compatibility-and-capabilities.md)
+完整说明：[v2.0.1 发布说明](docs/releases/v2.0.1.md) · [v2.0.0 大版本说明](docs/releases/v2.0.0.md) · [DuckDB 2.0 技术方案](docs/specs/duckdb-2-compatibility-and-capabilities.md)
 
 ## 适用场景
 

@@ -498,3 +498,50 @@ describe('useFederatedQueryDetection', () => {
     });
   });
 });
+
+
+describe('2026-09-08 mysql_query desktop connection regression', () => {
+  it('routes standalone mysql_query through federated execution and keeps its source for save/export', () => {
+    const { result } = renderHook(() => useFederatedQueryDetection({
+      sql: "SELECT * FROM mysql_query('mysql_orders', 'SELECT 1')",
+      selectedTables: [],
+    }), { wrapper: createWrapper() });
+    expect(result.current.requiresFederatedQuery).toBe(true);
+    expect(result.current.parsedTableReferences).toEqual([]);
+    expect(result.current.attachDatabases).toEqual([{ alias: 'mysql_orders', connectionId: 'conn-1' }]);
+    expect(result.current.tableSource).toMatchObject({
+      type: 'federated', connectionId: 'conn-1',
+      attachDatabases: [{ alias: 'mysql_orders', connectionId: 'conn-1' }],
+    });
+  });
+
+  it('reports an unknown function connection instead of silently executing locally', () => {
+    const { result } = renderHook(() => useFederatedQueryDetection({
+      sql: "SELECT * FROM mysql_query('missing', 'SELECT 1')", selectedTables: [],
+    }), { wrapper: createWrapper() });
+    expect(result.current.unrecognizedPrefixes).toEqual(['missing']);
+  });
+
+  it('does not mistake remote SQL text for a local connection reference', () => {
+    const { result } = renderHook(() => useFederatedQueryDetection({
+      sql: "SELECT * FROM mysql_query('mysql_orders', $$SELECT * FROM hidden.orders$$)", selectedTables: [],
+    }), { wrapper: createWrapper() });
+    expect(result.current.unrecognizedPrefixes).toEqual([]);
+    expect(result.current.attachDatabases).toHaveLength(1);
+    expect(result.current.parsedTableReferences).toEqual([]);
+  });
+});
+
+
+it('retains an explicit function alias when a selected table uses a generated alias (2026-09-08)', () => {
+  const { result } = renderHook(() => useFederatedQueryDetection({
+    sql: "SELECT * FROM mysql_query('mysql_orders', 'SELECT 1')",
+    selectedTables: [{ name: 'orders', source: 'external', connection: {
+      id: 'conn-1', name: 'mysql_orders', type: 'mysql',
+    } }],
+  }), { wrapper: createWrapper() });
+  expect(result.current.attachDatabases).toEqual([
+    { alias: 'mysql_mysql_orders', connectionId: 'conn-1' },
+    { alias: 'mysql_orders', connectionId: 'conn-1' },
+  ]);
+});

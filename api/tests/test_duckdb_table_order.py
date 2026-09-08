@@ -8,6 +8,7 @@
 """
 
 from contextlib import contextmanager
+import json
 
 import duckdb
 import pytest
@@ -276,6 +277,51 @@ def test_set_operation_replace_after_sync_bumps_to_top(monkeypatch):
         response = set_operations.execute_set_operation(request)
         assert response["success"] is True
         assert _list_table_names(monkeypatch, connection)[0] == "set_result"
+    finally:
+        connection.close()
+
+
+def test_set_operation_cancel_before_publish_preserves_previous_target(monkeypatch):
+    """Regression 2026-09-07: cancelled set save cannot destroy the old table."""
+    connection = duckdb.connect(":memory:")
+    try:
+        connection.execute("CREATE TABLE set_left AS SELECT 1 AS id")
+        connection.execute("CREATE TABLE set_right AS SELECT 2 AS id")
+        connection.execute("CREATE TABLE set_result AS SELECT 9 AS id")
+
+        @contextmanager
+        def _connection(_request, _query_id=None):
+            yield connection, None
+
+        def cancel_publish(*_args, **_kwargs):
+            raise duckdb.InterruptException("cancelled before publication")
+
+        monkeypatch.setattr(set_operations, "_set_operation_connection", _connection)
+        monkeypatch.setattr(
+            set_operations,
+            "publish_query_staging_table",
+            cancel_publish,
+        )
+        request = SetOperationRequest(
+            config=SetOperationConfig(
+                operation_type=SetOperationType.UNION_ALL,
+                tables=[
+                    TableConfig(table_name="set_left", selected_columns=["id"]),
+                    TableConfig(table_name="set_right", selected_columns=["id"]),
+                ],
+            ),
+            save_as_table="set_result",
+        )
+
+        response = set_operations.execute_set_operation(request)
+
+        assert response.status_code == 499
+        assert json.loads(response.body)["error"]["code"] == "QUERY_CANCELLED"
+        assert connection.execute("SELECT * FROM set_result").fetchall() == [(9,)]
+        assert not any(
+            name.startswith("__stage_")
+            for (name,) in connection.execute("SHOW TABLES").fetchall()
+        )
     finally:
         connection.close()
 

@@ -8,6 +8,7 @@ current status"的转义口子（人工取消场景专用），不受这个保�
 """
 
 from core.services.task_manager import TaskManager, TaskStatus
+from core.database.connection_registry import connection_registry
 
 
 def _fresh_manager() -> TaskManager:
@@ -114,3 +115,29 @@ class TestMarkCancelledTerminalGuard:
 
         assert result is True
         assert mgr.get_task(task_id).status == TaskStatus.CANCELLED
+
+
+def test_late_cancellation_after_publication_keeps_running_state():
+    """Regression 2026-09-07: committed result wins over a late cancel request."""
+    mgr = _fresh_manager()
+    task_id = mgr.create_task("SELECT 1", task_type="query")
+    assert mgr.start_task(task_id)
+    connection = __import__("duckdb").connect(":memory:")
+    connection_registry.register(
+        task_id,
+        connection,
+        "SELECT 1",
+        retain_publication=True,
+    )
+    try:
+        assert connection_registry.commit_if_not_cancelled(task_id, lambda: None)
+        assert connection_registry.unregister(task_id)
+
+        assert not mgr.request_cancellation(task_id, "too late")
+        assert mgr.get_task(task_id).status == TaskStatus.RUNNING
+        assert mgr.complete_task(task_id, {"row_count": 1})
+        assert mgr.get_task(task_id).status == TaskStatus.SUCCESS
+    finally:
+        connection_registry.forget_publication(task_id)
+        connection_registry.unregister(task_id)
+        connection.close()

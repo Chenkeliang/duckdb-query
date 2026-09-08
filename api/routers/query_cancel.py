@@ -38,7 +38,9 @@ async def cancel_sync_query(request_id: str):
 
     # 尝试中断查询
     success = await asyncio.to_thread(
-        connection_registry.interrupt_with_remote, full_query_id
+        connection_registry.interrupt_with_remote,
+        full_query_id,
+        pending_if_missing=True,
     )
 
     if success:

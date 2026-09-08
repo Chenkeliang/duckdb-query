@@ -9,6 +9,12 @@ vi.mock('@/desktop/openExternal', () => ({ isTauri: () => true }));
 vi.mock('@/hooks/useStorageUpgrade', () => ({ useStorageUpgrade: () => ({
   data: { required: false, target_storage: 'v2.0.0', main: { version: 'v2.0.0+' }, system: { version: 'v2.0.0+' }, last_report: mocks.report }, isPending: false,
 }) }));
+vi.mock('@/hooks/useDuckDBCapabilities', () => ({ useDuckDBCapabilities: () => ({
+  data: {
+    engine: { version: 'v2.0.0-alpha39998', release_stage: 'preview' },
+    optimizer_policy: { remote_pushdown: { status: 'blocked' } },
+  },
+}) }));
 vi.mock('react-i18next', () => ({ useTranslation: () => ({ i18n: { language: 'zh-CN' }, t: (key: string, options?: { time?: string }) => options?.time ?? key }) }));
 vi.mock('@/utils/toastHelpers', () => ({ showErrorToast: vi.fn() }));
 
@@ -36,6 +42,14 @@ describe('StorageUpgradeSettings recovery', () => {
     fireEvent.click(report);
     expect(screen.getByText(mocks.report.backup_directory)).toBeInTheDocument();
     expect(report).toHaveAttribute('aria-expanded', 'true');
+  });
+
+  it('shows the actual engine stage and verified optimizer policy', () => {
+    show();
+
+    expect(screen.getByText('settings.storageUpgrade.capabilityTitle')).toBeInTheDocument();
+    expect(screen.getByText('settings.storageUpgrade.capabilityRuntime')).toBeInTheDocument();
+    expect(screen.getByText('settings.storageUpgrade.optimizerSafe')).toBeInTheDocument();
   });
 
   it('omits an invalid migration timestamp (2026-09-07 boundary)', () => {

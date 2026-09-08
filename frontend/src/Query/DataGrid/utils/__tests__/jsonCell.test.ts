@@ -1,5 +1,12 @@
 import { describe, expect, it } from 'vitest';
-import { isJsonViewable, toFormattedJson, columnMostlyJson } from '../jsonCell';
+import {
+  isJsonViewable,
+  toFormattedJson,
+  toRawJsonText,
+  getJsonViewerText,
+  listJsonPointerPaths,
+  columnMostlyJson,
+} from '../jsonCell';
 
 describe('isJsonViewable', () => {
   it('returns true for plain objects', () => {
@@ -61,6 +68,24 @@ describe('toFormattedJson', () => {
   it('returns raw string for non-JSON strings', () => {
     expect(toFormattedJson('hello')).toBe('hello');
   });
+
+  it('preserves JSON number tokens beyond JavaScript number precision', () => {
+    const raw =
+      '{"id":9007199254740993,"amount":1234567890.123456789,"exponent":1e100,"negativeZero":-0}';
+
+    const formatted = toFormattedJson(raw);
+
+    expect(formatted).toContain('9007199254740993');
+    expect(formatted).toContain('1234567890.123456789');
+    expect(formatted).toContain('1e100');
+    expect(formatted).toContain('-0');
+  });
+
+  it('preserves duplicate keys when formatting JSON text', () => {
+    const formatted = toFormattedJson('{"value":1,"value":2}');
+
+    expect(formatted.match(/"value"/g)).toHaveLength(2);
+  });
 });
 
 describe('columnMostlyJson', () => {
@@ -86,5 +111,58 @@ describe('columnMostlyJson', () => {
 
   it('returns false for empty data', () => {
     expect(columnMostlyJson([], 'col')).toBe(false);
+  });
+});
+
+describe('toRawJsonText', () => {
+  it('returns the original JSON text byte-for-byte for copying', () => {
+    const raw = ' {"id":9007199254740993,"value":1,"value":2}\n';
+
+    expect(toRawJsonText(raw)).toBe(raw);
+  });
+});
+
+describe('bounded JSON viewer text', () => {
+  it('limits visible work while leaving the raw copy untouched', () => {
+    const raw = `{"payload":"${'x'.repeat(100)}"}`;
+    const viewer = getJsonViewerText(raw, 20);
+
+    expect(viewer.text).toHaveLength(20);
+    expect(viewer.truncated).toBe(true);
+    expect(viewer.totalCharacters).toBe(raw.length);
+    expect(toRawJsonText(raw)).toBe(raw);
+  });
+});
+
+describe('JSON Pointer paths', () => {
+  it('escapes empty, slash, tilde and array segments without dot ambiguity', () => {
+    const paths = listJsonPointerPaths(
+      '{"":{"a/b":{"~key":[{"x.y":1}]}}}'
+    ).map((entry) => entry.pointer);
+
+    expect(paths).toContain('/');
+    expect(paths).toContain('//a~1b/~0key/0/x.y');
+  });
+
+  it('preserves duplicate key occurrences and obeys the entry budget', () => {
+    const entries = listJsonPointerPaths('{"value":1,"value":2,"other":3}', 3);
+
+    expect(entries).toHaveLength(3);
+    expect(entries.filter((entry) => entry.pointer === '/value')).toHaveLength(2);
+  });
+
+  it('fails closed instead of throwing on adversarial nesting depth', () => {
+    const deeplyNested = `${'['.repeat(10_000)}1${']'.repeat(10_000)}`;
+
+    expect(() => listJsonPointerPaths(deeplyNested)).not.toThrow();
+    expect(listJsonPointerPaths(deeplyNested)).toEqual([]);
+    expect(toFormattedJson(deeplyNested)).toBe(deeplyNested);
+    expect(getJsonViewerText(deeplyNested).text).toBe(deeplyNested);
+  });
+
+  it('skips formatting when indentation expansion exceeds the output budget', () => {
+    const expanding = `${'['.repeat(60)}${Array(5_000).fill('0').join(',')}${']'.repeat(60)}`;
+
+    expect(toFormattedJson(expanding)).toBe(expanding);
   });
 });

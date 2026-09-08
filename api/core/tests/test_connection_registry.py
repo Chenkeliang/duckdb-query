@@ -97,6 +97,18 @@ class TestConnectionRegistry(unittest.TestCase):
             self.registry.register_remote_interrupt("missing", Mock())
         )
 
+    def test_register_remote_interrupt_rejects_cancelled_task(self):
+        connection = MagicMock()
+        callback = Mock()
+        task_id = "cancelled-before-remote-registration"
+        self.registry.register(task_id, connection, "SELECT 1")
+        self.assertTrue(self.registry.interrupt_with_remote(task_id))
+
+        self.assertFalse(
+            self.registry.register_remote_interrupt(task_id, callback)
+        )
+        callback.assert_not_called()
+
     def test_interrupt_with_remote_accepts_successful_remote_fallback(self):
         """本地 interrupt 失败时，远端已成功终止查询仍应报告取消已提交。"""
         conn = MagicMock()
@@ -109,6 +121,22 @@ class TestConnectionRegistry(unittest.TestCase):
 
         self.assertTrue(self.registry.interrupt_with_remote(task_id))
         remote_interrupt.assert_called_once_with()
+
+    def test_interrupt_can_queue_before_connection_registration(self):
+        """Regression 2026-09-07: early sync cancel applies before first SQL."""
+        connection = MagicMock()
+        task_id = "sync:early-cancel"
+
+        self.assertTrue(
+            self.registry.interrupt_with_remote(
+                task_id,
+                pending_if_missing=True,
+            )
+        )
+        self.registry.register(task_id, connection, "SELECT expensive()")
+
+        self.assertTrue(self.registry.is_cancel_requested(task_id))
+        connection.interrupt.assert_not_called()
 
     def test_get_active_count(self):
         """测试获取活跃连接数"""

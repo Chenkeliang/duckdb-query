@@ -28,7 +28,7 @@ def test_discard_nonexistent_connection(mock_config):
         assert pool.discard_connection(fake_conn) is False
     finally:
         fake_conn.close()
-        pool.close_all()
+        pool.shutdown()
 
 
 def test_registration_and_unregistration():
@@ -83,4 +83,4 @@ def test_get_stats_structure(mock_config):
             "total_closed",
         } <= stats.keys()
     finally:
-        pool.close_all()
+        pool.shutdown()

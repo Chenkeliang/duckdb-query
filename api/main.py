@@ -122,7 +122,7 @@ async def app_lifespan(app: FastAPI):
 app = FastAPI(
     title="DuckQuery · DuckDB Query API",
     description="API for DuckDB ingestion, federated SQL, JOIN/pivot/set-operation builders, and async analytics.",
-    version="2.0.0",
+    version="2.0.1",
     lifespan=app_lifespan,
 )
 
@@ -183,7 +183,7 @@ if os.getenv("DUCKQUERY_DESKTOP") == "1":
 async def root():
     return {
         "message": "Welcome to the DuckQuery · DuckDB analytics API",
-        "version": "2.0.0",
+        "version": "2.0.1",
         "features": [
             "DuckDB-native execution with multi-database federation (MySQL, PostgreSQL, SQLite)",
             "High-performance file ingestion (CSV, Excel, JSON, Parquet)",

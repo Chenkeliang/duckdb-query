@@ -129,11 +129,17 @@ function renderPanel(props: React.ComponentProps<typeof SQLQueryPanel>) {
   const client = new QueryClient({
     defaultOptions: { queries: { retry: false }, mutations: { retry: false } },
   });
-  return render(
+  const renderTree = (nextProps: React.ComponentProps<typeof SQLQueryPanel>) => (
     <QueryClientProvider client={client}>
-      <SQLQueryPanel {...props} />
+      <SQLQueryPanel {...nextProps} />
     </QueryClientProvider>
   );
+  const view = render(renderTree(props));
+  return {
+    ...view,
+    rerenderPanel: (nextProps: React.ComponentProps<typeof SQLQueryPanel>) =>
+      view.rerender(renderTree(nextProps)),
+  };
 }
 
 describe('SQLQueryPanel page limit semantics', () => {
@@ -205,6 +211,53 @@ describe('SQLQueryPanel page limit semantics', () => {
     expect(await screen.findByTestId('sql-diagnostic')).toHaveTextContent(
       'syntax error at FRM'
     );
+  });
+
+  it('does not attach a late diagnostic after the SQL has changed', async () => {
+    let rejectExecute: ((error: Error) => void) | undefined;
+    const onExecute = vi.fn(
+      () => new Promise<void>((_resolve, reject) => { rejectExecute = reject; })
+    );
+    renderPanel({ initialSQL: 'SELECT * FRM orders', onExecute });
+
+    fireEvent.click(screen.getByRole('button', { name: 'execute' }));
+    fireEvent.change(screen.getByRole('textbox', { name: 'sql-editor' }), {
+      target: { value: 'SELECT * FROM orders' },
+    });
+    rejectExecute?.(
+      Object.assign(new Error('old syntax error'), {
+        details: { sql_location: { line: 1, column: 10, end_column: 13 } },
+      })
+    );
+
+    await waitFor(() => expect(onExecute).toHaveBeenCalledOnce());
+    expect(screen.queryByTestId('sql-diagnostic')).not.toBeInTheDocument();
+  });
+
+  it('invalidates a pending diagnostic when preview SQL replaces the editor', async () => {
+    let rejectExecute: ((error: Error) => void) | undefined;
+    const onExecute = vi.fn(
+      () => new Promise<void>((_resolve, reject) => { rejectExecute = reject; })
+    );
+    const view = renderPanel({ initialSQL: 'SELECT missing', onExecute });
+    fireEvent.click(screen.getByRole('button', { name: 'execute' }));
+
+    view.rerenderPanel({
+      initialSQL: 'SELECT missing',
+      previewSQL: 'SELECT 42 AS answer',
+      previewNonce: 1,
+      onExecute,
+    });
+    rejectExecute?.(
+      Object.assign(new Error('old query error'), {
+        details: { sql_location: { line: 1, column: 8, end_column: 15 } },
+      })
+    );
+
+    await waitFor(() => {
+      expect(screen.getByTestId('sql-value')).toHaveTextContent('SELECT 42 AS answer');
+    });
+    expect(screen.queryByTestId('sql-diagnostic')).not.toBeInTheDocument();
   });
 
   it('adds a visible preview LIMIT but retains limit-free baseSql', async () => {

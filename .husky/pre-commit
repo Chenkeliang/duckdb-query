@@ -33,9 +33,9 @@ if [ -n "$BACKEND_FILES" ]; then
     
     # 尝试检测 Python 环境
     if [ -f ".venv/bin/python" ]; then
-        PYTHON_CMD=".venv/bin/python"
+        PYTHON_CMD="$(pwd)/.venv/bin/python"
     elif [ -f "api/.venv/bin/python" ]; then
-        PYTHON_CMD="api/.venv/bin/python"
+        PYTHON_CMD="$(pwd)/api/.venv/bin/python"
     else
         PYTHON_CMD="python"
     fi

@@ -1,6 +1,8 @@
 """DuckDB 2.0 capability contract and safety classification regressions."""
 
 import asyncio
+from contextlib import contextmanager
+from unittest.mock import MagicMock
 
 from fastapi.testclient import TestClient
 
@@ -23,18 +25,57 @@ def _features(contract):
 def test_contract_is_explicit_per_surface_and_matches_runtime():
     contract = current_capability_contract()
     features = _features(contract)
-    assert contract["contract_version"] == 1
-    assert contract["product_version"] == "2.0.0"
+    assert contract["contract_version"] == 2
+    assert contract["product_version"] == "2.0.1"
     assert contract["engine"]["version"].startswith("v2.0.0-alpha")
     assert contract["engine"]["release_stage"] == "preview"
+    assert contract["engine"]["platform"]
+    assert "core_functions" in contract["engine"]["extensions"]
+    assert contract["optimizer_policy"]["remote_pushdown"] == {
+        "status": "blocked",
+        "reason_code": "SEMANTIC_MATRIX_NOT_VERIFIED",
+        "reason": "Automatic remote pushdown is disabled to preserve result types and numeric precision",
+    }
     assert contract["mcp"]["package_version"] == "0.4.0"
     assert features["approx_nearest"]["direct_sql"]["status"] == "supported"
     assert features["approx_nearest"]["agent"]["status"] == "blocked"
     assert features["variant_and_json_mutation"]["agent"]["status"] == "supported"
     assert features["dml_in_cte"]["mcp"]["status"] == "blocked"
     assert features["triggers"]["engine"]["status"] == "supported"
+    assert features["storage_v2"]["engine"]["status"] == "supported"
+    assert features["automatic_remote_pushdown"]["direct_sql"]["status"] == "blocked"
     for feature_id in ("connect_and_quack", "custom_extension_repository", "stable_c_api"):
         assert features[feature_id]["engine"]["status"] == "blocked"
+
+
+def test_contract_reads_extension_identity_from_configured_runtime(monkeypatch):
+    """Regression 2026-09-07: capabilities must not inspect a fresh empty DB."""
+    from core.common import duckdb_capabilities
+    from core.database import duckdb_engine
+
+    connection = MagicMock()
+    connection.execute.side_effect = lambda sql: MagicMock(
+        fetchone=lambda: (
+            "v2.0.0-alpha39998" if "version" in sql else "osx_arm64"
+        ),
+        fetchall=lambda: [("postgres_scanner", True, True, "c91ea57793")],
+    )
+
+    @contextmanager
+    def configured_runtime():
+        yield connection
+
+    monkeypatch.setattr(duckdb_engine, "with_duckdb_connection", configured_runtime)
+    duckdb_capabilities.current_capability_contract.cache_clear()
+    try:
+        contract = duckdb_capabilities.current_capability_contract()
+        assert contract["engine"]["extensions"]["postgres_scanner"] == {
+            "installed": True,
+            "loaded": True,
+            "version": "c91ea57793",
+        }
+    finally:
+        duckdb_capabilities.current_capability_contract.cache_clear()
 
 
 def test_contract_does_not_claim_v2_engine_features_on_an_old_runtime():
@@ -108,7 +149,7 @@ def test_capability_endpoint_and_fail_closed_sql_classifier():
     client = TestClient(app)
     response = client.get("/api/capabilities")
     assert response.status_code == 200
-    assert response.json()["data"]["contract_version"] == 1
+    assert response.json()["data"]["contract_version"] == 2
 
     for sql in (
         "SELECT '; LIMIT' AS value",

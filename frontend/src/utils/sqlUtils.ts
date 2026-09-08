@@ -676,6 +676,23 @@ export function parseSQLTableReferences(sql: string): ParsedTableReference[] {
   return results;
 }
 
+/** Connection literals used by mysql_query; these are not physical table references. */
+export function extractSQLQueryAliases(sql: string): string[] {
+  const tokens = tokenizeSQL(sql);
+  const aliases = new Map<string, string>();
+  for (let i = 0; i < tokens.length; i++) {
+    const token = tokens[i];
+    const argument = tokens[i + 2];
+    if (token.type !== 'identifier' || token.value.toLowerCase() !== 'mysql_query'
+      || tokens[i - 1]?.type === 'dot' || tokens[i + 1]?.type !== 'lparen'
+      || argument?.type !== 'string' || tokens[i + 3]?.type !== 'comma') continue;
+    if (argument.value && !aliases.has(argument.value.toLowerCase())) {
+      aliases.set(argument.value.toLowerCase(), argument.value);
+    }
+  }
+  return [...aliases.values()];
+}
+
 export function matchPrefixToConnection(
   prefix: string,
   connections: DatabaseConnection[]
@@ -736,20 +753,20 @@ export function mergeAttachDatabases(
   
   // 1. 首先添加 selectedTables 的（优先级最高）
   for (const db of fromSelectedTables) {
-    merged.set(db.connectionId, db);
+    merged.set(db.alias.toLowerCase(), db);
   }
   
   // 2. 添加 SQL 解析的（如果不存在）
   for (const db of fromSQLParsing) {
-    if (!merged.has(db.connectionId)) {
-      merged.set(db.connectionId, db);
+    if (!merged.has(db.alias.toLowerCase())) {
+      merged.set(db.alias.toLowerCase(), db);
     }
   }
   
   // 3. 添加手动添加的
   for (const db of manualAdditions) {
-    if (!merged.has(db.connectionId)) {
-      merged.set(db.connectionId, db);
+    if (!merged.has(db.alias.toLowerCase())) {
+      merged.set(db.alias.toLowerCase(), db);
     }
   }
   
@@ -789,36 +806,33 @@ export function extractSqlAttachedAliases(sql: string): Set<string> {
 
 export function buildAttachDatabasesFromParsedRefs(
   parsedRefs: ParsedTableReference[],
-  connections: DatabaseConnection[]
+  connections: DatabaseConnection[],
+  queryAliases: string[] = []
 ): { attachDatabases: AttachDatabase[]; unrecognizedPrefixes: string[] } {
   const attachDatabases: AttachDatabase[] = [];
   const unrecognizedPrefixes: string[] = [];
-  const seenConnectionIds = new Set<string>();
   const seenPrefixes = new Set<string>();
   
-  for (const ref of parsedRefs) {
-    if (!ref.prefix) continue;
+  for (const prefix of [...parsedRefs.map((ref) => ref.prefix), ...queryAliases]) {
+    if (!prefix) continue;
     
-    const prefixLower = ref.prefix.toLowerCase();
+    const prefixLower = prefix.toLowerCase();
     if (seenPrefixes.has(prefixLower)) continue;
     seenPrefixes.add(prefixLower);
     
-    const matchResult = matchPrefixToConnection(ref.prefix, connections);
+    const matchResult = matchPrefixToConnection(prefix, connections);
     
     if (matchResult.matched && matchResult.connection) {
-      if (!seenConnectionIds.has(matchResult.connection.id)) {
-        seenConnectionIds.add(matchResult.connection.id);
-        attachDatabases.push({
-          alias: ref.prefix, // 使用 SQL 中的前缀作为别名
-          connectionId: matchResult.connection.id,
-        });
-      }
+      attachDatabases.push({
+        alias: prefix, // 每个 SQL 别名都需要绑定，同一连接允许多个别名
+        connectionId: matchResult.connection.id,
+      });
       
       if (matchResult.warning) {
         console.warn(matchResult.warning);
       }
     } else {
-      unrecognizedPrefixes.push(ref.prefix);
+      unrecognizedPrefixes.push(prefix);
     }
   }
   

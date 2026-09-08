@@ -24,7 +24,12 @@ from core.database.duckdb_pool import interruptible_connection
 from core.database.federated_attach import (
     attach_databases_on_connection,
     detach_databases_on_connection,
+    finalize_query_if_not_cancelled,
     format_qualified_table_reference,
+)
+from core.common.sql_error_location import (
+    duckdb_error_message,
+    structured_duckdb_errors,
 )
 from core.services import ai_sql_guard, schema_sampler, table_registry
 from core.services.ai_sql_validation import is_select_only
@@ -450,63 +455,95 @@ def _rows_to_text(columns: List[str], rows: List[tuple]) -> str:
     return f"{header}\n{body}" if body else f"{header}\n(no rows)"
 
 
-def _execute_guarded(ctx: AgentRunCtx, sql: str) -> ToolResult:
+def _execute_guarded_query(
+    ctx: AgentRunCtx,
+    sql: str,
+    con,
+    started_at: float,
+) -> ToolResult:
+    """Validate and execute one already-authorized Agent query."""
+    ok, err = validate_query_syntax(sql, con=con)
+    if not ok:
+        ctx.sql_rejected += 1
+        return ToolResult(
+            model_text=f"error: {duckdb_error_message(err)[:400]}",
+            ui_summary="query failed validation",
+            ok=False,
+            elapsed_ms=int((time.time() - started_at) * 1000),
+        )
+    from routers.query_sql_utils import (  # pylint: disable=import-outside-toplevel
+        ensure_query_has_limit,
+        has_top_level_limit,
+    )
+
+    exec_sql = (
+        sql if has_top_level_limit(sql) else ensure_query_has_limit(sql, ROW_CAP + 1)
+    )
+    from core.database.federated_execution import federated_execution_scope
+    from core.database.duckdb_engine import fetch_query_records
+
+    try:
+        with federated_execution_scope(
+            con, exec_sql, ctx.attach_configs, ctx.run_id
+        ) as execution:
+            bounded_sql = (
+                f"SELECT * FROM (\n{execution.sql.rstrip().rstrip(';')}\n) "
+                f"AS _agent_result LIMIT {ROW_CAP + 1}"
+            )
+            columns, records, _types = fetch_query_records(con, bounded_sql)
+            rows = [tuple(record[name] for name in columns) for record in records]
+    except duckdb.InterruptException:
+        raise
+    except duckdb.Error as exc:
+        return ToolResult(
+            model_text=(
+                "error: query execution failed: "
+                f"{duckdb_error_message(exc)[:280]}"
+            ),
+            ui_summary="query execution failed",
+            ok=False,
+            elapsed_ms=int((time.time() - started_at) * 1000),
+        )
+    truncated_rows = len(rows) > ROW_CAP
+    rows = rows[:ROW_CAP]
+    text, clipped = _clip(_rows_to_text(columns, rows))
+    note = f"\n({len(rows)} rows returned"
+    note += ", truncated)" if (truncated_rows or clipped) else ")"
+    return ToolResult(
+        model_text=text + note,
+        ui_summary=f"returned {len(rows)} rows"
+        + (" (truncated)" if truncated_rows or clipped else ""),
+        truncated=truncated_rows or clipped,
+        elapsed_ms=int((time.time() - started_at) * 1000),
+    )
+
+
+def _execute_guarded(
+    ctx: AgentRunCtx,
+    sql: str,
+    deadline_monotonic: float,
+) -> ToolResult:
     """同步执行体:跑在线程里,由 interruptible_connection 提供真实中断。"""
-    t0 = time.time()
+    started_at = time.time()
     with interruptible_connection(ctx.run_id, sql) as con:
         attached: list[str] = []
         try:
             if ctx.attach_configs:
-                attached = attach_databases_on_connection(con, ctx.attach_configs)
-            ok, err = validate_query_syntax(sql, con=con)
-            if not ok:
-                ctx.sql_rejected += 1
-                return ToolResult(
-                    model_text=f"error: {err[:400]}",
-                    ui_summary="query failed validation",
-                    ok=False,
-                    elapsed_ms=int((time.time() - t0) * 1000),
+                attached = attach_databases_on_connection(
+                    con,
+                    ctx.attach_configs,
+                    deadline_monotonic=deadline_monotonic,
+                    query_id=ctx.run_id,
                 )
-            # 行帽:最外层缺 LIMIT 时补 ROW_CAP;模型自带 LIMIT 也由 fetchmany 截断
-            from routers.query_sql_utils import (  # pylint: disable=import-outside-toplevel
-                ensure_query_has_limit,
-                has_top_level_limit,
-            )
-
-            # 帽 +1:留一行"哨兵"以便探测是否被截断
-            exec_sql = (
-                sql if has_top_level_limit(sql) else ensure_query_has_limit(sql, ROW_CAP + 1)
-            )
-            # 执行期异常(EXPLAIN 过、con.execute/fetchmany 才炸,如 Conversion/InvalidInput/
-            # OutOfRange)必须作为 observation 回喂,让模型自修复(改 json_extract_string、
-            # TRY_CAST 等),不能逃逸成 Loop 的 internal_error(见模块契约 §7、回归
-            # test_ai_agent_tools 运行期错误用例)。InterruptException 是中断/超时信号,
-            # 原样上抛交回 run_query_async,绝不吞——不改变取消与超时行为。
-            try:
-                cur = con.execute(exec_sql)
-                columns = [d[0] for d in (cur.description or [])]
-                rows = cur.fetchmany(ROW_CAP + 1)
-            except duckdb.InterruptException:
-                raise
-            except duckdb.Error as exc:
-                return ToolResult(
-                    model_text=f"error: query execution failed: {str(exc)[:280]}",
-                    ui_summary="query execution failed",
-                    ok=False,
-                    elapsed_ms=int((time.time() - t0) * 1000),
+            with structured_duckdb_errors(con):
+                result = _execute_guarded_query(
+                    ctx,
+                    sql,
+                    con,
+                    started_at,
                 )
-            truncated_rows = len(rows) > ROW_CAP
-            rows = rows[:ROW_CAP]
-            text, clipped = _clip(_rows_to_text(columns, rows))
-            note = f"\n({len(rows)} rows returned"
-            note += ", truncated)" if (truncated_rows or clipped) else ")"
-            return ToolResult(
-                model_text=text + note,
-                ui_summary=f"returned {len(rows)} rows"
-                + (" (truncated)" if truncated_rows or clipped else ""),
-                truncated=truncated_rows or clipped,
-                elapsed_ms=int((time.time() - t0) * 1000),
-            )
+            finalize_query_if_not_cancelled(ctx.run_id)
+            return result
         finally:
             if attached:
                 detach_databases_on_connection(con, attached)
@@ -545,7 +582,15 @@ async def run_query_async(
             ui_summary="query rejected by guard",
             ok=False,
         )
-    task = asyncio.create_task(asyncio.to_thread(_execute_guarded, ctx, sql))
+    deadline_monotonic = time.monotonic() + QUERY_TIMEOUT_S
+    task = asyncio.create_task(
+        asyncio.to_thread(
+            _execute_guarded,
+            ctx,
+            sql,
+            deadline_monotonic,
+        )
+    )
     try:
         result = await asyncio.wait_for(asyncio.shield(task), timeout=QUERY_TIMEOUT_S)
         if result.ok and query_id:
@@ -587,7 +632,10 @@ def interrupt_run(run_id: str) -> None:
             connection_registry,
         )
 
-        connection_registry.interrupt_with_remote(run_id)
+        connection_registry.interrupt_with_remote(
+            run_id,
+            pending_if_missing=True,
+        )
     except Exception as exc:  # noqa: BLE001
         logger.warning("agent interrupt failed: %s", exc)
 

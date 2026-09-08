@@ -6,6 +6,7 @@ import uuid
 from contextlib import contextmanager
 from pathlib import Path
 
+import duckdb
 import pytest
 
 pytest.importorskip("httpx")
@@ -30,6 +31,47 @@ def _remove_export(file_id: str) -> None:
         path = os.path.join(_exports_dir(), f"{file_id}.{ext}")
         if os.path.exists(path):
             os.remove(path)
+
+
+def test_cancelled_export_removes_partial_local_file(monkeypatch):
+    """Regression 2026-09-07: cancellation cannot retain a candidate export."""
+    fixed_id = uuid.UUID("11111111-1111-1111-1111-111111111111")
+    target = Path(_exports_dir()) / f"{fixed_id}.csv"
+    real_ctx = with_duckdb_connection
+
+    class _InterruptedCopyConnection:
+        def __init__(self, connection):
+            self._connection = connection
+
+        def execute(self, sql, *args, **kwargs):
+            if sql.lstrip().upper().startswith("COPY"):
+                target.write_text("partial", encoding="utf-8")
+                raise duckdb.InterruptException("cancelled")
+            return self._connection.execute(sql, *args, **kwargs)
+
+        def __getattr__(self, name):
+            return getattr(self._connection, name)
+
+    @contextmanager
+    def interrupted_connection(_query_id, _sql):
+        with real_ctx() as connection:
+            yield _InterruptedCopyConnection(connection)
+
+    monkeypatch.setattr(query_export.uuid, "uuid4", lambda: fixed_id)
+    monkeypatch.setattr(
+        query_export,
+        "interruptible_connection",
+        interrupted_connection,
+    )
+    try:
+        response = client.post(
+            "/api/query-results/export",
+            json={"sql": "SELECT 1", "format": "csv"},
+        )
+        assert response.status_code == 499
+        assert not target.exists()
+    finally:
+        target.unlink(missing_ok=True)
 
 
 def test_cleanup_removes_old_sync_export_file():
@@ -146,7 +188,12 @@ def test_export_skips_metrics_connection_when_no_explain(monkeypatch):
         with real_ctx() as con:
             yield con
 
-    monkeypatch.setattr(query_export, "with_duckdb_connection", _counting)
+    @contextmanager
+    def _interruptible(_query_id, _sql):
+        with _counting() as con:
+            yield con
+
+    monkeypatch.setattr(query_export, "interruptible_connection", _interruptible)
 
     file_id = None
     try:
@@ -188,7 +235,12 @@ def test_export_runs_user_query_once(monkeypatch):
         with real_ctx() as con:
             yield _RecordingConn(con)
 
-    monkeypatch.setattr(query_export, "with_duckdb_connection", _recording)
+    @contextmanager
+    def _interruptible(_query_id, _sql):
+        with _recording() as con:
+            yield con
+
+    monkeypatch.setattr(query_export, "interruptible_connection", _interruptible)
 
     file_id = None
     try:

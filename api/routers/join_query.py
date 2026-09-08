@@ -9,11 +9,14 @@ import logging
 import os
 import re
 import traceback
+import threading
+import time as time_module
 import uuid
 from datetime import datetime, time
 from typing import Any, Dict, List, Optional, Tuple
 
 import duckdb
+from core.common.config_manager import config_manager
 from core.common.timezone_utils import get_current_time
 from core.common.exceptions import ValidationError as APIValidationError
 from core.common.utils import describe_query_column_types
@@ -34,11 +37,15 @@ from core.database.federated_attach import (
     attach_databases_on_connection,
     detach_databases_on_connection,
     execute_sql_and_persist,
+    finalize_query_if_not_cancelled,
     federated_source_sql_alias,
     format_qualified_table_reference,
     resolve_attach_configs,
 )
 from core.database.duckdb_pool import interruptible_connection
+from core.database.connection_registry import connection_registry
+from core.database.federated_execution import federated_execution_scope
+from core.common.sql_error_location import structured_duckdb_errors
 from fastapi import APIRouter, Body, Header
 from models.query_models import QueryRequest
 from pydantic import BaseModel, Field, ValidationError
@@ -624,16 +631,29 @@ def perform_query(
     x_request_id: Optional[str] = Header(None, alias="X-Request-ID"),
 ):
     """Performs a join query on the specified data sources."""
-    query_id = f"sync:{x_request_id}" if x_request_id else None
-    if query_id:
+    federated_attach = bool(query_request.attach_databases)
+    query_id = (
+        f"sync:{x_request_id}"
+        if x_request_id
+        else (f"join:{uuid.uuid4()}" if federated_attach else None)
+    )
+    if x_request_id:
         logger.info(f"Query with request ID: {x_request_id}")
+    timeout_s = int(config_manager.get_app_config().federated_query_timeout or 300)
+    deadline = time_module.monotonic() + timeout_s
+    timed_out = False
+
+    def _on_timeout() -> None:
+        nonlocal timed_out
+        timed_out = True
+        if query_id:
+            connection_registry.interrupt_with_remote(query_id)
 
     if not query_request.sources:
         raise APIValidationError(
             "Query request must contain at least one data source"
         )
 
-    federated_attach = bool(query_request.attach_databases)
     conn_ctx = (
         interruptible_connection(query_id, "")
         if query_id
@@ -641,10 +661,19 @@ def perform_query(
     )
     with conn_ctx as con:
         attached_aliases: List[str] = []
+        attach_configs = []
+        timer = threading.Timer(timeout_s, _on_timeout) if query_id else None
+        if timer:
+            timer.start()
         try:
             if federated_attach:
                 attach_configs = resolve_attach_configs(query_request.attach_databases)
-                attached_aliases = attach_databases_on_connection(con, attach_configs)
+                attached_aliases = attach_databases_on_connection(
+                    con,
+                    attach_configs,
+                    deadline_monotonic=deadline,
+                    query_id=query_id,
+                )
 
             available_table_names: List[str] = []
             if not federated_attach:
@@ -712,8 +741,6 @@ def perform_query(
                         )
                         raise ResourceNotFoundError("Table", actual_table_name)
 
-            from core.common.config_manager import config_manager
-
             max_rows = config_manager.get_app_config().max_query_rows
             if query_request.is_preview:
                 query = ensure_query_has_limit(query, max_rows)
@@ -727,16 +754,21 @@ def perform_query(
 
             logger.info(f"Executing query: {query}")
 
-            # 执行查询
-            columns_list, data_records, cursor_types = timed_fetch_query_records(
-                con, query
-            )
-            logger.info(
-                f"Query completed, {len(data_records)} rows x {len(columns_list)} cols"
-            )
-            column_types = describe_query_column_types(con, query) or [
-                {"name": name, "duckdb_type": dtype} for name, dtype in cursor_types
-            ]
+            with structured_duckdb_errors(con):
+                with federated_execution_scope(
+                    con, query, attach_configs, query_id
+                ) as execution:
+                    columns_list, data_records, cursor_types = timed_fetch_query_records(
+                        con, execution.sql
+                    )
+                    logger.info(
+                        f"Query completed, {len(data_records)} rows x {len(columns_list)} cols"
+                    )
+                    column_types = describe_query_column_types(con, execution.sql) or [
+                        {"name": name, "duckdb_type": dtype}
+                        for name, dtype in cursor_types
+                    ]
+            finalize_query_if_not_cancelled(query_id)
 
             return create_success_response(
                 data={
@@ -751,6 +783,13 @@ def perform_query(
             )
         except duckdb.InterruptException as e:
             logger.info("Join query %s cancelled by user", query_id)
+            if timed_out:
+                return error_json_response(
+                    504,
+                    MessageCode.QUERY_TIMEOUT,
+                    f"Query exceeded {timeout_s}s and was aborted",
+                    details={"query_id": query_id, "timeout_s": timeout_s},
+                )
             return error_json_response(
                 499,
                 MessageCode.QUERY_CANCELLED,
@@ -775,6 +814,8 @@ def perform_query(
                 details={"sql": getattr(query_request, "sql", None)},
             )
         finally:
+            if timer:
+                timer.cancel()
             if attached_aliases:
                 detach_databases_on_connection(con, attached_aliases)
 
@@ -857,6 +898,7 @@ def save_query_to_duckdb(request: dict = Body(...)):
         # 默认移除最外层 LIMIT 后全量保存,勾选则保留已有 LIMIT 或补系统默认值。
         logger.info("Re-executing SQL to persist (apply_row_limit=%s)", apply_row_limit)
 
+        query_id = f"save:{uuid.uuid4()}"
         try:
             # reject_empty=True: 空结果只清理内部临时表、绝不触碰 table_alias 下
             # 已有的数据——同名重存(overwrite)时新查询意外返回 0 行,不能把旧的
@@ -865,6 +907,7 @@ def save_query_to_duckdb(request: dict = Body(...)):
                 apply_row_limit_choice(sql_query, apply_row_limit),
                 table_alias,
                 attach_list,
+                query_id=query_id,
                 reject_empty=True,
             )
         except Exception as exec_error:
@@ -879,6 +922,8 @@ def save_query_to_duckdb(request: dict = Body(...)):
                 ),
                 details={"sql": sql_query, "attach_databases": attach_list},
             )
+        finally:
+            connection_registry.forget_publication(query_id)
 
         row_count = metadata_snapshot["row_count"]
         if row_count == 0:

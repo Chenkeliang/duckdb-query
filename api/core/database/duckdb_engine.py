@@ -132,6 +132,12 @@ from core.common.sql_identifiers import (  # noqa: E402
 )
 
 
+def _postgres_conninfo_value(value: Any) -> str:
+    """Quote one libpq keyword/value connection-string value."""
+    escaped = str(value).replace("\\", "\\\\").replace("'", "\\'")
+    return f"'{escaped}'"
+
+
 def build_attach_sql(alias: str, db_config: Dict[str, Any]) -> str:
     """
     根据数据库配置构建 ATTACH SQL 语句
@@ -165,21 +171,64 @@ def build_attach_sql(alias: str, db_config: Dict[str, Any]) -> str:
         if not username:
             raise ValueError("MySQL connection missing username parameter (user or username)")
         # MySQL 连接字符串格式
-        conn_str = f"host={db_config['host']} user={username} password={db_config.get('password', '')} database={db_config['database']}"
+        conn_parts = [f"host={db_config['host']}", f"user={username}"]
+        password = db_config.get("password")
+        if password not in (None, ""):
+            conn_parts.append(f"password={password}")
+        conn_parts.append(f"database={db_config['database']}")
         if db_config.get('port'):
-            conn_str += f" port={db_config['port']}"
+            conn_parts.append(f"port={db_config['port']}")
+        conn_str = " ".join(conn_parts)
         # 整个连接串是单引号 SQL 字面量,必须转义单引号——否则含 ' 的密码/主机
         # 名可突破字面量注入(DuckDB 解析层还原 '' 后驱动仍拿到正确值)
-        return f"ATTACH '{escape_string_literal(conn_str)}' AS {quoted_alias} (TYPE mysql)"
+        return (
+            f"ATTACH '{escape_string_literal(conn_str)}' AS {quoted_alias} "
+            "(TYPE mysql, READ_ONLY)"
+        )
 
     elif db_type in ('postgresql', 'postgres'):
         if not username:
             raise ValueError("PostgreSQL connection missing username parameter (user or username)")
-        # PostgreSQL 连接字符串格式
-        conn_str = f"host={db_config['host']} dbname={db_config['database']} user={username} password={db_config.get('password', '')}"
+        # Quote every libpq conninfo value.  An unquoted empty ``password=``
+        # consumes the next token (for example ``port=``), while spaces,
+        # backslashes and quotes otherwise alter the option boundary.
+        conn_parts = [
+            f"host={_postgres_conninfo_value(db_config['host'])}",
+            f"dbname={_postgres_conninfo_value(db_config['database'])}",
+            f"user={_postgres_conninfo_value(username)}",
+            f"password={_postgres_conninfo_value(db_config.get('password', ''))}",
+        ]
         if db_config.get('port'):
-            conn_str += f" port={db_config['port']}"
-        return f"ATTACH '{escape_string_literal(conn_str)}' AS {quoted_alias} (TYPE postgres)"
+            conn_parts.append(f"port={_postgres_conninfo_value(db_config['port'])}")
+        application_name = db_config.get("_application_name")
+        if application_name:
+            conn_parts.append(
+                "application_name="
+                + _postgres_conninfo_value(application_name)
+            )
+        timeout_value = db_config.get("_statement_timeout_ms")
+        if timeout_value is not None:
+            if isinstance(timeout_value, bool):
+                raise ValueError("PostgreSQL statement timeout must be an integer")
+            try:
+                timeout_ms = int(timeout_value)
+            except (TypeError, ValueError) as exc:
+                raise ValueError(
+                    "PostgreSQL statement timeout must be an integer"
+                ) from exc
+            if timeout_ms <= 0 or timeout_ms > 2_147_483_647:
+                raise ValueError(
+                    "PostgreSQL statement timeout must be between 1 and 2147483647 ms"
+                )
+            conn_parts.append(
+                "options="
+                + _postgres_conninfo_value(f"-c statement_timeout={timeout_ms}")
+            )
+        conn_str = " ".join(conn_parts)
+        return (
+            f"ATTACH '{escape_string_literal(conn_str)}' AS {quoted_alias} "
+            "(TYPE postgres, READ_ONLY)"
+        )
 
     elif db_type == 'sqlite':
         # SQLite 使用文件路径（兼容 path、database 两种参数键）
@@ -235,6 +284,53 @@ def _apply_perf_and_remote_settings(connection, app_config) -> None:
                 logger.warning(
                     "Failed to apply remote config %s: %s", setting_key, remote_error
                 )
+
+    _enforce_optimizer_safety(connection)
+
+
+def _enforce_optimizer_safety(connection) -> None:
+    """Disable v2 optimizers whose result semantics are not yet verified.
+
+    DuckDB v2.0.0-alpha39998 with mysql_scanner 1b7a31b95b can rewrite a
+    ``SUM(DECIMAL)`` into ``mysql_query`` and return a rounded DOUBLE even
+    though ``DESCRIBE`` reports DECIMAL.  This runs after user-provided remote
+    settings so an empty ``disabled_optimizers`` value cannot re-enable the
+    unsafe path.  Existing disabled optimizer choices are preserved.
+
+    A future engine/extension combination must pass the real MySQL semantic
+    matrix before ``remote_pushdown`` is removed from this fail-closed set.
+    """
+    version = str(connection.execute("SELECT version()").fetchone()[0])
+    if not version.startswith("v2."):
+        return
+    from core.common.duckdb_capabilities import (  # pylint: disable=import-outside-toplevel
+        extension_manifest_from_connection,
+        remote_pushdown_verified,
+    )
+
+    platform = str(connection.execute("PRAGMA platform").fetchone()[0])
+    extensions = extension_manifest_from_connection(connection)
+    if remote_pushdown_verified(version, platform, extensions):
+        return
+
+    row = connection.execute(
+        "SELECT value FROM duckdb_settings() WHERE name='disabled_optimizers'"
+    ).fetchone()
+    disabled = {
+        item.strip()
+        for item in str(row[0] if row else "").split(",")
+        if item.strip()
+    }
+    disabled.add("remote_pushdown")
+    connection.execute(
+        "SET disabled_optimizers=?",
+        [",".join(sorted(disabled))],
+    )
+    logger.info(
+        "Applied verified optimizer safety policy for %s: %s",
+        version,
+        ",".join(sorted(disabled)),
+    )
 
 
 def _apply_duckdb_configuration(connection, temp_dir: str):

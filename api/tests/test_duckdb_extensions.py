@@ -106,6 +106,7 @@ class TestBuildAttachSQL:
         
         # 验证 SQL 格式
         assert 'TYPE mysql' in sql
+        assert 'READ_ONLY' in sql
         assert 'host=localhost' in sql
         assert 'user=root' in sql
         assert 'database=testdb' in sql
@@ -134,11 +135,48 @@ class TestBuildAttachSQL:
         
         # 验证 SQL 格式
         assert 'TYPE postgres' in sql
-        assert 'host=localhost' in sql
-        assert 'user=postgres' in sql
-        assert 'dbname=testdb' in sql
-        assert 'port=5432' in sql
+        assert 'READ_ONLY' in sql
+        assert "host=''localhost''" in sql
+        assert "user=''postgres''" in sql
+        assert "dbname=''testdb''" in sql
+        assert "port=''5432''" in sql
         assert 'AS "pg_alias"' in sql
+
+    def test_postgres_attach_sql_includes_validated_statement_timeout(self):
+        """Regression 2026-09-07: every PostgreSQL scanner connection must
+        inherit the application deadline so local interrupt cannot leave a
+        remote statement running until an unrelated network timeout."""
+        from core.database.duckdb_engine import build_attach_sql
+
+        sql = build_attach_sql(
+            "pg_alias",
+            {
+                "type": "postgresql",
+                "host": "localhost",
+                "username": "postgres",
+                "password": "test_password",
+                "database": "testdb",
+                "_statement_timeout_ms": 250,
+            },
+        )
+
+        assert "options=''-c statement_timeout=250''" in sql
+
+    def test_postgres_attach_rejects_non_integer_statement_timeout(self):
+        from core.database.duckdb_engine import build_attach_sql
+
+        with pytest.raises(ValueError, match="statement timeout"):
+            build_attach_sql(
+                "pg_alias",
+                {
+                    "type": "postgresql",
+                    "host": "localhost",
+                    "username": "postgres",
+                    "password": "test_password",
+                    "database": "testdb",
+                    "_statement_timeout_ms": "1; DROP TABLE users",
+                },
+            )
 
     def test_sqlite_attach_sql_format(self):
         """
@@ -179,6 +217,26 @@ class TestBuildAttachSQL:
         assert 'host=localhost' in sql
         assert 'port=' not in sql
 
+    def test_mysql_empty_password_omits_the_option(self):
+        """Regression 2026-09-07: mysql_scanner rejects an empty
+        ``password=`` token, while omitting it correctly selects no password."""
+        from core.database.duckdb_engine import build_attach_sql
+
+        sql = build_attach_sql(
+            "mysql_db",
+            {
+                "type": "mysql",
+                "host": "localhost",
+                "username": "root",
+                "password": "",
+                "database": "testdb",
+                "port": 3306,
+            },
+        )
+
+        assert "password=" not in sql
+        assert "port=3306" in sql
+
     def test_postgres_without_port(self):
         """测试 PostgreSQL 不带端口的情况"""
         from core.database.duckdb_engine import build_attach_sql
@@ -194,7 +252,7 @@ class TestBuildAttachSQL:
         sql = build_attach_sql('pg_db', config)
         
         assert 'TYPE postgres' in sql
-        assert 'host=localhost' in sql
+        assert "host=''localhost''" in sql
         assert 'port=' not in sql
 
     def test_unsupported_database_type_raises_error(self):
@@ -232,7 +290,9 @@ class TestBuildAttachSQL:
         sql = build_attach_sql(malicious_alias, config)
 
         # 恶意内容必须整体落在转义后的引号标识符里,语句结构(TYPE 子句)完整
-        assert sql.endswith('AS "x""; DROP TABLE users; --" (TYPE mysql)')
+        assert sql.endswith(
+            'AS "x""; DROP TABLE users; --" (TYPE mysql, READ_ONLY)'
+        )
 
     def test_empty_password_handled(self):
         """测试空密码的处理"""
@@ -249,7 +309,7 @@ class TestBuildAttachSQL:
         sql = build_attach_sql('mysql_db', config)
         
         assert 'TYPE mysql' in sql
-        assert 'password=' in sql
+        assert 'password=' not in sql
 
 
 class TestExtensionLoading:
@@ -441,6 +501,7 @@ class TestInstallProgressStateMachine:
 
     def test_install_reaches_done_with_mocked_download(self):
         fake_payload = gzip.compress(b"fake-duckdb-extension-bytes")
+        from core.common.duckdb_capabilities import current_capability_contract
 
         fake_response = MagicMock()
         fake_response.headers = {"Content-Length": str(len(fake_payload))}
@@ -457,7 +518,9 @@ class TestInstallProgressStateMachine:
                 return_value=fake_response,
             ), patch.object(
                 duckdb_extensions.threading, "Thread", _ImmediateThread
-            ):
+            ), patch.object(
+                current_capability_contract, "cache_clear"
+            ) as clear_capabilities:
                 bind_mock_duckdb_pool(mock_pool, mock_con)
                 response = client.post("/api/duckdb/extensions/fts/install")
                 assert response.status_code == 200
@@ -466,6 +529,7 @@ class TestInstallProgressStateMachine:
             assert state["status"] == "done"
             assert state["progress"] == 100
             assert state["error"] is None
+            clear_capabilities.assert_called_once_with()
 
             dest_path = os.path.join(ext_dir, "v1.5.3", "osx_arm64", "fts.duckdb_extension")
             assert os.path.exists(dest_path)

@@ -26,6 +26,7 @@ import {
   parseSQLTableReferences,
   buildAttachDatabasesFromParsedRefs,
   extractSqlAttachedAliases,
+  extractSQLQueryAliases,
   extractAttachDatabases,
   mergeAttachDatabases,
   type AttachDatabase,
@@ -152,7 +153,7 @@ export function useFederatedQueryDetection(
   // 同一段 SQL 里手动 ATTACH 的本地目录别名(及内置目录名)是本地引用,
   // 不参与联邦匹配,也不能报"未识别前缀"。
   const sqlAttachResult = useMemo(() => {
-    if (!enabled || parsedTableReferences.length === 0) {
+    if (!enabled) {
       return { attachDatabases: [], unrecognizedPrefixes: [] };
     }
     const localAliases = extractSqlAttachedAliases(debouncedSql);
@@ -161,7 +162,8 @@ export function useFederatedQueryDetection(
     );
     return buildAttachDatabasesFromParsedRefs(
       externalRefs,
-      connections as DatabaseConnection[]
+      connections as DatabaseConnection[],
+      extractSQLQueryAliases(debouncedSql).filter((alias) => !localAliases.has(alias.toLowerCase()))
     );
   }, [parsedTableReferences, debouncedSql, connections, enabled]);
 

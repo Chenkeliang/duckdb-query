@@ -6,6 +6,7 @@ import asyncio
 import logging
 import os
 import shutil
+import threading
 import time
 import uuid
 from typing import List, Literal, Optional
@@ -19,7 +20,14 @@ from core.database.duckdb_pool import interruptible_connection
 from core.database.federated_attach import (
     attach_databases_on_connection,
     detach_databases_on_connection,
+    finalize_query_if_not_cancelled,
     resolve_attach_configs,
+)
+from core.database.connection_registry import connection_registry
+from core.database.federated_execution import federated_execution_scope
+from core.common.sql_error_location import (
+    duckdb_error_message,
+    structured_duckdb_errors,
 )
 from core.database.query_metrics import log_query_duration
 from fastapi import APIRouter, Header
@@ -82,12 +90,10 @@ def export_query_results(
     ext = "parquet" if request.format == "parquet" else "csv"
     file_path = os.path.join(exports_dir, f"{file_id}.{ext}")
 
-    query_id = f"sync:{x_request_id}" if x_request_id else None
-    conn_ctx = (
-        interruptible_connection(query_id, sql_query)
-        if query_id
-        else with_duckdb_connection()
-    )
+    query_id = f"sync:{x_request_id}" if x_request_id else f"export:{uuid.uuid4()}"
+    timeout_s = int(config_manager.get_app_config().federated_query_timeout or 300)
+    deadline = time.monotonic() + timeout_s
+    conn_ctx = interruptible_connection(query_id, sql_query)
 
     # Newlines keep a terminal ``-- comment`` from swallowing COPY's closing parenthesis.
     copy_sql = (
@@ -96,17 +102,46 @@ def export_query_results(
     )
     attached_aliases: List[str] = []
     row_count = 0
+    timed_out = False
+
+    def _on_timeout() -> None:
+        nonlocal timed_out
+        timed_out = True
+        connection_registry.interrupt_with_remote(query_id)
+
     try:
         start = time.time()
         with conn_ctx as con:
+            timer = threading.Timer(timeout_s, _on_timeout)
+            timer.start()
             try:
+                attach_configs = []
                 if request.attach_databases:
                     attach_configs = resolve_attach_configs(request.attach_databases)
-                    attached_aliases = attach_databases_on_connection(con, attach_configs)
+                    attached_aliases = attach_databases_on_connection(
+                        con,
+                        attach_configs,
+                        deadline_monotonic=deadline,
+                        query_id=query_id,
+                    )
 
-                copy_result = con.execute(copy_sql).fetchone()
-                row_count = int(copy_result[0]) if copy_result else 0
+                with structured_duckdb_errors(con):
+                    with federated_execution_scope(
+                        con,
+                        embedded_sql,
+                        attach_configs,
+                        query_id,
+                        materialize_result=False,
+                    ) as execution:
+                        prepared_copy = (
+                            f"COPY (\n{execution.sql}\n) TO '{file_path}' "
+                            f"(FORMAT {'PARQUET' if request.format == 'parquet' else 'CSV'})"
+                        )
+                        copy_result = con.execute(prepared_copy).fetchone()
+                        row_count = int(copy_result[0]) if copy_result else 0
+                finalize_query_if_not_cancelled(query_id)
             finally:
+                timer.cancel()
                 if attached_aliases:
                     detach_databases_on_connection(con, attached_aliases)
 
@@ -147,6 +182,13 @@ def export_query_results(
     except duckdb.InterruptException as exc:
         if os.path.exists(file_path):
             os.remove(file_path)
+        if timed_out:
+            return error_json_response(
+                504,
+                MessageCode.QUERY_TIMEOUT,
+                f"Export exceeded {timeout_s}s and was aborted",
+                details={"query_id": query_id, "timeout_s": timeout_s},
+            )
         return error_json_response(
             499,
             MessageCode.QUERY_CANCELLED,
@@ -156,11 +198,12 @@ def export_query_results(
     except Exception as exc:
         if os.path.exists(file_path):
             os.remove(file_path)
-        logger.error("Query export failed: %s", exc, exc_info=True)
+        safe_message = duckdb_error_message(exc)
+        logger.error("Query export failed: %s", safe_message, exc_info=True)
         return error_json_response(
             500,
             MessageCode.OPERATION_FAILED,
-            f"Export failed: {exc}",
+            f"Export failed: {safe_message}",
         )
 
 
