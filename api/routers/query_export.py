@@ -21,10 +21,10 @@ from core.database.federated_attach import (
     attach_databases_on_connection,
     detach_databases_on_connection,
     finalize_query_if_not_cancelled,
-    remote_cancellation_scope,
     resolve_attach_configs,
 )
 from core.database.connection_registry import connection_registry
+from core.database.federated_execution import federated_execution_scope
 from core.common.sql_error_location import (
     duckdb_error_message,
     structured_duckdb_errors,
@@ -126,12 +126,18 @@ def export_query_results(
                     )
 
                 with structured_duckdb_errors(con):
-                    with remote_cancellation_scope(
+                    with federated_execution_scope(
                         con,
-                        query_id,
+                        embedded_sql,
                         attach_configs,
-                    ):
-                        copy_result = con.execute(copy_sql).fetchone()
+                        query_id,
+                        materialize_result=False,
+                    ) as execution:
+                        prepared_copy = (
+                            f"COPY (\n{execution.sql}\n) TO '{file_path}' "
+                            f"(FORMAT {'PARQUET' if request.format == 'parquet' else 'CSV'})"
+                        )
+                        copy_result = con.execute(prepared_copy).fetchone()
                         row_count = int(copy_result[0]) if copy_result else 0
                 finalize_query_if_not_cancelled(query_id)
             finally:

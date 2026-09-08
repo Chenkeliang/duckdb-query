@@ -576,7 +576,6 @@
       "description": "查看生成的 SQL 语句，可以复制或直接执行",
       "copy": "复制",
       "copied": "已复制",
-      "viewerDescription": "查看 JSON 内容并复制原文或路径",
       "edit": "编辑",
       "editing": "编辑中",
       "noSQL": "暂无 SQL",
@@ -818,6 +817,7 @@
       "dragFieldsPlaceholder": "拖放字段到此处"
     },
     "json": {
+      "viewerDescription": "查看 JSON 内容并复制原文或路径",
       "viewerTitle": "JSON 查看器",
       "view": "查看 JSON",
       "copy": "复制",

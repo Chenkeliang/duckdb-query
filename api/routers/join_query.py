@@ -40,11 +40,11 @@ from core.database.federated_attach import (
     finalize_query_if_not_cancelled,
     federated_source_sql_alias,
     format_qualified_table_reference,
-    remote_cancellation_scope,
     resolve_attach_configs,
 )
 from core.database.duckdb_pool import interruptible_connection
 from core.database.connection_registry import connection_registry
+from core.database.federated_execution import federated_execution_scope
 from core.common.sql_error_location import structured_duckdb_errors
 from fastapi import APIRouter, Body, Header
 from models.query_models import QueryRequest
@@ -755,14 +755,16 @@ def perform_query(
             logger.info(f"Executing query: {query}")
 
             with structured_duckdb_errors(con):
-                with remote_cancellation_scope(con, query_id, attach_configs):
+                with federated_execution_scope(
+                    con, query, attach_configs, query_id
+                ) as execution:
                     columns_list, data_records, cursor_types = timed_fetch_query_records(
-                        con, query
+                        con, execution.sql
                     )
                     logger.info(
                         f"Query completed, {len(data_records)} rows x {len(columns_list)} cols"
                     )
-                    column_types = describe_query_column_types(con, query) or [
+                    column_types = describe_query_column_types(con, execution.sql) or [
                         {"name": name, "duckdb_type": dtype}
                         for name, dtype in cursor_types
                     ]

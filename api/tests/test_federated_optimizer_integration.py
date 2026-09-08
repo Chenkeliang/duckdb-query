@@ -59,9 +59,8 @@ def test_left_join_preserved_remote_returns_all_rows(conn):
     assert conn.execute(opt).fetchall() == baseline == [(1,), (2,), (3,)]
 
 
-def test_same_mysql_star_join_remote_sql_executes_and_preserves_result(conn):
-    """历史回归（2026-07-28）：整条同库 JOIN 下推生成的远端 SQL 必须在
-    真实 DuckDB 上执行，并与原联邦 SQL 的值、字段顺序及去重列名一致。"""
+def test_same_mysql_star_join_stays_local_and_preserves_result(conn):
+    """Regression 2026-09-08: keep relational operations and result schema local."""
     sql = (
         "SELECT * FROM remote_db.orders o JOIN remote_db.items i "
         "ON o.id = i.order_id ORDER BY o.id, i.id"
@@ -79,23 +78,10 @@ def test_same_mysql_star_join_remote_sql_executes_and_preserves_result(conn):
         _Cfg(),
         mysql_aliases={"remote_db"},
     )
-    wrapper = sqlglot.parse_one(optimized, read="duckdb")
-    mysql_query = next(wrapper.find_all(exp.Anonymous))
-    remote_mysql_sql = mysql_query.expressions[1].this
-    remote_duckdb_sql = sqlglot.transpile(
-        remote_mysql_sql, read="mysql", write="duckdb"
-    )[0]
-
-    remote_path = conn.execute(
-        "SELECT path FROM duckdb_databases() WHERE database_name = 'remote_db'"
-    ).fetchone()[0]
-    remote = duckdb.connect(remote_path, read_only=True)
-    try:
-        remote_cursor = remote.execute(remote_duckdb_sql)
-        remote_rows = remote_cursor.fetchall()
-        remote_columns = [str(column[0]) for column in remote_cursor.description]
-    finally:
-        remote.close()
+    assert optimized == sql
+    remote_cursor = conn.execute(optimized)
+    remote_rows = remote_cursor.fetchall()
+    remote_columns = dedupe_column_names([str(column[0]) for column in remote_cursor.description])
 
     assert remote_rows == baseline_rows
     assert [

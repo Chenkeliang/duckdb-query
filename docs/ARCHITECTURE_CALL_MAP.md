@@ -131,6 +131,12 @@ sequenceDiagram
 | 联邦 | `executeFederatedQuery` | `POST /api/duckdb/federated-query` | ATTACH + execute |
 | 取消 | `cancelSyncQuery` | `POST /api/query/cancel/{id}` | `query_cancel` |
 
+### 4.0 MySQL 公共执行上下文（2026-09-08）
+
+`core/database/federated_execution.py::federated_execution_scope` 在已 ATTACH 的连接内统一持有 MySQL 串行设置与远端取消租约，调用 `mysql_predicate_candidates.py` 做作用域解析、元数据核验、候选过滤、类型投影及临时表替换。原始精确谓词、JOIN、ORDER BY、LIMIT 仍由 DuckDB 执行；不支持的条件关闭该次原生过滤下推后本地计算。上下文退出清理候选并恢复设置，原有 staging 原子发布在其事务结束后进行。
+
+接入点：同步联邦查询、`execute_sql_with_attach`（透视预览）、`execute_sql_and_persist`（本地/联邦异步及保存对话框）、JOIN、集合预览/保存、导出、AI run_query。AI 先按原 SQL 完成授权；原 SQL 继续用于历史、权限和错误身份。候选临时名不回显为可复用 SQL。
+
 ### 4.1 前端调用收敛
 
 ```mermaid

@@ -3,6 +3,7 @@ import type { DatabaseConnection } from '@/hooks/useDatabaseConnections';
 import {
   generateDatabaseAlias,
   parseSQLTableReferences,
+  extractSQLQueryAliases,
   buildAttachDatabasesFromParsedRefs,
 } from '@/utils/sqlUtils';
 
@@ -32,7 +33,7 @@ export function detectFederatedPreviewSource(
   if (attachDatabases.length === 0) {
     try {
       const parsedRefs = parseSQLTableReferences(sqlBody);
-      const autoDetected = buildAttachDatabasesFromParsedRefs(parsedRefs, connections);
+      const autoDetected = buildAttachDatabasesFromParsedRefs(parsedRefs, connections, extractSQLQueryAliases(sqlBody));
       attachDatabases = autoDetected.attachDatabases;
     } catch (e) {
       console.error('Failed to auto-detect federated sources:', e);

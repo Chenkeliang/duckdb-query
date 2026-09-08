@@ -19,6 +19,7 @@ from core.database.duckdb_engine import (
 )
 from core.database.duckdb_pool import interruptible_connection
 from core.database.connection_registry import connection_registry
+from core.database.federated_execution import federated_execution_scope
 from core.database.federated_attach import (
     attach_databases_on_connection,
     create_query_staging_table,
@@ -26,7 +27,6 @@ from core.database.federated_attach import (
     drop_query_staging_table,
     finalize_query_if_not_cancelled,
     publish_query_staging_table,
-    remote_cancellation_scope,
     resolve_attach_configs,
 )
 from core.services.set_operation_generator import format_set_table_reference
@@ -171,7 +171,9 @@ def preview_set_operation(request: SetOperationRequest):
         with _set_operation_connection(request) as (con, alias_set):
             sql = generate_set_operation_sql(config, attach_aliases=alias_set)
             preview_sql = f"{sql} LIMIT {preview_limit}"
-            _, preview_data = _timed_execute_fetch(con, preview_sql)
+            attach_configs = resolve_attach_configs(request.attach_databases) if request.attach_databases else []
+            with federated_execution_scope(con, preview_sql, attach_configs) as execution:
+                _, preview_data = _timed_execute_fetch(con, execution.sql)
             estimated_rows = estimate_set_operation_rows(
                 config, con, alias_set
             )
@@ -332,14 +334,14 @@ def execute_set_operation(
                 limit = config_manager.get_app_config().max_query_rows
                 preview_sql = f"{sql} LIMIT {limit}"
                 with structured_duckdb_errors(con):
-                    with remote_cancellation_scope(con, query_id, attach_configs):
-                        col_names, data = _timed_execute_fetch(con, preview_sql)
-                # 列类型用 DESCRIBE 的真实 DuckDB 类型（此前的 pandas dtype
-                # 字符串在保真帧下会大面积显示 "object"，信息是错的）
-                described = {
-                    c["name"]: c["duckdb_type"]
-                    for c in describe_query_column_types(con, preview_sql)
-                }
+                    with federated_execution_scope(
+                        con, preview_sql, attach_configs, query_id
+                    ) as execution:
+                        col_names, data = _timed_execute_fetch(con, execution.sql)
+                        described = {
+                            c["name"]: c["duckdb_type"]
+                            for c in describe_query_column_types(con, execution.sql)
+                        }
                 finalize_query_if_not_cancelled(query_id)
                 columns = [
                     {"name": name, "type": described.get(name, "")}
@@ -384,12 +386,11 @@ def execute_set_operation(
                 staging_name = None
                 try:
                     with structured_duckdb_errors(con):
-                        with remote_cancellation_scope(
-                            con,
-                            query_id,
-                            attach_configs,
-                        ):
-                            staging_name = create_query_staging_table(con, sql)
+                        with federated_execution_scope(
+                            con, sql, attach_configs, query_id,
+                            materialize_result=False,
+                        ) as execution:
+                            staging_name = create_query_staging_table(con, execution.sql)
                             snapshot = build_table_metadata_snapshot(
                                 con,
                                 staging_name,
@@ -442,14 +443,14 @@ def execute_set_operation(
                 limit = config_manager.get_app_config().max_query_rows
                 preview_sql = f"{sql} LIMIT {limit}"
                 with structured_duckdb_errors(con):
-                    with remote_cancellation_scope(con, query_id, attach_configs):
-                        col_names, data = _timed_execute_fetch(con, preview_sql)
-                # 列类型用 DESCRIBE 的真实 DuckDB 类型（此前的 pandas dtype
-                # 字符串在保真帧下会大面积显示 "object"，信息是错的）
-                described = {
-                    c["name"]: c["duckdb_type"]
-                    for c in describe_query_column_types(con, preview_sql)
-                }
+                    with federated_execution_scope(
+                        con, preview_sql, attach_configs, query_id
+                    ) as execution:
+                        col_names, data = _timed_execute_fetch(con, execution.sql)
+                        described = {
+                            c["name"]: c["duckdb_type"]
+                            for c in describe_query_column_types(con, execution.sql)
+                        }
                 finalize_query_if_not_cancelled(query_id)
                 columns = [
                     {"name": name, "type": described.get(name, "")}

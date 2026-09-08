@@ -26,7 +26,6 @@ from core.database.federated_attach import (
     detach_databases_on_connection,
     finalize_query_if_not_cancelled,
     format_qualified_table_reference,
-    remote_cancellation_scope,
 )
 from core.common.sql_error_location import (
     duckdb_error_message,
@@ -480,10 +479,19 @@ def _execute_guarded_query(
     exec_sql = (
         sql if has_top_level_limit(sql) else ensure_query_has_limit(sql, ROW_CAP + 1)
     )
+    from core.database.federated_execution import federated_execution_scope
+    from core.database.duckdb_engine import fetch_query_records
+
     try:
-        cur = con.execute(exec_sql)
-        columns = [description[0] for description in (cur.description or [])]
-        rows = cur.fetchmany(ROW_CAP + 1)
+        with federated_execution_scope(
+            con, exec_sql, ctx.attach_configs, ctx.run_id
+        ) as execution:
+            bounded_sql = (
+                f"SELECT * FROM (\n{execution.sql.rstrip().rstrip(';')}\n) "
+                f"AS _agent_result LIMIT {ROW_CAP + 1}"
+            )
+            columns, records, _types = fetch_query_records(con, bounded_sql)
+            rows = [tuple(record[name] for name in columns) for record in records]
     except duckdb.InterruptException:
         raise
     except duckdb.Error as exc:
@@ -528,17 +536,12 @@ def _execute_guarded(
                     query_id=ctx.run_id,
                 )
             with structured_duckdb_errors(con):
-                with remote_cancellation_scope(
+                result = _execute_guarded_query(
+                    ctx,
+                    sql,
                     con,
-                    ctx.run_id,
-                    ctx.attach_configs,
-                ):
-                    result = _execute_guarded_query(
-                        ctx,
-                        sql,
-                        con,
-                        started_at,
-                    )
+                    started_at,
+                )
             finalize_query_if_not_cancelled(ctx.run_id)
             return result
         finally:

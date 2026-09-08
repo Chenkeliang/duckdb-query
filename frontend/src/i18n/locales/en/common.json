@@ -576,7 +576,6 @@
       "description": "View the generated SQL statement, copy or execute directly",
       "copy": "Copy",
       "copied": "Copied",
-      "viewerDescription": "View JSON content and copy its source or path",
       "edit": "Edit",
       "editing": "Editing",
       "noSQL": "No SQL",
@@ -818,6 +817,7 @@
       "dragFieldsPlaceholder": "Drag fields here"
     },
     "json": {
+      "viewerDescription": "View JSON content and copy its source or path",
       "viewerTitle": "JSON viewer",
       "view": "View JSON",
       "copy": "Copy",

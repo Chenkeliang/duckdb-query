@@ -210,7 +210,7 @@ def test_persist_disables_mysql_pool_before_attach(monkeypatch):
     events = []
     connection = MagicMock()
 
-    def execute(sql):
+    def execute(sql, *_params):
         events.append(sql)
         return MagicMock()
 
@@ -261,7 +261,7 @@ def test_persist_retries_read_only_ctas_after_mysql_connection_lost(monkeypatch)
     create_attempts = 0
     clear_cache_calls = 0
 
-    def execute(sql):
+    def execute(sql, *_params):
         nonlocal create_attempts, clear_cache_calls
         if sql.startswith('CREATE OR REPLACE TABLE "__stage_'):
             create_attempts += 1
@@ -319,7 +319,7 @@ def test_persist_rebinds_remote_cancellation_for_each_retry_attempt(monkeypatch)
     events = []
     create_attempts = 0
 
-    def execute(sql):
+    def execute(sql, *_params):
         nonlocal create_attempts
         if sql.startswith('CREATE OR REPLACE TABLE "__stage_'):
             create_attempts += 1
@@ -356,7 +356,7 @@ def test_persist_rebinds_remote_cancellation_for_each_retry_attempt(monkeypatch)
         federated_attach, "interruptible_connection", connection_scope
     )
     monkeypatch.setattr(
-        federated_attach, "remote_cancellation_scope", cancellation_scope
+        "core.database.federated_execution.remote_cancellation_scope", cancellation_scope
     )
     monkeypatch.setattr(
         federated_attach,
@@ -423,7 +423,7 @@ def test_persist_restores_duckdb_threads_after_mysql_ctas_failure(monkeypatch):
     connection = MagicMock()
     events = []
 
-    def execute(sql):
+    def execute(sql, *_params):
         events.append(sql)
         if sql == "SELECT current_setting('threads')":
             result = MagicMock()

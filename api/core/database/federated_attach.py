@@ -8,7 +8,7 @@ import re
 import threading
 import time
 import uuid
-from contextlib import contextmanager
+from contextlib import contextmanager, nullcontext
 from functools import partial
 from typing import Any, Dict, Iterator, List, Optional, Tuple
 
@@ -99,6 +99,8 @@ def configure_mysql_fresh_connections(
 @contextmanager
 def single_threaded_mysql_persistence(
     attach_configs: List[Tuple[str, Dict[str, Any]]],
+    *,
+    connection: Any = None,
 ) -> Iterator[None]:
     """Temporarily serialize MySQL scans for a federated query or CTAS."""
     if not any(
@@ -109,7 +111,14 @@ def single_threaded_mysql_persistence(
         return
 
     with _MYSQL_PERSIST_LOCK:
-        with with_duckdb_connection() as settings_conn:
+        # Execution scopes already hold a lease. Reuse it for settings so
+        # waiters cannot exhaust the pool while the lock owner needs a second
+        # connection just to change/restore the thread count.
+        settings_scope = (
+            partial(nullcontext, connection)
+            if connection is not None else with_duckdb_connection
+        )
+        with settings_scope() as settings_conn:
             row = settings_conn.execute("SELECT current_setting('threads')").fetchone()
             previous_threads = int(row[0]) if row else 1
             settings_conn.execute("SET GLOBAL threads=1")
@@ -117,7 +126,7 @@ def single_threaded_mysql_persistence(
             yield
         finally:
             try:
-                with with_duckdb_connection() as settings_conn:
+                with settings_scope() as settings_conn:
                     settings_conn.execute(f"SET GLOBAL threads={previous_threads}")
             except Exception as restore_error:  # pylint: disable=broad-exception-caught
                 logger.error("Failed to restore DuckDB threads: %s", restore_error)
@@ -531,6 +540,8 @@ def execute_sql_with_attach(
     cleaned_sql = normalize_mysql_double_quoted_strings_for_duckdb(
         sql.rstrip().rstrip(";")
     )
+    from core.database.federated_execution import federated_execution_scope
+
     timeout_seconds = int(
         getattr(config_manager.get_app_config(), "federated_query_timeout", 300)
         or 300
@@ -548,8 +559,10 @@ def execute_sql_with_attach(
                     query_id=query_id,
                 )
             with structured_duckdb_errors(conn):
-                with remote_cancellation_scope(conn, query_id, attach_configs):
-                    result = fetch_query_records(conn, cleaned_sql)
+                with federated_execution_scope(
+                    conn, cleaned_sql, attach_configs, query_id
+                ) as execution:
+                    result = fetch_query_records(conn, execution.sql)
             finalize_query_if_not_cancelled(query_id)
             return result
         finally:
@@ -594,6 +607,7 @@ def execute_sql_and_persist(
         normalize_mysql_double_quoted_strings_for_duckdb,
     )
     from core.data.file_datasource_manager import build_table_metadata_snapshot
+    from core.database.federated_execution import federated_execution_scope
 
     attach_configs = resolve_attach_configs(attach_databases)
     cleaned_sql = sql.rstrip().rstrip(";")
@@ -624,11 +638,12 @@ def execute_sql_and_persist(
                     # scope rolls its transaction back before cache clearing,
                     # so a failed CTAS cannot leak an aborted transaction or
                     # staging table into the next attempt.
-                    with remote_cancellation_scope(
-                        conn, query_id, attach_configs
-                    ):
+                    with federated_execution_scope(
+                        conn, cleaned_sql, attach_configs, query_id,
+                        materialize_result=False,
+                    ) as execution:
                         create_query_staging_table(
-                            conn, cleaned_sql, staging_name
+                            conn, execution.sql, staging_name
                         )
                         snapshot = build_table_metadata_snapshot(conn, staging_name)
                     break
@@ -639,6 +654,7 @@ def execute_sql_and_persist(
                         and attach_configs
                         and _is_read_only_query(cleaned_sql)
                         and _is_federated_connection_lost(staging_error)
+                        and getattr(staging_error, "duckquery_retry_safe", True)
                     ):
                         raise
                     logger.warning(
@@ -689,11 +705,15 @@ def execute_sql_and_persist(
                     timed_out.set()
                     connection_registry.interrupt_with_remote(query_id)
 
-                timer = threading.Timer(
-                    max(0.001, deadline - time.monotonic()),
-                    _on_timeout,
-                )
-                timer.start()
+                # The federated budget must not limit purely local background
+                # work. Local queries still register for explicit cancellation.
+                timer = None
+                if attach_configs:
+                    timer = threading.Timer(
+                        max(0.001, deadline - time.monotonic()),
+                        _on_timeout,
+                    )
+                    timer.start()
                 try:
                     with structured_duckdb_errors(conn):
                         return _run(conn)
@@ -704,7 +724,8 @@ def execute_sql_and_persist(
                         ) from error
                     raise
                 finally:
-                    timer.cancel()
+                    if timer:
+                        timer.cancel()
 
         with with_duckdb_connection() as conn:
             with structured_duckdb_errors(conn):

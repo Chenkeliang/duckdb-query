@@ -132,11 +132,17 @@ class TestSaveQueryToDuckDBExplicitAttach:
 
 
 class TestSaveQueryToDuckDBAutoDerivedAttach:
-    def test_save_dialog_watchdog_preserves_existing_target(self, monkeypatch):
-        """Regression 2026-09-07: ordinary save uses a monitored execution ID."""
+    @pytest.mark.parametrize("federated", [False, True])
+    def test_save_dialog_watchdog_preserves_existing_target(
+        self, monkeypatch, sqlite_file, federated,
+    ):
+        """Regression 2026-09-08: local save ignores the federated deadline."""
         from core.database import federated_attach
 
         table_name = "save_dialog_timeout_target"
+        connection_id = "save-dialog-watchdog-sqlite"
+        if federated:
+            _register_connection(connection_id, DataSourceType.SQLITE, {"path": sqlite_file})
 
         class ImmediateTimer:
             def __init__(self, _delay, callback):
@@ -165,20 +171,29 @@ class TestSaveQueryToDuckDBAutoDerivedAttach:
                     "sql": "SELECT 42 AS value",
                     "table_alias": table_name,
                     "datasource": {"id": "duckdb_internal", "type": "duckdb"},
+                    "attach_databases": (
+                        [{"alias": "watchdog_src", "connection_id": connection_id}]
+                        if federated else []
+                    ),
                 },
             )
 
-            assert response.status_code == 500
-            assert "exceeded" in response.json()["error"]["message"]
+            if federated:
+                assert response.status_code == 500
+                assert "exceeded" in response.json()["error"]["message"]
+            else:
+                assert response.status_code == 200
             with with_duckdb_connection() as connection:
                 assert connection.execute(
                     f'SELECT value FROM "{table_name}"'
-                ).fetchall() == [(99,)]
+                ).fetchall() == ([(99,)] if federated else [(42,)])
                 assert not any(
                     name.startswith("__stage_")
                     for (name,) in connection.execute("SHOW TABLES").fetchall()
                 )
         finally:
+            if federated:
+                _unregister_connection(connection_id)
             with with_duckdb_connection() as connection:
                 connection.execute(f'DROP TABLE IF EXISTS "{table_name}"')
 

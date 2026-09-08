@@ -87,6 +87,7 @@ jobs:
           DUCKQUERY_TEST_MYSQL_PORT: "3306"
           DUCKQUERY_TEST_MYSQL_PASSWORD: duckquery-test
           DUCKQUERY_TEST_MYSQL_DATABASE: duckquery_test
+          DUCKQUERY_TEST_MYSQL_ISOLATED: "1"
           DUCKQUERY_TEST_POSTGRES_HOST: 127.0.0.1
           DUCKQUERY_TEST_POSTGRES_PORT: "5432"
           DUCKQUERY_TEST_POSTGRES_PASSWORD: duckquery-test
@@ -94,7 +95,7 @@ jobs:
         run: |
           cd api
           export PYTHONPATH="${PYTHONPATH}:$(pwd)"
-          python -m pytest tests/test_remote_database_semantics.py -q --tb=short
+          python -m pytest tests/test_remote_database_semantics.py tests/test_mysql_execution_integration.py -q --tb=short
 
   frontend-test:
     name: Frontend Vitest

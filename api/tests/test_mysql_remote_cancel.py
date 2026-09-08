@@ -295,8 +295,9 @@ def test_standalone_persist_cancellation_removes_staging(monkeypatch):
     connection.close()
 
 
-def test_standalone_persist_watchdog_reports_timeout(monkeypatch):
-    """Regression 2026-09-07: async persistence has a wall-clock deadline."""
+@pytest.mark.parametrize("federated", [False, True])
+def test_standalone_persist_watchdog_reports_timeout(monkeypatch, federated):
+    """Regression 2026-09-08: only federated persistence gets its watchdog."""
     connection = duckdb.connect(":memory:")
 
     @contextmanager
@@ -328,16 +329,36 @@ def test_standalone_persist_watchdog_reports_timeout(monkeypatch):
         ImmediateTimer,
     )
 
-    with pytest.raises(TimeoutError, match="exceeded"):
-        execute_sql_and_persist(
-            "SELECT * FROM range(10)",
-            "timed_out_persist",
-            [],
-            query_id="async:persist-timeout",
+    if federated:
+        monkeypatch.setattr(
+            "core.database.federated_attach.resolve_attach_configs",
+            lambda _items: [("external", {"type": "sqlite"})],
+        )
+        monkeypatch.setattr(
+            "core.database.federated_attach.attach_databases_on_connection",
+            lambda *_args, **_kwargs: [],
         )
 
-    assert connection.execute("SHOW TABLES").fetchall() == []
-    connection.close()
+    try:
+        if federated:
+            with pytest.raises(TimeoutError, match="exceeded"):
+                execute_sql_and_persist(
+                    "SELECT * FROM range(10)",
+                    "timed_out_persist",
+                    [],
+                    query_id="async:persist-timeout",
+                )
+            assert connection.execute("SHOW TABLES").fetchall() == []
+        else:
+            execute_sql_and_persist(
+                "SELECT * FROM range(10)",
+                "local_persist",
+                [],
+                query_id="async:local-persist",
+            )
+            assert connection.execute("SELECT count(*) FROM local_persist").fetchone() == (10,)
+    finally:
+        connection.close()
 
 
 def test_mysql_remote_interrupt_lease_is_inactive_after_scope_exit():
@@ -528,7 +549,7 @@ def test_federated_endpoint_retries_mysql_disconnect_after_transaction_rollback(
     session_result = MagicMock()
     session_result.fetchone.return_value = (12345,)
 
-    def execute(sql):
+    def execute(sql, *_params):
         if "SELECT CONNECTION_ID()" in sql:
             return session_result
         return MagicMock()
@@ -565,8 +586,7 @@ def test_federated_endpoint_retries_mysql_disconnect_after_transaction_rollback(
         duckdb_query, "detach_databases_on_connection", lambda _connection, _aliases: None
     )
     monkeypatch.setattr(
-        duckdb_query,
-        "optimize_federated_sql",
+        "core.database.federated_execution.optimize_federated_sql",
         lambda _connection, sql, _aliases, _cfg, **_kwargs: (sql, [], []),
     )
     fetch = MagicMock(
@@ -677,11 +697,10 @@ def test_federated_endpoint_temporarily_serializes_mysql_scan(monkeypatch):
         duckdb_query, "detach_databases_on_connection", lambda *_args: None
     )
     monkeypatch.setattr(
-        duckdb_query, "remote_cancellation_scope", cancellation_scope
+        "core.database.federated_execution.remote_cancellation_scope", cancellation_scope
     )
     monkeypatch.setattr(
-        duckdb_query,
-        "optimize_federated_sql",
+        "core.database.federated_execution.optimize_federated_sql",
         lambda _connection, sql, _aliases, _cfg, **_kwargs: (sql, [], []),
     )
 

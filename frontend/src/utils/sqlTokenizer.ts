@@ -102,6 +102,20 @@ export class SQLTokenizer {
       return null;
     }
 
+    // DuckDB dollar-quoted SQL must remain one string token, including its FROM/JOIN text.
+    if (char === '$') {
+      const delimiter = this.sql.slice(this.pos).match(/^\$(?:[\p{L}_][\p{L}\p{N}_]*)?\$/u)?.[0];
+      if (delimiter) {
+        const contentStart = this.pos + delimiter.length;
+        const end = this.sql.indexOf(delimiter, contentStart);
+        this.pos = end < 0 ? this.length : end + delimiter.length;
+        return {
+          type: 'string', value: this.sql.slice(contentStart, end < 0 ? this.length : end),
+          raw: this.sql.slice(startPos, this.pos), position: startPos,
+        };
+      }
+    }
+
     // 字符串字面量 '...'
     if (char === "'") {
       return this.readString();

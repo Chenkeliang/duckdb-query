@@ -24,9 +24,17 @@ def test_tag_version_resolves_to_matching_release_notes():
 
 
 def test_workflow_dispatch_uses_package_version():
-    assert MODULE.resolve_release_version(ROOT, "branch", "main") == "2.0.0"
+    assert MODULE.resolve_release_version(ROOT, "branch", "main") == "2.0.1"
 
 
 def test_missing_release_notes_fail_before_creating_a_release():
     with pytest.raises(FileNotFoundError):
         MODULE.load_release_notes(ROOT, "9.9.9")
+
+
+def test_patch_release_has_bilingual_notes():
+    """2026-09-08: v2.0.1 must publish its own notes, not reuse v2.0.0."""
+    notes = MODULE.load_release_notes(ROOT, "2.0.1")
+    assert "DuckQuery v2.0.1" in notes
+    assert "MySQL" in notes
+    assert "\n\n---\n\n# DuckQuery v2.0.1 Release Notes" in notes

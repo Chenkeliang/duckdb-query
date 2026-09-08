@@ -53,6 +53,9 @@ class ConnectionRegistry:
         self._registry: Dict[str, ConnectionRecord] = {}
         self._published: Dict[str, float] = {}
         self._pending_cancellations: Dict[str, float] = {}
+        # Accepted task cancellations live until terminal-state acknowledgement,
+        # independently of bounded, best-effort early sync cancellation hints.
+        self._task_cancellations: set[str] = set()
         self._lock = threading.RLock()
 
     def _prune_pending_cancellations_locked(self) -> None:
@@ -74,7 +77,10 @@ class ConnectionRegistry:
         with self._lock:
             self._prune_pending_cancellations_locked()
             self._published.pop(task_id, None)
-            cancel_requested = task_id in self._pending_cancellations
+            cancel_requested = (
+                task_id in self._task_cancellations
+                or task_id in self._pending_cancellations
+            )
             self._pending_cancellations.pop(task_id, None)
             if task_id in self._registry:
                 logger.warning(f"Task {task_id} already registered, overwriting")
@@ -109,6 +115,7 @@ class ConnectionRegistry:
         with self._lock:
             self._published.pop(task_id, None)
             self._pending_cancellations.pop(task_id, None)
+            self._task_cancellations.discard(task_id)
     
     def get(self, task_id: str) -> Optional[ConnectionRecord]:
         """获取连接记录"""
@@ -187,13 +194,12 @@ class ConnectionRegistry:
                 return False
             if not accept_cancellation():
                 return False
+            self._task_cancellations.add(task_id)
             if record:
                 record.cancel_requested = True
                 connection = record.connection
                 remote_interrupts = list(record.remote_interrupts)
             else:
-                self._prune_pending_cancellations_locked()
-                self._pending_cancellations[task_id] = time.time()
                 connection = None
                 remote_interrupts = []
 

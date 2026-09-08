@@ -31,7 +31,9 @@
   <img src="docs/assets/readme/hero-cross-source-en.gif" alt="DuckQuery workbench running a cross-source JOIN between a local DuckDB table and MySQL" width="900">
 </p>
 
-## Latest: v2.0.0 (full DuckDB 2.0 support)
+## Latest: v2.0.1 (MySQL federation and desktop fixes)
+
+v2.0.1 adds MySQL candidate filtering while preserving exact DuckDB comparisons, JOINs, ordering and LIMIT. It fixes slow typed-NULL queries, standalone `mysql_query` connection detection and multiple aliases for one connection. Queries, persistence, async execution and exports share execution boundaries and retain decimal and nanosecond precision.
 
 Local Docker binds to `127.0.0.1` by default. For shared access, deploy behind an authenticated reverse proxy; `DUCKQUERY_BIND_HOST` changes the bind address, and the app itself does not provide multi-user authentication. URL imports validate each redirect and enforce streaming size limits; configured HTTP(S) proxies are trusted network boundaries.
 
@@ -60,7 +62,7 @@ Upgrade notes:
 4. The browser demo embeds a separate DuckDB-Wasm engine and does not share the desktop/Docker 2.0 capability set; each UI reports its real engine version.
 5. Legacy lambda syntax `x -> x + 1` is disabled by default; use `lambda x: x + 1`. `CONNECT`, triggers, DML-in-CTE, custom extension repositories, and arbitrary `INSTALL/LOAD` SQL remain disabled.
 
-Full details: [v2.0.0 Release Notes](docs/releases/v2.0.0_en.md) · [DuckDB 2.0 technical design](docs/specs/duckdb-2-compatibility-and-capabilities.md)
+Full details: [v2.0.1 Release Notes](docs/releases/v2.0.1_en.md) · [v2.0.0 major-version notes](docs/releases/v2.0.0_en.md) · [DuckDB 2.0 technical design](docs/specs/duckdb-2-compatibility-and-capabilities.md)
 
 ## Where It Fits
 

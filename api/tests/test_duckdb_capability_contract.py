@@ -26,7 +26,7 @@ def test_contract_is_explicit_per_surface_and_matches_runtime():
     contract = current_capability_contract()
     features = _features(contract)
     assert contract["contract_version"] == 2
-    assert contract["product_version"] == "2.0.0"
+    assert contract["product_version"] == "2.0.1"
     assert contract["engine"]["version"].startswith("v2.0.0-alpha")
     assert contract["engine"]["release_stage"] == "preview"
     assert contract["engine"]["platform"]

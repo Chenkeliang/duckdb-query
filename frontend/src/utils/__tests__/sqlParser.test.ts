@@ -483,7 +483,7 @@ describe('mergeAttachDatabases', () => {
    * **Validates: Requirements 2.2**
    */
   describe('deduplication', () => {
-    it('should deduplicate by connectionId', () => {
+    it('should preserve distinct aliases for the same connection (2026-09-08)', () => {
       const fromSelectedTables: AttachDatabase[] = [
         { alias: 'mysql_orders', connectionId: '1' },
       ];
@@ -494,7 +494,7 @@ describe('mergeAttachDatabases', () => {
       
       const result = mergeAttachDatabases(fromSelectedTables, fromSQLParsing);
       
-      expect(result.attachDatabases).toHaveLength(2);
+      expect(result.attachDatabases).toHaveLength(3);
       const connectionIds = result.attachDatabases.map(d => d.connectionId);
       expect(connectionIds).toContain('1');
       expect(connectionIds).toContain('2');
@@ -511,7 +511,7 @@ describe('mergeAttachDatabases', () => {
         { alias: 'selected_alias', connectionId: '1' },
       ];
       const fromSQLParsing: AttachDatabase[] = [
-        { alias: 'parsed_alias', connectionId: '1' },
+        { alias: 'SELECTED_ALIAS', connectionId: '2' },
       ];
       
       const result = mergeAttachDatabases(fromSelectedTables, fromSQLParsing);
@@ -554,7 +554,7 @@ describe('mergeAttachDatabases', () => {
   });
 
   describe('property-based tests', () => {
-    it('should never have duplicate connectionIds in result', () => {
+    it('should never have duplicate aliases in result (2026-09-08)', () => {
       const attachDbArb = fc.record({
         alias: fc.stringMatching(/^[a-z][a-z0-9_]{2,10}$/),
         connectionId: fc.stringMatching(/^[0-9]{1,5}$/),
@@ -568,10 +568,10 @@ describe('mergeAttachDatabases', () => {
           (selected, parsed, manual) => {
             const result = mergeAttachDatabases(selected, parsed, manual);
             
-            const connectionIds = result.attachDatabases.map(d => d.connectionId);
-            const uniqueIds = new Set(connectionIds);
+            const aliases = result.attachDatabases.map(d => d.alias.toLowerCase());
+            const uniqueAliases = new Set(aliases);
             
-            expect(connectionIds.length).toBe(uniqueIds.size);
+            expect(aliases.length).toBe(uniqueAliases.size);
           }
         ),
         { numRuns: 50 }

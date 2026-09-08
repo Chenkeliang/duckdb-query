@@ -54,14 +54,13 @@ from core.database.federated_attach import (
     detach_databases_on_connection,
     drop_query_staging_table,
     finalize_query_if_not_cancelled,
-    remote_cancellation_scope,
     publish_query_staging_table,
     resolve_attach_configs,
     single_threaded_mysql_persistence,
 )
 from core.database.duckdb_pool import interruptible_connection
 from core.database.connection_registry import connection_registry
-from core.database.federated_optimizer import optimize_federated_sql
+from core.database.federated_execution import federated_execution_scope
 from core.services.resource_manager import save_upload_file
 from core.services.table_metadata_service import get_table_metadata
 from core.common.exceptions import (
@@ -941,27 +940,16 @@ def execute_federated_query(
             for attempt in range(2):
                 staging_name = None
                 try:
-                    with remote_cancellation_scope(conn, query_id, attach_configs):
-                        # 2. 智能下推：半连接键下推(保持结果) + 时间界建议(不改 SQL)
-                        attach_aliases = {alias for (alias, _cfg) in attach_configs}
-                        mysql_aliases = {
-                            alias
-                            for alias, db_config in attach_configs
-                            if str(db_config.get("type", "")).lower() == "mysql"
-                        }
-                        opt_sql, suggestions, opt_warnings = optimize_federated_sql(
-                            conn,
-                            sql_query,
-                            attach_aliases,
-                            config_manager.get_app_config(),
-                            mysql_aliases=mysql_aliases,
-                        )
-                        _opt["sql"] = opt_sql
-                        _opt["suggestions"] = suggestions or None
-                        if opt_warnings:
-                            warnings.extend(str(w) for w in opt_warnings)
-
-                        table_name = (request.save_as_table or "").strip()
+                    table_name = (request.save_as_table or "").strip()
+                    execution_input = base_sql_query if table_name else sql_query
+                    with federated_execution_scope(
+                        conn, execution_input, attach_configs, query_id,
+                        include_suggestions=True,
+                        materialize_result=not bool(table_name),
+                    ) as execution:
+                        _opt["sql"] = execution.display_sql
+                        _opt["suggestions"] = execution.suggestions or None
+                        warnings.extend(execution.warnings)
                         if table_name:
                             # Materialize the unbounded user query once.  The
                             # response preview is read from this same staging
@@ -970,7 +958,7 @@ def execute_federated_query(
                             staging_name, order_column = (
                                 create_ordered_query_staging_table(
                                     conn,
-                                    base_sql_query,
+                                    execution.sql,
                                 )
                             )
                             preview_sql = (
@@ -985,18 +973,8 @@ def execute_federated_query(
                                 f"ALTER TABLE {quote_identifier(staging_name)} "
                                 f"DROP COLUMN {quote_identifier(order_column)}"
                             )
-                            _opt["sql"] = base_sql_query
                         else:
-                            # DESCRIBE(mysql_query(...)) executes the remote
-                            # SQL while binding. Use the actual cursor type so
-                            # the user query remains single-execution.
-                            result_triplet = fetch_query_records(
-                                conn,
-                                opt_sql,
-                                describe_before_execute=(
-                                    not _uses_mysql_query_table_function(opt_sql)
-                                ),
-                            )
+                            result_triplet = fetch_query_records(conn, execution.sql)
 
                     if staging_name:
                         publish_query_staging_table(
@@ -1020,6 +998,7 @@ def execute_federated_query(
                         attempt > 0
                         or not is_read_only_query(sql_query)
                         or not is_federated_connection_lost(query_error)
+                        or not getattr(query_error, "duckquery_retry_safe", True)
                     ):
                         raise
                     logger.warning(
@@ -1055,14 +1034,7 @@ def execute_federated_query(
                         result_columns, result_records, cursor_types = (
                             execute_in_connection(conn)
                         )
-                        describe_types = None
-                        if not saved_table and not _uses_mysql_query_table_function(
-                            _opt["sql"]
-                        ):
-                            describe_types = describe_query_column_types(
-                                conn, _opt["sql"]
-                            )
-                        query_column_types = describe_types or [
+                        query_column_types = [
                             {"name": name, "duckdb_type": dtype}
                             for name, dtype in cursor_types
                         ]
