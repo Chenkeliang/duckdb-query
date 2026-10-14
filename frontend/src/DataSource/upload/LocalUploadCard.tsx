@@ -2,7 +2,6 @@ import { useRef } from "react";
 import { useTranslation } from "react-i18next";
 import { Upload } from "lucide-react";
 import { CHUNKED_UPLOAD_THRESHOLD_BYTES } from "@/api";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -43,13 +42,22 @@ export function LocalUploadCard({
   const fileInputRef = useRef<HTMLInputElement>(null);
 
   return (
-    <Card className="rounded-xl shadow-sm">
-      <CardContent className="p-6 space-y-5">
+    <div>
+      <div className="space-y-5">
         <p className="text-sm leading-relaxed text-muted-foreground">
           {t("page.datasource.cardLocalDesc")}
         </p>
 
         <div
+          role="button"
+          tabIndex={0}
+          aria-label={t("page.datasource.desktopPickFileBtn")}
+          onKeyDown={(event) => {
+            if (event.key === "Enter" || event.key === " ") {
+              event.preventDefault();
+              fileInputRef.current?.click();
+            }
+          }}
           onDragOver={e => {
             e.preventDefault();
             onDragOver(true);
@@ -62,7 +70,7 @@ export function LocalUploadCard({
             if (file) onFileSelect(file);
           }}
           onClick={() => fileInputRef.current?.click()}
-          className={`cursor-pointer rounded-xl border border-dashed px-6 py-10 text-center transition-colors flex flex-col items-center justify-center gap-2 ${
+          className={`cursor-pointer rounded-xl border border-dashed focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring px-6 py-10 text-center transition-colors flex flex-col items-center justify-center gap-2 ${
             dragOver
               ? "border-primary bg-surface-hover"
               : "border-border bg-surface hover:border-primary"
@@ -128,11 +136,11 @@ export function LocalUploadCard({
                 ? t("page.datasource.connection.saving")
                 : t("page.datasource.btnStartUpload")}
           </Button>
-          <Button variant="ghost" onClick={onClear}>
+          <Button variant="quiet" onClick={onClear}>
             {t("page.datasource.paste.btnClear")}
           </Button>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }

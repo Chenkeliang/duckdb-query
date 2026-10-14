@@ -313,6 +313,8 @@ const DataGridInner: React.ForwardRefRenderFunction<DataGridRef, DataGridProps> 
       return {
         field,
         headerName: fromProp?.headerName ?? field,
+        databaseType: fromProp?.databaseType,
+        lineage: fromProp?.lineage,
         sortable: fromProp?.sortable ?? enableSorting,
         filterable: fromProp?.filterable ?? enableFiltering,
         resizable: fromProp?.resizable ?? true,

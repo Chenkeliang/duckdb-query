@@ -49,23 +49,31 @@
     "fitToWidth": "适应宽度",
     "filterLabel": "筛选",
     "clearColFilter": "清除 {{col}} 筛选",
-    "highCardinalitySelectAllBlocked": "该列取值过多，列表仅展示高频前若干条。请取消部分勾选，或改用上方条件筛选。"
+    "highCardinalitySelectAllBlocked": "该列取值过多，列表仅展示高频前若干条。请取消部分勾选，或改用上方条件筛选。",
+    "lineage": {
+      "derived": "计算字段",
+      "constant": "常量",
+      "unresolved": "来源未解析"
+    }
   },
   "nav": {
     "datasource": "数据源",
     "queryworkbench": "查询工作台",
     "tablemanagement": "数据表管理",
-    "asynctasks": "异步任务",
+    "asynctasks": "运行记录",
     "switchMain": "主功能切换",
     "settings": "设置",
     "ai": "AI 模型",
-    "extensions": "扩展"
+    "extensions": "扩展",
+    "aiAssistant": "AI 助手"
   },
   "sidebar": {
     "collapse": "收起",
     "expand": "展开"
   },
   "actions": {
+    "previousPage": "上一页",
+    "nextPage": "下一页",
     "toggleDark": "切换到暗色",
     "toggleLight": "切换到浅色",
     "toggleLang": "切换语言",
@@ -79,9 +87,11 @@
     "uploadFile": "上传文件",
     "exportData": "导出数据",
     "toggleTheme": "切换主题",
-    "toggleLanguage": "切换语言"
+    "toggleLanguage": "切换语言",
+    "actions": "操作"
   },
   "common": {
+    "exitFullscreen": "退出全屏",
     "comingSoon": "即将推出",
     "loading": "加载中...",
     "refresh": "刷新",
@@ -101,7 +111,9 @@
     "execute": "执行",
     "unknownError": "未知错误",
     "remove": "移除",
-    "copyTableName": "复制表名"
+    "insertTableName": "插入到编辑器",
+    "copyTableName": "复制表名",
+    "tableRowCount": "{{count}} 行"
   },
   "dataSource": {
     "previewTable": "预览表: {{tableName}}",
@@ -168,6 +180,8 @@
     "asyncTasksPending": "异步任务列表（待实现）"
   },
   "async": {
+    "snapshotMissing": "查询快照已丢失",
+    "noMatches": "没有符合当前筛选条件的运行记录",
     "title": "异步任务",
     "empty": "暂无异步任务",
     "status": "状态",
@@ -181,7 +195,7 @@
     "actions": "操作",
     "totalCount": "共 {{count}} 条",
     "perPage": "每页",
-    "previewResult": "预览结果",
+    "previewResult": "查看结果",
     "downloadBtn": "下载",
     "cancel": "取消",
     "cancelSuccess": "任务已取消",
@@ -201,8 +215,8 @@
     "status.failed": "失败",
     "status.cancelled": "已取消",
     "dialog": {
-      "title": "提交异步任务",
-      "description": "后台执行 · 结果保存为 DuckDB 表",
+      "title": "保存为表",
+      "description": "在后台执行查询并创建 DuckDB 表，可以继续编辑。",
       "sql": "SQL 语句",
       "tableName": "结果表名",
       "tableNameOptional": "可选",
@@ -215,7 +229,10 @@
       "externalSource": "数据来自外部数据库: {{name}} ({{type}})",
       "attachedDatabases": "附加的外部数据库",
       "federatedQueryHint": "这些数据库将在查询执行期间临时附加",
-      "submit": "提交任务"
+      "submit": "后台保存",
+      "querySource": "查询来源",
+      "editorSource": "当前查询 · 提交时的 SQL",
+      "resultSource": "此结果对应的 SQL · 重新执行保存，不读取或改写当前草稿"
     },
     "download": {
       "title": "下载结果",
@@ -228,7 +245,23 @@
       "success": "下载成功",
       "failed": "下载失败: {{message}}"
     },
-    "status.cancelling": "取消中"
+    "status.cancelling": "取消中",
+    "filter": {
+      "all": "全部",
+      "running": "运行中",
+      "completed": "已完成",
+      "failed": "失败",
+      "cancelled": "已取消"
+    },
+    "search": "搜索 SQL 或结果",
+    "snapshot": "本次查询快照",
+    "statusLabel": "状态",
+    "cancelRequested": "已提交取消请求",
+    "tasksEntry": "任务",
+    "runningSummary": "{{count}} 个任务运行中",
+    "panelSummary": "{{running}} 运行中 · {{completed}} 已完成",
+    "taskDetails": "任务详情 / SQL",
+    "panelTitle": "后台任务"
   },
   "query": {
     "cancelled": "查询已取消",
@@ -258,7 +291,7 @@
       "stop": "停止",
       "scopeLocal": "本地 DuckDB",
       "agentPlaceholder": "问数据智能体…输入 @ 可选表（Enter 发送）",
-      "agentHint": "智能体会执行只读、限行、可取消的探查查询；最终 SQL 仍只插入编辑器",
+      "agentHint": "智能体会执行只读、限行、可取消的探查查询；最终 SQL 先预览差异，确认后写入编辑器",
       "agentEmpty": "问我关于你数据的任何问题。我会查看表结构、验证真实取值、试跑只读查询后再回答;输入 @ 可指定表。",
       "agentFailed": "智能体运行失败",
       "termProtocol": "模型未遵守协议，已如实终止",
@@ -308,7 +341,30 @@
       "scopeMore": "还有 {{n}} 张，继续输入以缩小范围",
       "mentionMore": "还有 {{n}} 张，继续输入以缩小范围",
       "scopeRemoveOne": "移出作用域：{{name}}",
-      "scopeAddTable": "加入「{{name}}」并重问"
+      "scopeAddTable": "加入「{{name}}」并重问",
+      "previewChanges": "预览修改",
+      "changePreview": {
+        "title": "预览 AI 修改",
+        "description": "确认后替换 {{target}} 的 SQL，不会自动执行。",
+        "before": "原 SQL",
+        "after": "AI 建议",
+        "removed": "− 删除或替换",
+        "added": "+ 新增或替换",
+        "apply": "应用修改",
+        "closed": "目标标签已关闭，请取消后重新选择 SQL 标签。",
+        "stale": "原 SQL 已变化，差异已更新。请重新查看后应用。",
+        "same": "SQL 内容相同，无需修改。"
+      },
+      "emptyLead": "从当前 SQL 开始，或直接提问。",
+      "qaOptimizeCurrent": "优化当前 SQL",
+      "composerPlaceholder": "问数据智能体…",
+      "composerLabel": "向数据智能体提问",
+      "usageHelp": "使用说明",
+      "scopeLocalSource": "本地 DuckDB",
+      "scopeAllTables": "全部表",
+      "scopeNoTables": "未选表",
+      "send": "发送",
+      "scopeDone": "完成"
     },
     "tableSelector": {
       "selectTable": "选择表",
@@ -377,7 +433,7 @@
       "copySuccess": "已成功复制 {{count}} 行到剪贴板",
       "rangeCopySuccess": "已成功复制 {{rows}} 行 {{cols}} 列到剪贴板",
       "copyFailed": "复制到剪贴板失败",
-      "importToDuckDB": "导入到 DuckDB",
+      "importToDuckDB": "保存为表",
       "previewCapHint": "预览最多 {{max}} 行，数据集可能更大",
       "filter": {
         "search": "搜索...",
@@ -510,7 +566,8 @@
       "cancel": "取消",
       "cancelTooltip": "取消当前查询",
       "savedToTable": "已保存为表 {{table}}",
-      "saveTableFailed": "查询成功,但保存为表 {{table}} 失败"
+      "saveTableFailed": "查询成功,但保存为表 {{table}} 失败",
+      "runOptions": "执行方式"
     },
     "import": {
       "title": "保存为 DuckDB 表",
@@ -690,12 +747,17 @@
       "selectType": "选择类型",
       "recommended": "推荐",
       "customPlaceholder": "手填 DECIMAL(x,x)",
-      "inferSafe": "推断",
-      "inferSafeHint": "在真实数据上推断安全类型(精度取自数据,避免舍入假匹配)",
+      "inferSafe": "检查数据",
+      "inferSafeHint": "检查两侧数据能否安全转换；无法确定时需手动选择类型",
       "applyAllRecommendations": "应用所有推荐",
       "shortcutHint": "快捷键: Ctrl+A",
       "sqlPreview": "SQL 预览",
-      "applyAndContinue": "应用转换并继续"
+      "applyAndContinue": "应用转换并继续",
+      "noSafeRecommendations": "没有可安全应用的推荐，请手动选择转换类型。",
+      "recommendationHint": "应用已有推荐，并检查未选择项的数据；无法安全推荐时请手动选择。",
+      "recommendationFailed": "检查失败，请重试或手动选择转换类型。",
+      "recommendationsApplied": "已应用 {{count}} 项推荐；未解决的项请手动选择。",
+      "customType": "自定义转换类型"
     },
     "set": {
       "title": "集合操作",
@@ -731,78 +793,84 @@
       "generatingSql": "生成中…",
       "mixedSources": "不能混用 DuckDB 本地表与外部库表。请只选择同一来源的表。",
       "noColumns": "无可用列",
-      "operationType": "集合运算类型"
+      "operationType": "集合运算类型",
+      "byNameHelp": "列名对齐说明",
+      "byNameExampleLeft": "左表：商品id、商品名称",
+      "byNameExampleRight": "右表：商品id、金额",
+      "byNameExampleResult": "合并后：商品id、商品名称、金额",
+      "byNameExact": "列名必须完全相同。「订单号」和「order_id」会分成两列。",
+      "byNameScope": "仅合并支持此选项。交集和差集按列的位置比较，需选择相同数量的列。"
     },
     "pivot": {
       "title": "透视表",
       "dataSource": "数据源",
       "selectTable": "选择数据表",
-      "rowFields": "行字段",
-      "rowFieldsHint": "选择用于分组的字段",
-      "addRowField": "添加行字段",
-      "columnField": "列字段（透视）",
-      "columnFieldHint": "选择用于透视的字段，其唯一值将成为新的列",
-      "selectColumnField": "选择列字段（可选）",
-      "noColumnField": "不使用透视列",
-      "distinctValues": "唯一值预览",
-      "noDistinctValues": "无唯一值",
-      "tooManyValues": "唯一值过多，仅显示部分",
-      "valueFields": "值字段",
-      "valueFieldsHint": "选择要聚合的数值字段",
-      "addValue": "添加",
-      "noValues": "无聚合值",
+      "rowFields": "分组字段",
+      "rowFieldsHint": "每组显示一行，例如按地区或商品分组。",
+      "addRowField": "添加分组字段",
+      "columnField": "展开成列",
+      "columnFieldHint": "这个字段的不同值会变成表头，例如把季度展开成 Q1、Q2。",
+      "selectColumnField": "选择一个表头字段（可选）",
+      "noColumnField": "不展开表头，直接分组统计",
+      "distinctValues": "将生成的表头值",
+      "noDistinctValues": "没有可展开的值",
+      "tooManyValues": "表头值较多，这里只显示一部分",
+      "valueFields": "统计值",
+      "valueFieldsHint": "选择要统计的字段，再选择求和、计数或平均值等计算方式。",
+      "addValue": "添加统计值",
+      "noValues": "还没有统计字段",
       "selectColumn": "选择列",
       "externalNotSupported": "外部数据库表暂不支持透视表。请先将外部表导入到 DuckDB 后再使用透视表功能。",
       "asyncNotSupportedForExternal": "外部数据库表暂不支持异步执行透视表查询",
-      "availableFields": "可用字段",
-      "textCastToNumber": "文本列\"{{column}}\"已按数值求和,非数字值计为空",
-      "textCastRecommended": "文本列\"{{column}}\"将按 {{cast}} 求和(精度取自实际数据)",
-      "textCastNonNumericRows": "文本列\"{{column}}\"有 {{count}} 行无法转成数字,将计为空;已按 {{cast}} 聚合,可在字段上手动改类型",
-      "textCastUnsafe": "文本列\"{{column}}\"无法安全推断为数值;请在字段上手动选择类型后再执行",
-      "textCastUnsafeNonNumeric": "文本列\"{{column}}\"有 {{count}} 行无法转成数字;请在字段上手填类型(如 DECIMAL(38,2))后再执行",
-      "textCastUnsafeBinaryFloat": "列\"{{column}}\"是浮点数,自动量化成定点数会失真;请在字段上手填 cast 类型(如 DECIMAL(38,2)),或改用 计数/最大/最小 聚合",
-      "textCastUnsafeScientific": "文本列\"{{column}}\"含科学计数法,无法可靠推断精度;请在字段上手填类型后再执行",
-      "textCastUnsafeOverflow": "列\"{{column}}\"数值位数超出 DECIMAL(38) 容量;请在字段上手填类型后再执行",
-      "castTypeHint": "聚合前的类型转换,可手填如 DECIMAL(38,2);留空取消",
-      "castInferring": "推断中…",
-      "castPickType": "请选类型",
-      "castBlockedHint": "有聚合值的类型还在推断或需手动选择,已暂停执行",
-      "castInvalid": "无效的转换类型「{{type}}」,请填合法 DuckDB 类型(如 DOUBLE、DECIMAL(38,2))",
-      "castInvalidBareDecimal": "裸 DECIMAL 会隐式变 DECIMAL(18,3) 且有损,请写完整形式如 DECIMAL(38,6)",
-      "columnLimitHint": "透视列「{{column}}」的取值超过 {{cap}} 个上限(至少 {{observed}} 个),请增加筛选缩小范围,或在下方「指定透视列值」里列出要展开的列值",
+      "availableFields": "可拖入的字段",
+      "textCastToNumber": "「{{column}}」将按数字统计，无法转成数字的值记为空值。",
+      "textCastRecommended": "「{{column}}」已选用数字类型 {{cast}}，将按当前计算方式统计。",
+      "textCastNonNumericRows": "「{{column}}」有 {{count}} 行无法转成数字，这些值将记为空值；其余值按 {{cast}} 统计。",
+      "textCastUnsafe": "无法确定「{{column}}」适合的数字类型，请手动选择后再执行。",
+      "textCastUnsafeNonNumeric": "「{{column}}」有 {{count}} 行不是有效数字。请手动选择数字类型，或改用计数。",
+      "textCastUnsafeBinaryFloat": "「{{column}}」是浮点数，自动转换可能改变数值。请手动选择类型，或改用计数、最大值、最小值。",
+      "textCastUnsafeScientific": "「{{column}}」含科学计数法，无法确定合适的小数位数，请手动选择数字类型。",
+      "textCastUnsafeOverflow": "「{{column}}」的数字超过 38 位，无法自动推荐，请手动选择类型。",
+      "castTypeHint": "统计前先转成这个数字类型，例如 DECIMAL(38,2)；留空则不转换",
+      "castInferring": "正在检查数字类型…",
+      "castPickType": "请选择数字类型",
+      "castBlockedHint": "请先为统计字段选择可用的数字类型。",
+      "castInvalid": "「{{type}}」不是有效的数字类型，请输入 DOUBLE 或 DECIMAL(38,2) 等类型。",
+      "castInvalidBareDecimal": "请写明总位数和小数位，例如 DECIMAL(38,2)；只写 DECIMAL 可能丢失小数。",
+      "columnLimitHint": "「{{column}}」至少有 {{observed}} 种取值，超过 {{cap}} 个自动表头上限。请先筛选数据，或在「只显示指定表头」中输入需要的值。",
       "generateFailed": "透视查询生成失败,请检查配置或稍后重试",
-      "subtotals": "小计",
-      "grandTotals": "总计",
-      "subtotalsNeedTwoRows": "小计需至少 2 个行维度",
-      "manualColumnValues": "指定透视列值（可选）",
-      "manualColumnValuesHint": "输入一个列值后按 Enter",
-      "manualColumnValuesDescription": "留空时自动生成全部列；指定后只生成这些列，不受列数上限影响",
-      "manualColumnValuesAdd": "添加列值",
-      "manualColumnValuesTitle": "只展开这些列值(绕过列上限);留空则自动展开全部",
+      "subtotals": "显示每组小计",
+      "grandTotals": "显示总计",
+      "subtotalsNeedTwoRows": "选择至少 2 个分组字段后，可显示每组的小计。",
+      "manualColumnValues": "只显示指定表头（可选）",
+      "manualColumnValuesHint": "输入一个值后按 Enter，例如 Q1",
+      "manualColumnValuesDescription": "每次输入一个值并按 Enter 添加。留空则自动生成表头；指定后只显示这些值对应的列，不受自动列数上限限制。",
+      "manualColumnValuesAdd": "添加表头值",
+      "manualColumnValuesTitle": "按输入的值固定表头；留空时从数据中取值",
       "selectTableHint": "请先选择数据表",
       "allFieldsConfigured": "所有字段已配置",
-      "rows": "行字段",
-      "columns": "透视列",
-      "values": "聚合值",
-      "dropRowHint": "拖入行分组字段",
-      "dropColumnHint": "拖入透视列字段",
-      "dropValueHint": "拖入聚合值字段",
-      "maxOne": "限1个",
-      "sampleValue": "值",
-      "noRows": "无行字段",
-      "tablePreview": "表格结构预览",
-      "previewHint": "聚合查询预览：按行字段分组后计算聚合值",
-      "previewHintPivot": "透视表预览：[透视列]的每个唯一值将成为单独的列",
-      "previewReadyHint": "配置字段后点击「运行」查看结果",
+      "rows": "分组字段",
+      "columns": "展开成列",
+      "values": "统计值",
+      "dropRowHint": "拖入用于分组的字段，例如商品或地区",
+      "dropColumnHint": "拖入要展开成表头的字段，例如季度",
+      "dropValueHint": "拖入要统计的字段，例如金额，再选择计算方式",
+      "maxOne": "最多 1 个字段",
+      "sampleValue": "统计结果",
+      "noRows": "未分组：显示整体汇总",
+      "tablePreview": "结果结构预览",
+      "previewHint": "每个分组显示一行，数值按你选择的方式计算。",
+      "previewHintPivot": "「展开成列」字段的不同值将成为表头。",
+      "previewReadyHint": "设置好字段后，点击「执行」查看统计结果。",
       "previewRows": "预览 {{count}} 行",
       "previewRowsPartial": "预览 {{returned}} 行（约 {{total}} 行匹配查询）",
-      "pivotMode": "透视模式",
-      "rowDimension": "行维度",
-      "pivotColumnValues": "透视列",
-      "uniqueValues": "的唯一值",
+      "pivotMode": "展开表头",
+      "rowDimension": "按这些字段分组",
+      "pivotColumnValues": "表头来自",
+      "uniqueValues": "的不同取值",
       "filters": "筛选",
       "addFilter": "添加条件",
-      "filtersEmpty": "可选：限制透视前的行（WHERE）",
+      "filtersEmpty": "可选：先筛选要参与统计的数据",
       "filterColumn": "列",
       "filterOperator": "操作符",
       "filterValue": "值",
@@ -840,7 +908,9 @@
       "sql": "SQL 查询",
       "join": "JOIN 查询",
       "set": "集合操作",
-      "pivot": "透视表"
+      "pivot": "透视表",
+      "label": "查询标签",
+      "new": "新建标签"
     },
     "federated": {
       "attachedDatabases": "{{count}} 个外部数据库",
@@ -911,10 +981,21 @@
       "createSuccess": "收藏成功",
       "deleteFailed": "删除失败",
       "deleteSuccess": "已删除收藏"
+    },
+    "background": {
+      "running": "已执行 {{seconds}} 秒；转后台后保持本次查询及行数范围，不重新执行。",
+      "move": "转为后台运行",
+      "moving": "正在接管…",
+      "moved": "已转为后台运行，可从右上角任务查看结果",
+      "moveFailed": "未能转后台，查询可能已经完成"
     }
   },
   "page": {
     "datasource": {
+      "sourceMethod": "数据来源",
+      "sourceLocal": "本地文件",
+      "sourceDatabase": "数据库连接",
+      "importOptions": "导入选项",
       "intro1": "上传文件：支持剪切板/CSV/Excel/JSON/Parquet/远程文件等多类型上传，自动建表用于数据分析查询，默认最大50GB，支持自定义配置",
       "intro2": "支持连接远程数据库：支持 MySQL / PostgreSQL 配置之后可在查询页面查询数据加载到本地表中",
       "tabUpload": "文件上传",
@@ -1195,7 +1276,8 @@
         "local": "本地",
         "viewList": "列表",
         "viewCard": "卡片",
-        "newConnection": "新建连接"
+        "newConnection": "新建连接",
+        "editConnection": "编辑连接"
       },
       "status": {
         "active": "活跃",
@@ -1217,6 +1299,30 @@
         "headerNo": "无表头",
         "encoding": "编码",
         "encodingAuto": "自动检测"
+      },
+      "overviewIntro": "本地文件与远程数据库，在一条 SQL 中联查。",
+      "localTables": "本地表 · DuckDB",
+      "searchLocal": "搜索本地表",
+      "tableName": "表名",
+      "rows": "行数",
+      "columns": "列数",
+      "created": "创建时间",
+      "query": "查询",
+      "noLocalTables": "没有匹配的本地表，可添加文件或粘贴数据。",
+      "deleteTitle": "删除本地表",
+      "deleteDescription": "确认删除「{{name}}」？此操作会移除表及其数据。",
+      "flow": {
+        "importData": "导入数据",
+        "importOther": "其他导入方式",
+        "backToWorkbench": "回到工作台",
+        "viewTables": "查看表",
+        "editConnection": "编辑连接",
+        "editNamed": "编辑连接 {{name}}",
+        "saveChanges": "保存修改",
+        "saveConnection": "保存连接",
+        "editHint": "修改 {{name}} 的连接配置，保存后继续在原位置使用。",
+        "newHint": "填写配置后直接保存，系统会先验证连接。测试连接可单独检查配置。",
+        "importHint": "选择文件、粘贴数据或填写地址，导入完成后即可在左侧表列表中使用。"
       }
     }
   },
@@ -1358,7 +1464,8 @@
       "checking": "检查中…",
       "upToDate": "当前已是最新版本 v{{version}}",
       "checkFailed": "检查更新失败，请确认网络后重试"
-    }
+    },
+    "aiNeedsConfig": "先配置 AI 模型，才能使用 AI 助手"
   },
   "extensions": {
     "title": "扩展",
@@ -1405,10 +1512,29 @@
     "resetSuccess": "快捷键已重置",
     "resetError": "重置快捷键失败",
     "resetAllSuccess": "所有快捷键已重置",
-    "resetAllError": "重置快捷键失败"
+    "resetAllError": "重置快捷键失败",
+    "toggleAiPanel": "打开 / 关闭 AI 助手",
+    "toggleExplorer": "显示 / 隐藏数据源面板"
   },
   "command": {
-    "aiChat": "数据助手对话"
+    "aiChat": "数据助手对话",
+    "placeholder": "搜索操作、表或最近的查询…",
+    "noResults": "没有匹配项",
+    "groupRecent": "最近运行",
+    "groupActions": "操作",
+    "groupGoto": "跳转",
+    "groupTables": "表",
+    "run": "执行当前查询",
+    "runAsync": "将当前查询保存为表",
+    "format": "格式化 SQL",
+    "newSqlTab": "新建 SQL 标签",
+    "newJoinTab": "新建 JOIN 查询",
+    "addData": "添加数据",
+    "connectDatabase": "连接数据库",
+    "aiAssistant": "打开 AI 助手",
+    "asyncTasks": "查看异步任务",
+    "refresh": "刷新数据源",
+    "help": "帮助与文档（GitHub）"
   },
   "demo": {
     "banner": "浏览器内 Demo(DuckDB-Wasm)· 已预置示例表,可直接写 SQL / JOIN / 出图。连数据库与 AI 需自托管版。",
@@ -1584,5 +1710,14 @@
       "helpText": "ON 子句条件在 JOIN 时生效，保留无匹配的行（显示为 NULL）。WHERE 子句条件在 JOIN 后生效，会过滤掉不匹配的行。查询外部数据库表时，建议添加时间范围条件以避免全表扫描导致查询时间过长。"
     }
   },
-  "success": "操作成功"
+  "success": "操作成功",
+  "status": {
+    "engine": "DuckDB {{version}}",
+    "engineDown": "本地引擎未响应",
+    "engineChecking": "正在连接本地引擎…",
+    "engineDemo": "DuckDB-Wasm · 浏览器内",
+    "connections": "{{count}} 个连接",
+    "offline": "{{count}} 个离线",
+    "asyncRunning": "{{count}} 个保存任务运行中"
+  }
 }

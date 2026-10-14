@@ -1,3 +1,4 @@
+import { QueryExecutionButtons } from '@/Query/SQLQuery/SQLToolbar';
 /**
  * PivotPanel - 透视表（配置 → 后端 generate/preview → 执行）
  *
@@ -8,7 +9,7 @@
 import * as React from "react";
 import { useQuery } from "@tanstack/react-query";
 import { useTranslation } from "react-i18next";
-import { Check, Copy, Play, Trash2, Table2, Timer } from "lucide-react";
+import { Check, Copy, Trash2, Table2 } from "lucide-react";
 import { AsyncTaskDialog } from "../AsyncTasks/AsyncTaskDialog";
 import {
     Tooltip,
@@ -335,60 +336,26 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
 
     return (
         <div className="flex flex-col h-full overflow-hidden bg-surface">
-            <div className="flex items-center justify-between px-3 py-2 border-b border-border shrink-0 bg-muted/30">
-                <div className="flex items-center gap-3">
-                    <div className="flex items-center gap-2">
-                        <Button
-                            variant="default"
-                            size="sm"
-                            onClick={handleExecute}
-                            disabled={!canRun || isExecuting || isGeneratingSql}
-                            className="gap-1.5"
-                        >
-                            <Play className="w-3.5 h-3.5 fill-current" />
-                            {t("query.execute", "执行")}
-                        </Button>
-
-                        {castPending && (
-                            <span className="text-xs text-destructive whitespace-nowrap">
-                                {t("query.pivot.castBlockedHint", "有聚合值的类型还在推断或需手动选择,已暂停执行")}
-                            </span>
-                        )}
-
-                        <TooltipProvider>
-                            <Tooltip>
-                                <TooltipTrigger asChild>
-                                    <Button
-                                        variant="outline"
-                                        size="sm"
-                                        onClick={() => setAsyncDialogOpen(true)}
-                                        disabled={!canRun || isExecuting}
-                                        className="gap-1.5"
-                                        aria-label={t("query.sql.asyncExecute", "异步执行")}
-                                    >
-                                        <Timer className="w-3.5 h-3.5" />
-                                        <span className="hidden sm:inline">
-                                            {t("query.sql.asyncExecute", "异步执行")}
-                                        </span>
-                                    </Button>
-                                </TooltipTrigger>
-                                <TooltipContent>
-                                    <p>{t("query.sql.asyncExecuteHint", "后台执行，结果保存到表")}</p>
-                                </TooltipContent>
-                            </Tooltip>
-                        </TooltipProvider>
+            <div className="@container flex min-h-11 shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-border px-3 py-2">
+                <div className="flex min-w-0 flex-wrap items-center gap-1">
+                    <div className="flex min-w-0 flex-wrap items-center gap-1">
+                        <QueryExecutionButtons onExecute={handleExecute} onSaveTable={() => setAsyncDialogOpen(true)}
+                          disabled={!canRun || isGeneratingSql} isExecuting={isExecuting} />
+                        {castPending && <span className="text-xs text-destructive">{t('query.pivot.castBlockedHint', '请先为统计字段选择可用的数字类型。')}</span>}
 
                         <div className="w-px h-4 bg-border mx-1" />
 
                         <Button
-                            variant="ghost"
+                            variant="quiet"
                             size="sm"
+                            aria-label={t("common.clear", "清空")}
+                            title={t("common.clear", "清空")}
                             onClick={resetConfig}
                             disabled={!hasConfig}
                             className="text-muted-foreground hover:text-foreground gap-1.5"
                         >
                             <Trash2 className="w-3.5 h-3.5" />
-                            {t("common.clear", "清空")}
+                            <span className="hidden @md:inline">{t("common.clear", "清空")}</span>
                         </Button>
 
                         {chatStatus.configured && (
@@ -397,11 +364,11 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
                     </div>
                 </div>
 
-                <div className="flex items-center gap-2">
-                    <div className="flex items-center gap-1.5 px-2 py-1 rounded-md border border-border bg-background/50 text-xs text-muted-foreground">
+                <div className="flex min-w-0 flex-wrap items-center gap-1">
+                    <div className="flex min-w-0 items-center gap-1.5 px-2 py-1 rounded-md border border-border bg-background/50 text-xs text-muted-foreground">
                         <Table2 className="w-3.5 h-3.5" />
                         <span>{t("query.pivot.title", "透视表")}</span>
-                        {selectedTable && <span className="ml-1">· {tableName}</span>}
+                        {selectedTable && <span className="ml-1 truncate" title={tableName}>· {tableName}</span>}
                     </div>
                 </div>
             </div>
@@ -460,7 +427,7 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
                                 <Tooltip>
                                     <TooltipTrigger asChild>
                                         <Button
-                                            variant="ghost"
+                                            variant="quiet"
                                             size="icon"
                                             className="h-8 w-8"
                                             onClick={handleCopySql}

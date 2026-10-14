@@ -25,6 +25,8 @@ function mapDuckDBTableListItems(items: DuckDBTableListItem[]): TableInfo[] {
         name: (table.table_name || table.name) as string,
         type: 'TABLE' as const,
         row_count: table.row_count,
+        column_count: table.column_count,
+        created_at: table.created_at,
         source_type: table.source_type || 'file',
     }));
 }

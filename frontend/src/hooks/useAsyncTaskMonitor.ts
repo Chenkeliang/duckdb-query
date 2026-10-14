@@ -59,4 +59,10 @@ export function useAsyncTaskMonitor() {
             showSuccessToast(t, 'ASYNC_TASK_COMPLETED', t('async.taskCompletedRefresh', '异步任务完成，已自动刷新数据源'));
         }
     }, [tasks, isLoading, queryClient, t]);
+
+    const runningCount = tasks.filter((task) =>
+        ['running', 'pending', 'cancelling'].includes(task.status),
+    ).length;
+
+    return { runningCount, totalCount: tasks.length };
 }

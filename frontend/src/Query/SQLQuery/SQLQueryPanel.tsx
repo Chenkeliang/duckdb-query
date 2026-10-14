@@ -8,7 +8,7 @@
 import React, { useState, useCallback, useEffect, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
 import { AlertTriangle } from 'lucide-react';
-import { SQLEditor, type SQLErrorDiagnostic } from './SQLEditor';
+import { SQLEditor, type SQLEditorApi, type SQLErrorDiagnostic } from './SQLEditor';
 import { SQLToolbar } from './SQLToolbar';
 import { useSQLEditor } from './hooks/useSQLEditor';
 import { useDuckDBTables } from '@/hooks/useDuckDBTables';
@@ -30,12 +30,19 @@ import {
   generateExternalTableReference,
   getSourceFromSelectedTable,
   parseSQLTableReferences,
+  buildAttachDatabasesFromParsedRefs,
+  extractSQLQueryAliases,
+  extractSqlAttachedAliases,
+  extractAttachDatabases,
+  mergeAttachDatabases,
 } from '@/utils/sqlUtils';
 import { tokenizeSQL } from '@/utils/sqlTokenizer';
 import { formatSQLDataGrip } from '@/utils/sqlFormatter';
 import { useAiStatus } from '@/hooks/useAiStatus';
 import { ChatToggleButton } from './ai/AiChatDrawer';
 import { agentChatBus, useAgentChatBus } from './ai/agentChatBus';
+import { registerWorkbenchCommand } from '@/Query/workbenchCommands';
+import { FederationChip } from '@/Query/components/FederationChip';
 import type { ApiError } from '@/api';
 
 function diagnosticFromApiError(error: unknown): SQLErrorDiagnostic | null {
@@ -52,6 +59,8 @@ function diagnosticFromApiError(error: unknown): SQLErrorDiagnostic | null {
 }
 
 export interface SQLQueryPanelProps {
+  /** Report each kept-alive editor draft for the AI change preview. */
+  onSqlChange?: (sql: string) => void;
   /** 初始 SQL */
   initialSQL?: string;
   /** 选中的表名（用于自动生成 SQL）- 旧接口，保留兼容 */
@@ -84,6 +93,13 @@ export interface SQLQueryPanelProps {
   previewNonce?: number;
   /** 打开设置·AI 标签页(未配置引导用) */
   onOpenAiSettings?: () => void;
+  /**
+   * 是否为当前可见的 SQL 标签。多个 SQL 标签同时挂载（KeepAlive）时，只有激活的那个
+   * 响应左侧选表、全局快捷键、命令面板与 AI「插入编辑器」，避免多实例互相抢写。
+   */
+  isActive?: boolean;
+  /** 编辑器铺满面板（工作台布局，无内边距与边框） */
+  editorFill?: boolean;
 }
 
 /**
@@ -91,6 +107,7 @@ export interface SQLQueryPanelProps {
  */
 export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
   initialSQL = '',
+  onSqlChange,
   selectedTable,
   selectedTables = [],
   onExecute,
@@ -104,6 +121,8 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
   previewSQL,
   previewNonce,
   onOpenAiSettings,
+  isActive = true,
+  editorFill = false,
 }) => {
   const { t } = useTranslation('common');
   // const [historyOpen, setHistoryOpen] = useState(false); // Removed
@@ -118,6 +137,7 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
   } | null>(null);
   const [sqlDiagnostic, setSqlDiagnostic] = useState<SQLErrorDiagnostic | null>(null);
   const sqlRevisionRef = React.useRef(0);
+  const editorApiRef = React.useRef<SQLEditorApi | null>(null);
   const latestExecutionRef = React.useRef(0);
   const invalidateSqlDiagnostic = useCallback(() => {
     sqlRevisionRef.current += 1;
@@ -162,6 +182,7 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
     requiresFederatedQuery,
     tableSource: detectedTableSource,
     availableConnections,
+    manualDatabases,
   } = useFederatedQueryDetection({
     sql,
     selectedTables,
@@ -281,6 +302,11 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
   // 当选中表变化时，自动生成 SQL（包含默认 LIMIT）
   // 统一使用 ATTACH 模式：外部表生成带别名前缀的完整限定名
   React.useEffect(() => {
+    // 非激活标签只记录「已见过」这次选择，不改写自己的编辑器
+    if (!isActive) {
+      if (currentTableKey !== lastSelectedTableKey) setLastSelectedTableKey(currentTableKey ?? null);
+      return;
+    }
     if (currentTableKey && currentTableKey !== lastSelectedTableKey && selectedTables.length > 0) {
       const { qualifiedName } = generateExternalTableReference(selectedTables[0]);
       const baseSql = `SELECT * FROM ${qualifiedName}`;
@@ -293,6 +319,7 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
   }, [
     currentTableKey,
     invalidateSqlDiagnostic,
+    isActive,
     lastSelectedTableKey,
     maxQueryRows,
     selectedTables,
@@ -421,12 +448,13 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
   // 全局对话抽屉的「插入编辑器」经总线回填到本编辑器;编辑器内容同步给
   // 抽屉的「解释/优化当前 SQL」快捷动作
   useEffect(() => {
-    agentChatBus.registerInserter(handleSQLChange);
-    return () => agentChatBus.registerInserter(null);
-  }, [handleSQLChange]);
+    if (!isActive) return undefined;
+    return agentChatBus.registerInserter(handleSQLChange);
+  }, [handleSQLChange, isActive]);
   useEffect(() => {
-    agentChatBus.setSql('sql', sql);
-  }, [sql]);
+    if (isActive) agentChatBus.setSql('sql', sql);
+  }, [sql, isActive]);
+  useEffect(() => { onSqlChange?.(sql); }, [sql, onSqlChange]);
 
   const businessSql = systemLimitedSql?.displaySql === sql.trim()
     ? systemLimitedSql.baseSql
@@ -468,14 +496,23 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
   const handleExecute = useCallback(async () => {
     if (!sql.trim()) return;
 
+    // The toolbar is debounced; execution must bind the current editor text.
+    const localAliases = extractSqlAttachedAliases(sql);
+    const detected = buildAttachDatabasesFromParsedRefs(
+      parseSQLTableReferences(sql).filter((ref) => !ref.prefix || !localAliases.has(ref.prefix.toLowerCase())),
+      availableConnections,
+      extractSQLQueryAliases(sql).filter((alias) => !localAliases.has(alias.toLowerCase())),
+    );
+    const currentAttachments = mergeAttachDatabases(extractAttachDatabases(selectedTables), detected.attachDatabases, manualDatabases);
+
     // 检查是否有未识别的前缀且未被忽略
-    if (unrecognizedPrefixes.length > 0 && !dismissedWarning) {
+    if (detected.unrecognizedPrefixes.length > 0 && !dismissedWarning) {
       // 显示警告，等待用户确认
       return;
     }
 
     // 检查是否混合了不同数据源（非联邦查询模式）
-    if (tableSourceInfo.hasMixedSources && !requiresFederatedQuery) {
+    if (tableSourceInfo.hasMixedSources && !currentAttachments.requiresFederatedQuery) {
       onExecuteError?.(
         new Error('不能在同一查询中混合 DuckDB 表和外部数据库表，请先将外部表导入到 DuckDB'),
         sql
@@ -503,14 +540,14 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
       try {
         setSqlDiagnostic(null);
         // 构建执行时的 TableSource，包含联邦查询信息
-        const executeSource: TableSource = requiresFederatedQuery
+        const executeSource: TableSource = currentAttachments.requiresFederatedQuery
           ? {
             type: 'federated',
-            connectionId: attachDatabases[0]?.connectionId,
-            connectionName: attachDatabases[0]?.alias,
-            attachDatabases: attachDatabases,
+            connectionId: currentAttachments.attachDatabases[0]?.connectionId,
+            connectionName: currentAttachments.attachDatabases[0]?.alias,
+            attachDatabases: currentAttachments.attachDatabases,
           }
-          : tableSourceInfo.currentSource;
+          : { type: 'duckdb' };
 
         await onExecute(displaySql, executeSource, { baseSql });
         addToHistory({
@@ -542,7 +579,7 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
       execute({ isPreview: true });
     }
   }, [sql, onExecute, execute, onExecuteError, tableSourceInfo, applyDisplayLimit,
-    requiresFederatedQuery, attachDatabases, unrecognizedPrefixes, dismissedWarning, addToHistory,
+    availableConnections, selectedTables, manualDatabases, dismissedWarning, addToHistory,
     invalidateSqlDiagnostic, setSQL]);
 
   // 处理忽略未识别前缀并执行
@@ -569,8 +606,9 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
     // 可以在这里添加额外的处理，比如切换到异步任务面板
   }, []);
 
-  // 键盘快捷键：Ctrl+Shift+Enter 异步执行
+  // 键盘快捷键：Ctrl+Shift+Enter 异步执行（只有激活标签监听）
   useEffect(() => {
+    if (!isActive) return undefined;
     const handleKeyDown = (e: KeyboardEvent) => {
       if ((e.ctrlKey || e.metaKey) && e.shiftKey && e.key === 'Enter') {
         e.preventDefault();
@@ -580,7 +618,19 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [handleAsyncExecute]);
+  }, [handleAsyncExecute, isActive]);
+
+  // 命令面板 / 状态栏等外部入口经工作台命令注册表驱动当前 SQL 标签
+  useEffect(() => {
+    if (!isActive) return undefined;
+    const offs = [
+      registerWorkbenchCommand('run', () => void handleExecute()),
+      registerWorkbenchCommand('runAsync', handleAsyncExecute),
+      registerWorkbenchCommand('format', handleFormat),
+      registerWorkbenchCommand('insertText', (text: string) => editorApiRef.current?.insertText(text)),
+    ];
+    return () => offs.forEach((off) => off());
+  }, [isActive, handleExecute, handleAsyncExecute, handleFormat]);
 
 
 
@@ -622,6 +672,13 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
         isCancelling={isCancelling}
         disableExecute={!sql.trim() || (tableSourceInfo.hasMixedSources && !requiresFederatedQuery)}
         executionTime={executionTime}
+        extraContent={
+          <FederationChip
+            queryType={queryType}
+            attachDatabases={attachDatabases}
+            connections={availableConnections}
+          />
+        }
         aiSlot={
           chatStatus.enabled ? (
             <ChatToggleButton
@@ -636,8 +693,10 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
 
 
       {/* 编辑器 */}
-      <div className="flex-1 min-h-0 p-3">
+      <div className={cn('flex-1 min-h-0', !editorFill && 'p-3')}>
         <SQLEditor
+          fill={editorFill}
+          apiRef={editorApiRef}
           value={sql}
           onChange={handleSQLChange}
           onExecute={handleExecute}

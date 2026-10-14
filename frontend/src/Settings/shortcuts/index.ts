@@ -12,5 +12,6 @@ export {
   parseShortcut,
   formatShortcut,
   matchesShortcut,
+  formatShortcutLabel,
   type ShortcutConfig,
 } from './defaultShortcuts';

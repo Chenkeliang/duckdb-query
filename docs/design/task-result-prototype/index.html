@@ -1,0 +1,57 @@
+<!doctype html>
+<html lang="zh-CN" data-theme="dark">
+<head><meta charset="UTF-8"><meta name="viewport" content="width=device-width,initial-scale=1"><title>DuckQuery · 任务与结果交互原型</title><link rel="stylesheet" href="./app.css"></head>
+<body>
+<header class="prototype-bar">
+  <div class="prototype-label"><span class="prototype-dot"></span><strong class="desktop-title" data-i18n="prototype">任务与结果 · 交互原型</strong><strong class="mobile-title" data-i18n="shortPrototype">任务与结果</strong><span class="prototype-note" data-i18n="simulation">仅使用演示数据，不连接数据库</span></div>
+  <div class="controls"><label class="scenario-label" for="scenario" data-i18n="scenario">演示场景</label><select id="scenario" aria-label="演示场景"><option value="normal" data-i18n="normal">正常完成</option><option value="slow" data-i18n="slow">慢查询 / 转后台</option><option value="fail" data-i18n="failScenario">模拟失败</option></select><button class="btn quiet guide-trigger" data-action="guide" aria-label="设计说明" title="设计说明"><svg><use href="./icons.svg#i-bulb"/></svg><span data-i18n="designNotes">设计说明</span></button><button class="btn icon" data-action="language" aria-label="Switch to English" title="Switch to English"><svg><use href="./icons.svg#i-lang"/></svg></button><button class="btn icon" data-action="theme" aria-label="切换主题" title="切换主题"><svg><use href="./icons.svg#i-sun"/></svg></button></div>
+</header>
+<div class="shell">
+  <aside class="sources">
+    <div class="brand"><img src="./logo.svg" alt=""><strong>DuckQuery</strong><span class="muted">/</span><span data-i18n="workbench">工作台</span></div>
+    <div class="source-heading"><span data-i18n="dataSources">数据源</span><button class="btn icon" data-action="sourceHelp" aria-label="原型范围"><svg><use href="./icons.svg#i-bulb"/></svg></button></div>
+    <div class="source-group"><svg><use href="./icons.svg#i-db"/></svg><span>DuckDB</span><span id="tableCount" class="count"></span></div>
+    <div id="sourceList" class="source-list"></div>
+    <div class="source-heading divided"><span data-i18n="savedAndHistory">SQL 资料</span></div>
+    <button class="source-link" data-action="history"><svg><use href="./icons.svg#i-history"/></svg><span data-i18n="history">查询历史</span></button>
+    <button class="source-link" data-action="favorites"><svg><use href="./icons.svg#i-star"/></svg><span data-i18n="favorites">收藏查询</span><span id="favoriteCount" class="count"></span></button>
+    <div class="source-bottom"><svg><use href="./icons.svg#i-check"/></svg><span data-i18n="draftSafe">任务与草稿各自独立</span></div>
+  </aside>
+  <main class="workbench">
+    <div class="query-tabs"><div id="queryTabs" role="tablist" aria-label="查询标签"></div><div class="query-tab-actions controls"><button class="btn icon" data-action="newTab" aria-label="新建 SQL 标签" title="新建 SQL 标签"><svg><use href="./icons.svg#i-plus"/></svg></button><span class="separator"></span><button id="taskTrigger" class="btn task-trigger" data-action="toggleTasks" aria-controls="taskShelf" aria-expanded="false"><svg><use href="./icons.svg#i-clock"/></svg><span data-i18n="tasksLabel">任务</span><span id="taskBadge" class="task-badge">2</span></button></div></div>
+    <section class="editor-pane" aria-label="SQL 编辑器">
+      <div class="editor-toolbar aligned-row">
+        <div class="controls"><div class="run-group"><button id="runButton" class="btn run" data-action="run"><svg><use href="./icons.svg#i-play"/></svg><span data-i18n="run">执行</span><kbd>⌘↵</kbd></button><button id="runOptions" class="btn run icon" data-action="runMenu" aria-label="执行方式" title="执行方式"><svg><use href="./icons.svg#i-down"/></svg></button></div><span class="separator"></span><button class="btn quiet" data-action="format" title="格式化 SQL"><svg><use href="./icons.svg#i-align"/></svg><span class="secondary-label" data-i18n="format">格式化</span></button><button class="btn quiet" data-action="favorite" title="收藏查询"><svg><use href="./icons.svg#i-star"/></svg><span class="secondary-label" data-i18n="favorite">收藏</span></button></div>
+        <div class="editor-context"><span class="live-dot"></span><span>DuckDB</span><span class="muted" data-i18n="previewLimit">预览上限 10,000 行</span></div>
+      </div>
+      <div class="editor-content"><div id="lineNumbers" aria-hidden="true"></div><textarea id="sqlEditor" spellcheck="false" aria-label="正在编辑的 SQL"></textarea></div>
+      <div class="editor-status aligned-row"><span id="draftStatus"></span><div id="foregroundStatus" class="controls"></div></div>
+    </section>
+    <section class="result-pane" aria-label="查询结果">
+      <div class="result-toolbar aligned-row"><div id="resultTabs" class="result-tabs"></div><div class="result-actions controls"><button class="btn quiet icon" data-action="toggleView" aria-label="切换表格与图表" title="表格 / 图表"><svg><use href="./icons.svg#i-chart"/></svg></button><button class="btn quiet icon" data-action="columns" aria-label="显示列" title="显示列"><svg><use href="./icons.svg#i-columns"/></svg></button><button class="btn quiet icon" data-action="copy" aria-label="复制选区" title="复制选区"><svg><use href="./icons.svg#i-copy"/></svg></button><span class="separator"></span><button class="btn quiet" data-action="saveResult"><svg><use href="./icons.svg#i-db"/></svg><span data-i18n="saveTable">保存为表</span></button><button class="btn quiet" data-action="export"><svg><use href="./icons.svg#i-download"/></svg><span class="secondary-label" data-i18n="export">导出</span></button><button class="btn quiet icon" data-action="resultMore" aria-label="结果选项" title="结果选项"><svg><use href="./icons.svg#i-more"/></svg></button></div></div>
+      <div class="result-meta aligned-row"><span id="resultOrigin"></span><button class="text-link" data-action="resultSql" data-i18n="viewSql">查看 SQL</button></div>
+      <div id="resultView" class="result-view" tabindex="-1"></div>
+      <div class="result-footer aligned-row"><span id="resultStats"></span><span id="selectionStats"></span></div>
+    </section>
+    <section id="taskShelf" class="task-shelf" aria-label="后台任务" inert>
+      <div class="task-heading aligned-row"><div class="task-heading-title"><strong data-i18n="backgroundTasks">后台任务</strong><span id="taskSummary"></span></div><button class="btn icon" data-action="closeTasks" aria-label="收起任务面板"><svg><use href="./icons.svg#i-x"/></svg></button></div>
+      <div class="task-filters controls"><input id="taskSearch" type="search" placeholder="搜索任务或表名" aria-label="搜索任务或表名"><select id="taskFilter" aria-label="任务状态"><option value="all" data-i18n="allTasks">全部任务</option><option value="running" data-i18n="running">运行中</option><option value="completed" data-i18n="completed">已完成</option><option value="failed" data-i18n="failed">失败</option><option value="cancelled" data-i18n="cancelled">已取消</option></select></div>
+      <div id="taskList" class="task-list"></div>
+    </section>
+  </main>
+</div>
+<div id="toast" class="toast" role="status" aria-live="polite"></div>
+<div id="menu" class="menu" popover="auto"></div>
+<dialog id="saveDialog" class="dialog"><form id="saveForm">
+  <div class="dialog-heading aligned-row"><h2 data-i18n="saveTable">保存为表</h2><button type="button" class="btn icon" data-close aria-label="关闭"><svg><use href="./icons.svg#i-x"/></svg></button></div>
+  <p class="dialog-intro" data-i18n="saveIntro">在后台执行查询并创建 DuckDB 表，你可以继续编辑。</p>
+  <div class="form-field"><label data-i18n="querySource">查询来源</label><div id="saveSource" class="source-reference"></div></div>
+  <div class="form-field"><label for="saveName" data-i18n="tableName">表名</label><input id="saveName" name="table" autocomplete="off" maxlength="64" aria-describedby="saveError"><p id="saveError" class="error" aria-live="polite"></p></div>
+  <div class="form-field"><label for="saveScope" data-i18n="saveScope">保存范围</label><select id="saveScope"><option value="full" data-i18n="fullScope">完整查询结果（不限行数）</option><option value="limited" data-i18n="limitedScope">按查询行数限制保存</option></select><p id="scopeHint" class="hint"></p></div>
+  <details class="sql-details"><summary data-i18n="sqlToRun">查看要执行的 SQL</summary><pre id="saveSql"></pre></details>
+  <div class="dialog-footer aligned-row"><span class="hint" data-i18n="noOverwrite">已有表不会被覆盖</span><div class="controls"><button type="button" class="btn quiet" data-close data-i18n="cancel">取消</button><button class="btn primary" type="submit"><svg><use href="./icons.svg#i-clock"/></svg><span data-i18n="saveBackground">后台保存</span></button></div></div>
+</form></dialog>
+<dialog id="detailDialog" class="dialog"><div class="dialog-heading aligned-row"><h2 id="detailTitle"></h2><button class="btn icon" data-close aria-label="关闭"><svg><use href="./icons.svg#i-x"/></svg></button></div><div id="detailBody"></div><div id="detailFooter" class="dialog-footer aligned-row"></div></dialog>
+<dialog id="guideDialog" class="dialog guide"><div class="dialog-heading aligned-row"><h2 data-i18n="designNotes">设计说明</h2><button class="btn icon" data-close aria-label="关闭"><svg><use href="./icons.svg#i-x"/></svg></button></div><div id="guideBody"></div></dialog>
+<script type="module" src="./app.js"></script>
+</body></html>

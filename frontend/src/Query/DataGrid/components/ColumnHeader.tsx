@@ -7,6 +7,8 @@ import { useCallback } from 'react';
 import { ArrowUp, ArrowDown, ArrowUpDown } from 'lucide-react';
 import { cn } from '@/lib/utils';
 import { shouldBlockHeaderSort } from '../columnResizeSortGuard';
+import { useTranslation } from 'react-i18next';
+import type { ColumnLineage } from '@/types/queryWorkspace';
 import { FilterMenu } from './FilterMenu';
 
 export interface ColumnHeaderProps {
@@ -14,6 +16,8 @@ export interface ColumnHeaderProps {
   field: string;
   /** 显示名称 */
   headerName?: string;
+  databaseType?: string;
+  lineage?: ColumnLineage;
   /** 列宽 */
   width?: number;
   /** 排序方向 */
@@ -49,6 +53,8 @@ export interface ColumnHeaderProps {
 export const ColumnHeader: React.FC<ColumnHeaderProps> = ({
   field,
   headerName,
+  databaseType,
+  lineage,
   width,
   sortDirection,
   hasActiveFilter = false,
@@ -65,6 +71,11 @@ export const ColumnHeader: React.FC<ColumnHeaderProps> = ({
   onAutoFitColumn,
   className,
 }) => {
+  const { t } = useTranslation('common');
+  const sourceNames = lineage?.sources.map((source) => [source.catalog, source.schema, source.table, source.column].filter(Boolean).join('.')) ?? [];
+  const origin = lineage?.kind === 'direct' ? sourceNames.join(', ') : lineage ? t(`dataGrid.lineage.${lineage.kind}`) : '';
+  const provenance = [databaseType, origin].filter(Boolean).join(' · ');
+  const provenanceDetail = [databaseType, origin, ...sourceNames].filter(Boolean).join(' · ');
   const displayName = headerName || field;
 
   const handleSortClick = (e: React.MouseEvent) => {
@@ -121,7 +132,10 @@ export const ColumnHeader: React.FC<ColumnHeaderProps> = ({
             : undefined
         }
       >
-        <span className="flex-1 truncate">{displayName}</span>
+        <span className="min-w-0 flex-1">
+          <span className="block truncate">{displayName}</span>
+          {provenance && <span className="block truncate font-mono text-xs leading-3 text-muted-foreground" title={provenanceDetail}>{provenance}</span>}
+        </span>
         {SortIcon}
       </div>
 

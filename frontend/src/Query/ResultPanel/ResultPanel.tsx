@@ -39,7 +39,7 @@ import { DataGridWrapper } from './DataGridWrapper';
 import type { DataGridApi } from './DataGridWrapper';
 import type { DataGridColumnInfo } from './types';
 import { ResultToolbar } from './ResultToolbar';
-import { ImportToDuckDBDialog } from './ImportToDuckDBDialog';
+import { AsyncTaskDialog } from '@/Query/AsyncTasks/AsyncTaskDialog';
 import { useDataGridColumns } from './hooks/useDataGridColumns';
 import type { TableSource } from '@/types/queryWorkspace';
 import { ResultTabsBar } from './ResultTabsBar';
@@ -242,10 +242,7 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
     </div>
   );
 
-  const showImportButton =
-    effectiveSource?.type === 'federated' &&
-    !!effectiveSource.connectionId &&
-    !!effectiveSQL;
+  const showImportButton = !!effectiveSQL;
 
   const { columns: gridColumnDefs } = useDataGridColumns({
     data,
@@ -270,16 +267,8 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
   }, []);
 
   const handleImportClick = useCallback(() => {
-    if (!effectiveSource || effectiveSource.type !== 'federated') return;
-    if (!effectiveSQL) return;
-
-    if (!effectiveSource.connectionId) {
-      showErrorToast(t, 'INVALID_REQUEST', t('query.import.missingConnection', '缺少外部数据库连接信息'));
-      return;
-    }
-
-    setImportDialogOpen(true);
-  }, [effectiveSQL, effectiveSource, t]);
+    if (effectiveSQL) setImportDialogOpen(true);
+  }, [effectiveSQL]);
 
   const handleColumnVisibilityChange = useCallback((columns: DataGridColumnInfo[]) => {
     setGridColumns(columns);
@@ -456,11 +445,15 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
             : chartViewEl}
         </div>
         {activeSaveSql && (
-          <ImportToDuckDBDialog
+          <AsyncTaskDialog
             open={importDialogOpen}
             onOpenChange={setImportDialogOpen}
             sql={activeSaveSql}
-            source={activeSource}
+            queryOrigin="result"
+            attachDatabases={activeSource?.attachDatabases}
+            datasource={activeSource?.connectionId && activeSource.databaseType ? {
+              id: activeSource.connectionId, type: activeSource.databaseType, name: activeSource.connectionName,
+            } : undefined}
           />
         )}
       </div>
@@ -628,11 +621,15 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
 
       {/* 保存到 DuckDB 用基础 SQL(无系统预览 LIMIT),与服务端导出同一口径(复审 P1) */}
       {(currentBaseSQL ?? currentSQL) && (
-        <ImportToDuckDBDialog
+        <AsyncTaskDialog
           open={importDialogOpen}
           onOpenChange={setImportDialogOpen}
           sql={(currentBaseSQL ?? currentSQL)!}
-          source={source}
+          queryOrigin="result"
+          attachDatabases={source?.attachDatabases}
+          datasource={source?.connectionId && source.databaseType ? {
+            id: source.connectionId, type: source.databaseType, name: source.connectionName,
+          } : undefined}
         />
       )}
     </div>

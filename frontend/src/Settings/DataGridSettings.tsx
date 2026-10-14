@@ -1,12 +1,10 @@
+import { SettingsSectionHeader } from "./SettingsSectionHeader";
 import { useTranslation } from 'react-i18next';
 import { Table2 } from 'lucide-react';
 
 import {
   Card,
   CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
 } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -35,17 +33,13 @@ export function DataGridSettings() {
   };
 
   return (
-    <Card>
-      <CardHeader className="space-y-1.5">
-        <CardTitle className="flex items-center gap-2 text-base">
-          <Table2 className="h-4 w-4 shrink-0" />
-          {t('settings.dataGrid.title', '结果表显示')}
-        </CardTitle>
-        <CardDescription>
-          {t('settings.dataGrid.description', '调整查询结果表格的显示方式。')}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="divide-y divide-border">
+    <Card className="rounded-none border-0 bg-transparent shadow-none">
+      <SettingsSectionHeader
+        icon={Table2}
+        title={<> {t('settings.dataGrid.title', '结果表显示')} </>}
+        description={<> {t('settings.dataGrid.description', '调整查询结果表格的显示方式。')} </>}
+      />
+      <CardContent className="divide-y divide-border px-0 pb-0">
         {/* 双色斑马行 */}
         <div className="flex items-center justify-between gap-4 py-3 first:pt-0">
           <div className="space-y-0.5 min-w-0">

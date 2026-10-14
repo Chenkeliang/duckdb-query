@@ -87,12 +87,12 @@ describe('useAppShell', () => {
             expect(result.current.state.githubStars).toBe(123);
         });
 
-        it('currentTab 默认值应该是 datasource', () => {
+        it('currentTab 默认值应该是 queryworkbench（工作台是首页）', () => {
             const { result } = renderHook(() => useAppShell(), {
                 wrapper: createWrapper(),
             });
 
-            expect(result.current.state.currentTab).toBe('datasource');
+            expect(result.current.state.currentTab).toBe('queryworkbench');
         });
     });
 
@@ -119,7 +119,7 @@ describe('useAppShell', () => {
                 wrapper: createWrapper(),
             });
 
-            expect(result.current.state.currentTab).toBe('datasource');
+            expect(result.current.state.currentTab).toBe('queryworkbench');
 
             act(() => {
                 result.current.actions.setCurrentTab('queryworkbench');

@@ -122,6 +122,9 @@ export interface CellRendererProps {
 }
 
 export interface ColumnDef {
+  /** Exact type returned by the query engine; omitted when unavailable. */
+  databaseType?: string;
+  lineage?: import('@/types/queryWorkspace').ColumnLineage;
   /** 字段名 */
   field: string;
   /** 显示名称 */
@@ -166,7 +169,7 @@ export interface GridStats {
 export const DATAGRID_CONFIG = {
   // === 尺寸（对应 tailwind.css 中的 --dg-* 变量） ===
   rowHeight: 32,              // --dg-row-height
-  headerHeight: 36,           // --dg-header-height
+  headerHeight: 44,           // --dg-header-height
   minColumnWidth: 80,         // 最小列宽
   maxColumnWidth: 600,        // 最大列宽
   defaultColumnWidth: 120,    // 默认列宽

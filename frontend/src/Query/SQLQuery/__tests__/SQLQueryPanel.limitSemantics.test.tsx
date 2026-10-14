@@ -37,7 +37,7 @@ vi.mock('@/hooks/useFederatedQueryDetection', () => ({
     tableSource: { type: 'duckdb' },
     addManualDatabase: vi.fn(),
     removeManualDatabase: vi.fn(),
-    availableConnections: [],
+    availableConnections: [{ id: 'external-demo', name: 'demo', type: 'duckdb', status: 'active', params: {} }],
   }),
 }));
 vi.mock('@/Query/hooks/useGlobalHistory', () => ({
@@ -390,5 +390,17 @@ describe('SQLQueryPanel page limit semantics', () => {
 
     expect(screen.getByTestId('async-sql')).not.toHaveTextContent('LIMIT');
     expect(screen.getByTestId('async-sql')).toHaveTextContent('orders');
+  });
+});
+
+
+it('2026-10-10: paste and immediate Execute bind the new external source before debounce catches up', async () => {
+  const onExecute = createExecuteMock();
+  renderPanel({ initialSQL: 'SELECT 1', onExecute });
+  fireEvent.change(screen.getByLabelText('sql-editor'), { target: { value: 'SELECT * FROM demo.customers' } });
+  fireEvent.click(screen.getByRole('button', { name: 'execute' }));
+  await waitFor(() => expect(onExecute).toHaveBeenCalled());
+  expect(onExecute.mock.calls[0][1]).toMatchObject({
+    type: 'federated', attachDatabases: [{ alias: 'demo', connectionId: 'external-demo' }],
   });
 });

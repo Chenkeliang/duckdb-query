@@ -9,9 +9,8 @@
 import * as React from 'react';
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { Blocks, Database, Sparkles } from 'lucide-react';
+import { Database, Sparkles } from 'lucide-react';
 
-import { Card, CardContent, CardHeader, CardTitle } from '@/components/ui/card';
 import { showSuccessToast, showErrorToast } from '@/utils/toastHelpers';
 import {
   listDuckDBExtensions,
@@ -126,47 +125,30 @@ export function ExtensionsPage() {
     title: string
   ) => {
     const groupItems = (extensionsQuery.data ?? []).filter(
-      (item) => !(item.bundled && item.installed) && item.category === category
+      (item) => item.category === category
     );
     if (groupItems.length === 0) return null;
 
     const Icon = icon;
     return (
-      <Card>
-        <CardHeader>
-          <div className="flex items-center gap-2">
-            <Icon className="h-4 w-4 text-primary" />
-            <CardTitle className="text-base">{title}</CardTitle>
-          </div>
-        </CardHeader>
-        <CardContent>
-          <div className="grid grid-cols-1 gap-3 md:grid-cols-2 xl:grid-cols-3">
-            {groupItems.map((item) => (
-              <ExtensionCard
-                key={item.name}
-                item={item}
-                progress={progressByName[item.name]}
-                isZh={isZh}
-                onInstall={() => handleInstall(item)}
-                t={t}
-              />
-            ))}
-          </div>
-        </CardContent>
-      </Card>
+      <section>
+        <h2 className="mb-4 flex items-center gap-2 text-base font-semibold"><Icon className="size-4 text-muted-foreground" />{title}<span className="ml-1 font-mono text-xs font-normal text-muted-foreground">{groupItems.length}</span></h2>
+        <div role="list" className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface">
+          {groupItems.map((item) => <ExtensionCard key={item.name} item={item} progress={progressByName[item.name]} isZh={isZh} onInstall={() => handleInstall(item)} t={t} />)}
+        </div>
+      </section>
     );
   };
 
   return (
-    <div className="space-y-6">
+    <div className="space-y-8">
       <div>
         <div className="flex items-center gap-2">
-          <Blocks className="h-5 w-5 text-primary" />
-          <h2 className="text-lg font-semibold text-foreground">
+          <h1 className="text-xl font-semibold tracking-tight text-foreground">
             {t('extensions.title', '扩展')}
-          </h2>
+          </h1>
         </div>
-        <p className="mt-1 text-sm text-muted-foreground">
+        <p className="mt-2 text-sm text-muted-foreground">
           {t('extensions.subtitle', '扩展来自 DuckDB 官方仓库，安装后离线可用。')}
         </p>
       </div>

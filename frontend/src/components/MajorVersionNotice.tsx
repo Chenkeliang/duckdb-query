@@ -164,11 +164,11 @@ export function MajorVersionNotice() {
                 </div>
 
                 <DialogFooter className="mt-5 flex-col-reverse gap-3 sm:flex-row sm:justify-between">
-                  <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-primary" onClick={() => setStep('details')}>
+                  <Button variant="quiet" size="sm" className="text-muted-foreground hover:text-primary" onClick={() => setStep('details')}>
                     {t('majorUpgrade.releaseNotes', '查看迁移影响')}<ChevronRight className="ml-1 size-3.5" />
                   </Button>
                   <div className="flex justify-end gap-2">
-                    <Button variant="outline" onClick={defer}>{t('majorUpgrade.defer', '稍后处理')}</Button>
+                    <Button variant="subtle" onClick={defer}>{t('majorUpgrade.defer', '稍后处理')}</Button>
                     <Button onClick={() => setStep('confirm')}>{t('majorUpgrade.backupAndUpgrade', '备份并升级')}</Button>
                   </div>
                 </DialogFooter>
@@ -225,10 +225,10 @@ export function MajorVersionNotice() {
                 </div>
 
                 <DialogFooter className="mt-5 flex-col-reverse gap-3 sm:flex-row sm:justify-between">
-                  <Button variant="ghost" size="sm" className="text-muted-foreground hover:text-primary" onClick={() => void openExternal(OFFICIAL_DUCKDB_20_URL)}>
+                  <Button variant="quiet" size="sm" className="text-muted-foreground hover:text-primary" onClick={() => void openExternal(OFFICIAL_DUCKDB_20_URL)}>
                     {t('majorUpgrade.officialNotes', 'DuckDB 官方说明')}<ExternalLink className="ml-1 size-3.5" />
                   </Button>
-                  <Button variant="outline" onClick={() => setStep('overview')}>{t('actions.back', '返回')}</Button>
+                  <Button variant="subtle" onClick={() => setStep('overview')}>{t('actions.back', '返回')}</Button>
                 </DialogFooter>
               </div>
             </>
@@ -257,7 +257,7 @@ export function MajorVersionNotice() {
                   <Alert variant="destructive" className="text-foreground"><AlertTriangle className="h-4 w-4" /><AlertDescription>{t('majorUpgrade.blocked', '空间不足或仍有查询运行，当前不能登记迁移。')}</AlertDescription></Alert>
                 )}
                 <DialogFooter>
-                  <Button variant="outline" onClick={() => setStep('overview')}>{t('actions.back', '返回')}</Button>
+                  <Button variant="subtle" onClick={() => setStep('overview')}>{t('actions.back', '返回')}</Button>
                   <Button disabled={!canSubmit || schedule.isPending} onClick={submit}>
                     <RotateCcw className="mr-2 h-4 w-4" />{t('majorUpgrade.scheduleAndRestart', '登记迁移并重启')}
                   </Button>

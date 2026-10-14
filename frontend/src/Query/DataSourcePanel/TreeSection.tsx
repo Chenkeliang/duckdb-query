@@ -19,6 +19,7 @@ interface TreeSectionProps {
   title: string;
   count: number;
   defaultExpanded?: boolean;
+  expandToken?: number;
   children: React.ReactNode;
 }
 
@@ -27,6 +28,7 @@ export const TreeSection: React.FC<TreeSectionProps> = ({
   title,
   count,
   defaultExpanded = true,
+  expandToken,
   children,
 }) => {
   // 从 localStorage 恢复展开状态
@@ -34,6 +36,9 @@ export const TreeSection: React.FC<TreeSectionProps> = ({
     const saved = localStorage.getItem(`treeSection-${id}`);
     return saved !== null ? saved === 'true' : defaultExpanded;
   });
+  React.useEffect(() => {
+    if (expandToken !== undefined) setIsExpanded(true);
+  }, [expandToken]);
 
   // 保存展开状态到 localStorage
   const handleToggle = () => {

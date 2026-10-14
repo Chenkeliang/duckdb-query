@@ -61,6 +61,18 @@ def _tokens(sql: str):
         return []
 
 
+def _starts_query(tokens) -> bool:
+    """Recognize query heads inside leading parentheses used by set branches."""
+    index = 0
+    while index < len(tokens) and tokens[index].token_type == sqlglot.TokenType.L_PAREN:
+        index += 1
+    if index == len(tokens):
+        return False
+    token = tokens[index]
+    return (token.token_type not in {sqlglot.TokenType.STRING, sqlglot.TokenType.IDENTIFIER}
+            and str(token.text).upper() in _QUERY_STARTERS)
+
+
 def _upper_words(tokens: Iterable) -> list[str]:
     return [str(token.text).upper() for token in tokens]
 
@@ -101,10 +113,7 @@ def statement_accepts_row_limit(sql: str) -> bool:
     tokens = _tokens(sql)
     if not tokens or not is_single_statement(sql):
         return False
-    words = _upper_words(tokens)
-    if words[0] not in _QUERY_STARTERS:
-        return False
-    return not _has_side_effect_token(tokens)
+    return _starts_query(tokens) and not _has_side_effect_token(tokens)
 
 
 def top_level_row_limit_kind(sql: str) -> Optional[str]:
@@ -174,6 +183,6 @@ def is_read_only_sql(sql: str) -> bool:
         return pragma_name in _READ_ONLY_PRAGMAS and "=" not in words
     if first in _READ_ONLY_META_STARTERS:
         return not _has_side_effect_token(tokens[1:])
-    if first not in _QUERY_STARTERS:
+    if not _starts_query(tokens):
         return False
     return not _has_side_effect_token(tokens)

@@ -1,0 +1,27 @@
+/* DuckQuery redesign prototype — tokens mirror frontend/src/styles/tailwind.css roles */
+:root,[data-theme="dark"]{
+  --bg:#0F1115;--panel:#16191F;--elev:#1E222A;--hover:#232832;--active:#2A303B;
+  --rule:#262B34;--rule-2:#333A46;
+  --text:#E6E8EB;--text-2:#C4CAD3;--mute:#8A93A0;--faint:#5E6877;
+  --acc:#F97316;--acc-ink:#FB923C;--on-acc:#140B03;--acc-soft:rgba(249,115,22,.12);--acc-line:rgba(249,115,22,.55);
+  --inv:#E6E8EB;--on-inv:#0F1115;
+  --ok:#3FB950;--warn:#D29922;--err:#F85149;--err-soft:rgba(248,81,73,.10);--ok-soft:rgba(63,185,80,.12);
+  --chart:#4F80E8;
+  --syn-k:#8FA8FF;--syn-s:#8FD694;--syn-n:#F0B37E;--syn-f:#7DCFFF;--syn-c:#6B7585;--syn-p:#8A93A0;
+  --shadow:0 12px 32px -8px rgba(0,0,0,.6),0 2px 6px rgba(0,0,0,.35);
+  --scrim:rgba(5,6,8,.6);
+  color-scheme:dark;
+}
+[data-theme="light"]{
+  --bg:#FBFBFC;--panel:#F3F4F6;--elev:#E9ECF0;--hover:#E4E7EB;--active:#DCE0E6;
+  --rule:#E1E4E9;--rule-2:#D0D5DC;
+  --text:#16181D;--text-2:#3A404B;--mute:#5A6270;--faint:#8A919C;
+  --acc:#F97316;--acc-ink:#C2410C;--on-acc:#1A0F05;--acc-soft:rgba(249,115,22,.10);--acc-line:rgba(234,88,12,.6);
+  --inv:#16181D;--on-inv:#FFFFFF;
+  --ok:#1A7F37;--warn:#9A6700;--err:#CF222E;--err-soft:rgba(207,34,46,.07);--ok-soft:rgba(26,127,55,.09);
+  --chart:#3B6FD8;
+  --syn-k:#3451C7;--syn-s:#2F7D32;--syn-n:#B45309;--syn-f:#0B7285;--syn-c:#6B7280;--syn-p:#6B7280;
+  --shadow:0 12px 32px -8px rgba(16,24,40,.18),0 2px 6px rgba(16,24,40,.08);
+  --scrim:rgba(16,18,22,.28);
+  color-scheme:light;
+}

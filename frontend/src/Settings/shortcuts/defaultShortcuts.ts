@@ -75,6 +75,20 @@ export const DEFAULT_SHORTCUTS: Record<string, ShortcutConfig> = {
     label: 'shortcuts.toggleLanguage',
     category: 'ui',
   },
+  toggleAiPanel: {
+    actionId: 'toggleAiPanel',
+    shortcut: 'Cmd+L',
+    defaultShortcut: 'Cmd+L',
+    label: 'shortcuts.toggleAiPanel',
+    category: 'ui',
+  },
+  toggleExplorer: {
+    actionId: 'toggleExplorer',
+    shortcut: 'Cmd+B',
+    defaultShortcut: 'Cmd+B',
+    label: 'shortcuts.toggleExplorer',
+    category: 'ui',
+  },
 };
 
 export const SHORTCUT_CATEGORIES = {
@@ -153,4 +167,19 @@ export function matchesShortcut(event: KeyboardEvent, shortcut: string): boolean
   const keyMatch = event.key.toLowerCase() === parsed.key;
   
   return metaMatch && shiftMatch && altMatch && keyMatch;
+}
+
+/**
+ * Human label for a stored shortcut: `Cmd+Shift+K` → `⌘⇧K` on macOS, `Ctrl+Shift+K` elsewhere.
+ */
+export function formatShortcutLabel(shortcut: string): string {
+  if (!shortcut) return '';
+  const isMac = typeof navigator !== 'undefined' && /Mac|iPhone|iPad/.test(navigator.platform || navigator.userAgent);
+  if (!isMac) return shortcut.replace(/Cmd\+/g, 'Ctrl+');
+  return shortcut
+    .replace(/Cmd\+/g, '⌘')
+    .replace(/Ctrl\+/g, '⌃')
+    .replace(/Shift\+/g, '⇧')
+    .replace(/Alt\+/g, '⌥')
+    .replace(/Enter$/, '↵');
 }

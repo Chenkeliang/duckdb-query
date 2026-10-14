@@ -156,6 +156,12 @@ flowchart LR
 
 ---
 
+### 执行中转后台与字段来源（2026-10-10）
+
+同步 SQL 路由在请求携带 `X-Request-ID` 且为只读查询时，由 `foreground_queries` 登记运行身份。前端等待超过 3 秒可调用 `/api/query/background/{id}`：服务端在锁内将同一次执行交给 `task_manager`，前端只中止 HTTP 等待，不中止或重放 SQL。完成结果以持久化的原响应快照保存（不参与临时导出文件清理）；任务列表/详情通过实际文件状态附加 `result_info.available`，缺失时界面提供重新运行，运行记录经 `/api/async-tasks/{id}/result` 直接恢复结果区。任务取消仍指向原 `sync:{id}`，重试保留原范围和联邦附件。
+
+查询结果的 `column_types[].lineage` 由 `query_lineage` 在连接持有期间，按原 SQL 和命名关系的真实结构解析。联邦查询必须在 DETACH 前取得来源，不使用优化器临时表名。结果字段按位置对应，区分直接字段、派生字段、常量与未解析来源。
+
 ## 5. 域 D：异步查询（QueryAsync）
 
 ```mermaid
@@ -215,3 +221,9 @@ sequenceDiagram
 2. 入湖逻辑只改 `file_ingestion_service` + `core/data`，不在 5 个 router 复制编排。  
 3. 查询执行前端优先走 `useQueryRunner`，避免 Panel 直接调 API。  
 4. 功能规格见 [`docs/specs/pivot-table/`](specs/pivot-table/)（仅透视）。
+
+### 工作台任务侧栏（2026-10-12）
+
+右上任务入口打开工作台内的右侧 Sheet，原编辑器始终挂载。普通异步“查看结果”通过现有 executeDuckDBSQL 只读查询持久化结果表；中途转后台通过 getBackgroundQueryResult 读取原响应快照。二者经 QueryWorkbenchPage.backgroundResult → displayQueryPreview 直接显示结果并展开结果区，然后关闭侧栏；不走 previewSQL / 编辑器载入。查看失败保留侧栏，提供错误提示。
+
+编辑器执行下拉与结果区“保存为表”共用 AsyncTaskDialog，结果区传递当前结果的 baseSql/SQL 与数据源附件。任务创建、完成、转后台不自动展开侧栏；原结果保留设置、下载、取消、重试、详情和分页继续生效。

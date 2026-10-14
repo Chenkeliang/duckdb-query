@@ -1,17 +1,25 @@
 import * as React from "react"
 import { useTranslation } from "react-i18next"
 import {
-  Database,
-  FileText,
+  Blocks,
+  Clock,
   Code2,
-  Table,
-  Upload,
+  Database,
+  GitMerge,
+  History,
+  Languages,
+  Moon,
+  PanelLeft,
+  Play,
+  Plus,
   RefreshCw,
   Settings,
-  Moon,
-  Sun,
-  Languages,
   Sparkles,
+  Sun,
+  Table,
+  Upload,
+  WrapText,
+  CircleHelp,
 } from "lucide-react"
 
 import {
@@ -21,188 +29,148 @@ import {
   CommandInput,
   CommandItem,
   CommandList,
-  CommandSeparator,
   CommandShortcut,
 } from "@/components/ui/command"
 import { useDuckDBTables } from "@/hooks/useDuckDBTables"
-import { useShortcuts } from "@/Settings/shortcuts"
+import { formatShortcutLabel, useShortcuts } from "@/Settings/shortcuts"
 import { useAiEnabled } from "@/hooks/useAiEnabled"
+import { useGlobalHistory } from "@/Query/hooks/useGlobalHistory"
+import { IS_DEMO } from "@/demo/isDemo"
+
+/** Actions the palette can request; App maps them onto navigation, buses and toggles. */
+export type CommandAction =
+  | { type: "navigate"; tab: "queryworkbench" | "datasource" | "extensions" | "settings" }
+  | { type: "workbench"; command: "run" | "runAsync" | "format" | "newSqlTab" | "newJoinTab" | "toggleExplorer" }
+  | { type: "insertTable"; name: string }
+  | { type: "loadSql"; sql: string }
+  | { type: "addData" }
+  | { type: "connectDatabase" }
+  | { type: "aiAssistant" }
+  | { type: "asyncTasks" }
+  | { type: "refresh" }
+  | { type: "toggleTheme" }
+  | { type: "toggleLanguage" }
+  | { type: "help" }
 
 interface CommandPaletteProps {
   open: boolean
   onOpenChange: (open: boolean) => void
-  onNavigate?: (path: string) => void
-  onAction?: (action: string, params?: unknown) => void
+  onAction: (action: CommandAction) => void
+  isDarkMode: boolean
 }
 
-export function CommandPalette({
-  open,
-  onOpenChange,
-  onNavigate,
-  onAction,
-}: CommandPaletteProps) {
-  const { t } = useTranslation("common")
-  
-  // 从 TanStack Query 缓存获取表列表
-  const { tables: queryTables, isLoading: isLoadingTables } = useDuckDBTables()
-  
-  // 获取自定义快捷键
+/** Rows shown for tables before the user types; typing searches all of them. */
+const IDLE_TABLE_LIMIT = 5
+
+/**
+ * ⌘K command palette — the signature interaction of the graphite redesign.
+ * Groups: recent runs → actions → go to → tables. Typing searches every group.
+ */
+export function CommandPalette({ open, onOpenChange, onAction, isDarkMode }: CommandPaletteProps) {
+  const { t, i18n } = useTranslation("common")
+  const { tables } = useDuckDBTables()
   const { getShortcutForAction } = useShortcuts()
-
-  // AI 总开关(门控 ⌘K 的 AI 命令)
   const aiEnabled = useAiEnabled()
-  
-  // 格式化快捷键显示（将 Cmd+K 转换为 ⌘K）
-  const formatShortcutDisplay = React.useCallback((actionId: string): string => {
-    const shortcut = getShortcutForAction(actionId)
-    return shortcut
-      .replace('Cmd+', '⌘')
-      .replace('Ctrl+', '⌃')
-      .replace('Alt+', '⌥')
-      .replace('Shift+', '⇧')
-      .replace(/\+/g, '')
-  }, [getShortcutForAction])
-  
-  const tables = queryTables
+  const { history } = useGlobalHistory()
+  const [search, setSearch] = React.useState("")
 
-  const runCommand = React.useCallback(
-    (command: () => void) => {
-      onOpenChange(false)
-      command()
-    },
-    [onOpenChange]
-  )
+  React.useEffect(() => {
+    if (!open) setSearch("")
+  }, [open])
 
-  // 格式化行数显示
-  const formatRowCount = (count?: number) => {
-    if (!count) return null
-    if (count >= 1000000) return `${(count / 1000000).toFixed(1)}M rows`
-    if (count >= 1000) return `${(count / 1000).toFixed(1)}K rows`
-    return `${count.toLocaleString()} rows`
+  const keyOf = (actionId: string) => formatShortcutLabel(getShortcutForAction(actionId))
+  const isZh = i18n.language?.startsWith("zh")
+  const recent = history.filter((h) => h.type === "sql").slice(0, 3)
+  const visibleTables = search ? tables : tables.slice(0, IDLE_TABLE_LIMIT)
+
+  const run = (action: CommandAction) => {
+    onOpenChange(false)
+    onAction(action)
   }
+
+  const item = (
+    value: string,
+    icon: React.ReactNode,
+    label: React.ReactNode,
+    action: CommandAction,
+    shortcut?: string,
+  ) => (
+    <CommandItem key={value} value={value} keywords={typeof label === "string" ? [label] : undefined} onSelect={() => run(action)}>
+      {icon}
+      <span className="min-w-0 flex-1 truncate">{label}</span>
+      {shortcut ? <CommandShortcut>{shortcut}</CommandShortcut> : null}
+    </CommandItem>
+  )
 
   return (
     <CommandDialog open={open} onOpenChange={onOpenChange}>
-      <CommandInput placeholder={t("command.placeholder", "Type a command or search...")} />
+      <CommandInput
+        value={search}
+        onValueChange={setSearch}
+        placeholder={t("command.placeholder", "搜索操作、表或最近的查询…")}
+      />
       <CommandList>
-        <CommandEmpty>{t("command.noResults", "No results found.")}</CommandEmpty>
-        
-        {/* 导航命令 */}
-        <CommandGroup heading={t("command.navigation", "Navigation")}>
-          <CommandItem
-            onSelect={() => runCommand(() => onNavigate?.("datasource"))}
-          >
-            <Database className="mr-2 h-4 w-4" />
-            <span>{t("nav.datasource", "Data Source")}</span>
-            <CommandShortcut>{formatShortcutDisplay('navigateDataSource')}</CommandShortcut>
-          </CommandItem>
-          <CommandItem
-            onSelect={() => runCommand(() => onNavigate?.("queryworkbench"))}
-          >
-            <Code2 className="mr-2 h-4 w-4" />
-            <span>{t("nav.queryworkbench", "Query Workbench")}</span>
-            <CommandShortcut>{formatShortcutDisplay('navigateQueryWorkbench')}</CommandShortcut>
-          </CommandItem>
-        </CommandGroup>
-        
-        <CommandSeparator />
-        
-        {/* 表搜索 - 从 TanStack Query 缓存获取 */}
-        <CommandGroup heading={t("command.tables", "Tables")}>
-          {isLoadingTables ? (
-            <CommandItem disabled>
-              <RefreshCw className="mr-2 h-4 w-4 animate-spin" />
-              <span className="text-muted-foreground">{t("common.loading", "Loading...")}</span>
-            </CommandItem>
-          ) : tables.length > 0 ? (
-            tables.map((table) => (
-              <CommandItem
-                key={table.name}
-                value={table.name}
-                onSelect={() => runCommand(() => onAction?.("selectTable", table.name))}
-              >
-                <Table className="mr-2 h-4 w-4" />
-                <span>{table.name}</span>
-                {table.row_count && (
-                  <span className="ml-auto text-xs text-muted-foreground">
-                    {formatRowCount(table.row_count)}
-                  </span>
-                )}
-              </CommandItem>
-            ))
-          ) : (
-            <CommandItem disabled>
-              <span className="text-muted-foreground">{t("command.noTables", "No tables available")}</span>
-            </CommandItem>
+        <CommandEmpty>{t("command.noResults", "没有匹配项")}</CommandEmpty>
+
+        {recent.length > 0 && (
+          <CommandGroup heading={t("command.groupRecent", "最近运行")}>
+            {recent.map((h) =>
+              item(
+                `recent ${h.id} ${h.sql}`,
+                <History />,
+                <span className="font-mono text-xs">{h.sql.replace(/\s+/g, " ").trim()}</span>,
+                { type: "loadSql", sql: h.sql },
+              ),
+            )}
+          </CommandGroup>
+        )}
+
+        <CommandGroup heading={t("command.groupActions", "操作")}>
+          {item("run execute query", <Play />, t("command.run", "执行当前查询"), { type: "workbench", command: "run" }, formatShortcutLabel("Cmd+Enter"))}
+          {!IS_DEMO &&
+            item("async run", <Clock />, t("command.runAsync", "异步执行当前查询"), { type: "workbench", command: "runAsync" }, formatShortcutLabel("Cmd+Shift+Enter"))}
+          {item("format sql", <WrapText />, t("command.format", "格式化 SQL"), { type: "workbench", command: "format" })}
+          {item("new sql tab", <Plus />, t("command.newSqlTab", "新建 SQL 标签"), { type: "workbench", command: "newSqlTab" })}
+          {item("new join tab", <GitMerge />, t("command.newJoinTab", "新建 JOIN 查询"), { type: "workbench", command: "newJoinTab" })}
+          {item("add data upload import file", <Upload />, t("command.addData", "添加数据"), { type: "addData" }, keyOf("uploadFile"))}
+          {!IS_DEMO &&
+            item("connect database mysql postgres", <Database />, t("command.connectDatabase", "连接数据库"), { type: "connectDatabase" })}
+          {aiEnabled &&
+            item("ai assistant chat", <Sparkles />, t("command.aiAssistant", "打开 AI 助手"), { type: "aiAssistant" }, keyOf("toggleAiPanel"))}
+          {item("toggle explorer sidebar", <PanelLeft />, t("shortcuts.toggleExplorer", "显示 / 隐藏数据源面板"), { type: "workbench", command: "toggleExplorer" }, keyOf("toggleExplorer"))}
+          {!IS_DEMO &&
+            item("async tasks", <Clock />, t("command.asyncTasks", "查看异步任务"), { type: "asyncTasks" })}
+          {item("refresh data sources", <RefreshCw />, t("command.refresh", "刷新数据源"), { type: "refresh" }, keyOf("refreshData"))}
+          {item(
+            "toggle theme dark light",
+            isDarkMode ? <Sun /> : <Moon />,
+            isDarkMode ? t("actions.toggleLight", "切换到浅色") : t("actions.toggleDark", "切换到暗色"),
+            { type: "toggleTheme" },
+            keyOf("toggleTheme"),
           )}
+          {item("language english chinese", <Languages />, isZh ? "Switch to English" : "切换到中文", { type: "toggleLanguage" }, keyOf("toggleLanguage"))}
         </CommandGroup>
-        
-        <CommandSeparator />
-        
-        {/* 数据操作命令 */}
-        <CommandGroup heading={t("command.dataActions", "Data Actions")}>
-          <CommandItem
-            onSelect={() => runCommand(() => onAction?.("upload"))}
-          >
-            <Upload className="mr-2 h-4 w-4" />
-            <span>{t("actions.uploadFile", "Upload File")}</span>
-            <CommandShortcut>{formatShortcutDisplay('uploadFile')}</CommandShortcut>
-          </CommandItem>
-          <CommandItem
-            onSelect={() => runCommand(() => onAction?.("refresh"))}
-          >
-            <RefreshCw className="mr-2 h-4 w-4" />
-            <span>{t("actions.refreshData", "Refresh Data")}</span>
-            <CommandShortcut>{formatShortcutDisplay('refreshData')}</CommandShortcut>
-          </CommandItem>
+
+        <CommandGroup heading={t("command.groupGoto", "跳转")}>
+          {item("goto workbench query", <Code2 />, t("nav.queryworkbench"), { type: "navigate", tab: "queryworkbench" }, keyOf("navigateQueryWorkbench"))}
+          {item("goto data sources", <Database />, t("nav.datasource"), { type: "navigate", tab: "datasource" }, keyOf("navigateDataSource"))}
+          {!IS_DEMO && item("goto extensions", <Blocks />, t("nav.extensions"), { type: "navigate", tab: "extensions" })}
+          {item("goto settings", <Settings />, t("nav.settings"), { type: "navigate", tab: "settings" })}
+          {item("help github docs", <CircleHelp />, t("command.help", "帮助与文档（GitHub）"), { type: "help" })}
         </CommandGroup>
-        
-        <CommandSeparator />
-        
-        {/* 快捷操作命令 */}
-        <CommandGroup heading={t("command.quickActions", "Quick Actions")}>
-          {aiEnabled && (
-            <CommandItem onSelect={() => runCommand(() => onAction?.("aiChat"))}>
-              <Sparkles className="mr-2 h-4 w-4" />
-              <span>{t("command.aiChat", "数据助手对话")}</span>
-            </CommandItem>
-          )}
-          <CommandItem
-            onSelect={() => runCommand(() => onAction?.("toggleTheme"))}
-          >
-            <Sun className="mr-2 h-4 w-4 dark:hidden" />
-            <Moon className="mr-2 h-4 w-4 hidden dark:block" />
-            <span>{t("actions.toggleTheme", "Toggle Theme")}</span>
-            <CommandShortcut>{formatShortcutDisplay('toggleTheme')}</CommandShortcut>
-          </CommandItem>
-          <CommandItem
-            onSelect={() => runCommand(() => onAction?.("toggleLanguage"))}
-          >
-            <Languages className="mr-2 h-4 w-4" />
-            <span>{t("actions.toggleLanguage", "Toggle Language")}</span>
-            <CommandShortcut>{formatShortcutDisplay('toggleLanguage')}</CommandShortcut>
-          </CommandItem>
-        </CommandGroup>
-        
-        <CommandSeparator />
-        
-        {/* 系统命令 */}
-        <CommandGroup heading={t("command.system", "System")}>
-          <CommandItem
-            onSelect={() => runCommand(() => onAction?.("settings"))}
-          >
-            <Settings className="mr-2 h-4 w-4" />
-            <span>{t("nav.settings", "Settings")}</span>
-            <CommandShortcut>⌘,</CommandShortcut>
-          </CommandItem>
-          <CommandItem
-            onSelect={() => runCommand(() => onAction?.("help"))}
-          >
-            <FileText className="mr-2 h-4 w-4" />
-            <span>{t("nav.help", "Help")}</span>
-            <CommandShortcut>⌘?</CommandShortcut>
-          </CommandItem>
-        </CommandGroup>
+
+        {visibleTables.length > 0 && (
+          <CommandGroup heading={t("command.groupTables", "表")}>
+            {visibleTables.map((table) =>
+              item(
+                `table ${table.name}`,
+                <Table />,
+                <span className="font-mono text-xs">{table.name}</span>,
+                { type: "insertTable", name: table.name },
+              ),
+            )}
+          </CommandGroup>
+        )}
       </CommandList>
     </CommandDialog>
   )

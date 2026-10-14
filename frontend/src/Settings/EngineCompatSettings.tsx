@@ -1,3 +1,4 @@
+import { SettingsSectionHeader } from "./SettingsSectionHeader";
 /**
  * 引擎兼容性设置
  *
@@ -12,9 +13,6 @@ import { Wrench } from 'lucide-react';
 import {
   Card,
   CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
 } from '@/components/ui/card';
 import { Label } from '@/components/ui/label';
 import { Switch } from '@/components/ui/switch';
@@ -94,20 +92,16 @@ export function EngineCompatSettings() {
   };
 
   return (
-    <Card>
-      <CardHeader className="space-y-1.5">
-        <CardTitle className="flex items-center gap-2 text-base">
-          <Wrench className="h-4 w-4 shrink-0" />
-          {t('settings.engineCompat.title', '引擎兼容性')}
-        </CardTitle>
-        <CardDescription>
-          {t(
+    <Card className="rounded-none border-0 bg-transparent shadow-none">
+      <SettingsSectionHeader
+        icon={Wrench}
+        title={<> {t('settings.engineCompat.title', '引擎兼容性')} </>}
+        description={<> {t(
             'settings.engineCompat.description',
             '兼容脏数据/非标准数据源的读取行为，按需开启，保存后立即生效。'
-          )}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="divide-y divide-border">
+          )} </>}
+      />
+      <CardContent className="divide-y divide-border px-0 pb-0">
         {ROWS.map((row, idx) => (
           <div
             key={row.key}

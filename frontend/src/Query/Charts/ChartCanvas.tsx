@@ -1,4 +1,4 @@
-import type { MouseEvent } from 'react';
+import { useEffect, useState, type MouseEvent } from 'react';
 import {
   ResponsiveContainer,
   BarChart, Bar, LineChart, Line, AreaChart, Area, PieChart, Pie, Cell,
@@ -6,7 +6,25 @@ import {
 } from 'recharts';
 import type { ChartSpec } from './chartSpec';
 
-const COLORS = ['#f97316', '#3b82f6', '#10b981', '#a855f7', '#ef4444', '#eab308', '#06b6d4', '#ec4899'];
+/** Fallback = light-theme series (tailwind.css --chart-1..7); real values are read from the theme. */
+const FALLBACK_COLORS = ['#2a78d6', '#1baf7a', '#4a3aa7', '#eda100', '#e87ba4', '#008300', '#e34948'];
+
+function readChartColors(): string[] {
+  if (typeof document === 'undefined') return FALLBACK_COLORS;
+  const cs = getComputedStyle(document.documentElement);
+  return FALLBACK_COLORS.map((fb, i) => cs.getPropertyValue(`--chart-${i + 1}`).trim() || fb);
+}
+
+/** SVG presentation attributes cannot resolve CSS variables, so resolve them here and follow theme switches. */
+function useChartColors(): string[] {
+  const [colors, setColors] = useState(readChartColors);
+  useEffect(() => {
+    const observer = new MutationObserver(() => setColors(readChartColors()));
+    observer.observe(document.documentElement, { attributes: true, attributeFilter: ['class'] });
+    return () => observer.disconnect();
+  }, []);
+  return colors;
+}
 
 export interface ChartCanvasProps {
   spec: ChartSpec;
@@ -18,6 +36,7 @@ export interface ChartCanvasProps {
 }
 
 export function ChartCanvas({ spec, data, metricKeys, kpi, onElementClick }: ChartCanvasProps) {
+  const COLORS = useChartColors();
   if (spec.type === 'kpi') {
     return (
       <div className="flex h-full w-full items-center justify-center">

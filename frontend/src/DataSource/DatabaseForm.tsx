@@ -42,11 +42,14 @@ interface ServerEntry {
 interface DatabaseFormProps {
   defaultType?: string;
   configToLoad?: ConfigToLoad | null;
-  onTest?: (params: DatabaseConnectParams) => void;
+  onTest?: (params: DatabaseConnectParams) => Promise<ConnectionTestResult | void> | void;
   onSave?: (params: DatabaseConnectParams) => void;
+  onCancel?: () => void;
   loading?: boolean;
   testing?: boolean;
 }
+
+export interface ConnectionTestResult { success: boolean; message: string }
 
 /**
  * New database form using shadcn/ui components.
@@ -64,6 +67,7 @@ const DatabaseForm = ({
   configToLoad,
   onTest,
   onSave,
+  onCancel,
   loading = false,
   testing = false,
 }: DatabaseFormProps) => {
@@ -146,6 +150,7 @@ const DatabaseForm = ({
   const [serverError, setServerError] = useState("");
 
   const [error, setError] = useState("");
+  const [testResult, setTestResult] = useState<{ params: string; result: ConnectionTestResult } | null>(null);
 
   const isSqlite = type === "sqlite";
   const isDuckdb = type === "duckdb";
@@ -232,9 +237,12 @@ const DatabaseForm = ({
     return true;
   };
 
-  const handleTest = () => {
+  const handleTest = async () => {
     if (!validate()) return;
-    onTest?.(normalizedParams);
+    setTestResult(null);
+    const params = JSON.stringify(normalizedParams);
+    const result = await onTest?.(normalizedParams);
+    if (result) setTestResult({ params, result });
   };
 
   const handleConnect = () => {
@@ -339,7 +347,7 @@ const DatabaseForm = ({
           </TabsList>
         </Tabs>
 
-        <form onSubmit={(e) => { e.preventDefault(); handleTest(); }}>
+        <form onSubmit={(e) => { e.preventDefault(); if (!loading && !testing) handleConnect(); }}>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-6">
             <div className="space-y-2 md:col-span-2">
               <Label htmlFor="connection-name">
@@ -541,11 +549,13 @@ const DatabaseForm = ({
           </div>
 
           {error ? <div className="text-xs text-error">{error}</div> : null}
+          {testResult && testResult.params === JSON.stringify(normalizedParams) && <p role="status" className={testResult.result.success ? 'mt-4 text-sm text-success' : 'mt-4 text-sm text-error'}>{testResult.result.message}</p>}
 
-          <div className="flex flex-wrap gap-3 pt-4">
+          <div className="sticky bottom-0 mt-5 flex flex-wrap items-center justify-end gap-2 border-t border-border bg-surface py-4">
             <Button
-              type="submit"
-              variant="outline"
+              type="button"
+              onClick={() => void handleTest()}
+              variant="subtle"
               disabled={testing || loading}
             >
               {testing ? (
@@ -557,22 +567,18 @@ const DatabaseForm = ({
                 t("page.datasource.connection.test")
               )}
             </Button>
+            {onCancel && <Button type="button" variant="subtle" disabled={loading || testing} onClick={onCancel}>{t('actions.cancel')}</Button>}
             <Button
-              type="button"
-              onClick={handleConnect}
-              disabled={loading}
+              type="submit"
+              disabled={loading || testing}
             >
               {loading ? (
                 <>
                   <Loader2 className="w-4 h-4 animate-spin mr-2" />
-                  {t("page.datasource.connection.connecting", {
-                    defaultValue: t("page.datasource.connection.saving")
-                  })}
+                  {t("page.datasource.connection.saving")}
                 </>
               ) : (
-                t("page.datasource.connection.connect", {
-                  defaultValue: t("page.datasource.connection.save")
-                })
+                t(connectionId ? 'page.datasource.flow.saveChanges' : 'page.datasource.flow.saveConnection')
               )}
             </Button>
           </div>

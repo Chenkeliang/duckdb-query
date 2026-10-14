@@ -7,7 +7,7 @@
  */
 
 import { apiClient, handleApiError, normalizeResponse } from './client';
-import type { AsyncTask, CreateTaskRequest, NormalizedResponse } from './types';
+import type { AsyncTask, CreateTaskRequest, NormalizedResponse, QueryResponse } from './types';
 
 // ==================== Types ====================
 
@@ -287,4 +287,17 @@ export async function clearOldErrors(days = 30): Promise<NormalizedResponse<{ cl
     } catch (error) {
         throw handleApiError(error as never, '清理错误记录失败');
     }
+}
+
+
+/** Adopt the existing server execution; this endpoint never replays the SQL. */
+export async function moveQueryToBackground(requestId: string): Promise<{ task_id: string }> {
+    const response = await apiClient.post(`/api/query/background/${encodeURIComponent(requestId)}`);
+    return normalizeResponse<{ task_id: string }>(response).data;
+}
+
+/** Load a completed background snapshot without querying its sources again. */
+export async function getBackgroundQueryResult(taskId: string): Promise<QueryResponse> {
+    const response = await apiClient.get(`/api/async-tasks/${encodeURIComponent(taskId)}/result`);
+    return { ...normalizeResponse<QueryResponse>(response).data, success: true };
 }

@@ -33,6 +33,7 @@ vi.mock('@/api', async (importOriginal) => {
     executeDuckDBSQL: vi.fn(),
     executeFederatedQuery: vi.fn(),
     cancelSyncQuery: vi.fn(),
+    moveQueryToBackground: vi.fn(),
   };
 });
 
@@ -377,4 +378,43 @@ describe('useQueryWorkspace multi-tab refresh race (#10)', () => {
     });
     expect(result.current.resultTabs.map((t) => t.id)).toEqual([tabB.id]);
   });
+});
+
+
+it('2026-10-10: background adoption aborts only the HTTP wait and never replays or cancels SQL', async () => {
+  vi.clearAllMocks();
+  const pending = deferred<ReturnType<typeof okResult>>();
+  let signal: AbortSignal | undefined;
+  vi.mocked(api.executeDuckDBSQL).mockImplementationOnce(((_sql: string, options?: { signal?: AbortSignal }) => {
+    signal = options?.signal;
+    return pending.promise;
+  }) as never);
+  vi.mocked(api.moveQueryToBackground).mockResolvedValueOnce({ task_id: 'adopted-task' });
+  const { result } = renderHook(() => useQueryWorkspace());
+  let running!: Promise<void>;
+  act(() => { running = result.current.handleQueryExecute('SELECT expensive_operation'); });
+  await waitFor(() => expect(result.current.activeExecution).not.toBeNull());
+  const id = result.current.activeExecution!.requestId;
+  await act(async () => { expect(await result.current.moveToBackground()).toBe('adopted-task'); });
+  expect(api.moveQueryToBackground).toHaveBeenCalledWith(id);
+  expect(signal?.aborted).toBe(true);
+  expect(api.cancelSyncQuery).not.toHaveBeenCalled();
+  expect(api.executeDuckDBSQL).toHaveBeenCalledTimes(1);
+  expect(result.current.isResultLoading).toBe(false);
+  await act(async () => { pending.resolve(okResult('late')); await running; });
+  expect(result.current.resultTabs).toHaveLength(0);
+});
+
+it('2026-10-10: restoring a federated snapshot preserves the execution source for refresh and result tools', async () => {
+  vi.clearAllMocks();
+  const source = { type: 'federated' as const, attachDatabases: [{ alias: 'crm', connectionId: 'saved-crm' }] };
+  vi.mocked(api.executeFederatedQuery).mockResolvedValueOnce(okResult('refreshed') as never);
+  const { result } = renderHook(() => useQueryWorkspace());
+  act(() => result.current.displayQueryPreview(okResult('snapshot'), 'SELECT * FROM crm.customers', source));
+  expect(result.current.lastQuery?.source).toEqual(source);
+  await act(async () => { await result.current.refreshActiveResult(); });
+  expect(api.executeFederatedQuery).toHaveBeenCalledWith(expect.objectContaining({
+    sql: 'SELECT * FROM crm.customers', attachDatabases: source.attachDatabases,
+  }));
+  expect(api.executeDuckDBSQL).not.toHaveBeenCalled();
 });

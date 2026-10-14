@@ -1,5 +1,6 @@
 import * as React from 'react';
-import { Loader2, RefreshCw } from 'lucide-react';
+import { Loader2, RefreshCw, Pencil } from 'lucide-react';
+import { Button } from '@/components/ui/button';
 import { getDatabaseTypeIcon } from '@/utils/databaseTypeIcon';
 import { useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
@@ -28,6 +29,8 @@ interface DatabaseConnectionNodeProps {
   onImport?: (table: SelectedTable) => void;
   searchQuery?: string;
   forceExpanded?: boolean;
+  onEdit?: (connection: DatabaseConnection) => void;
+  focusToken?: number;
 }
 
 /**
@@ -67,9 +70,18 @@ export const DatabaseConnectionNode: React.FC<DatabaseConnectionNodeProps> = ({
   onImport,
   searchQuery = '',
   forceExpanded = false,
+  onEdit,
+  focusToken,
 }) => {
   const level = 0; // 数据库连接节点始终在 level 0
   const [isExpanded, setIsExpanded] = React.useState(false);
+  const nodeRef = React.useRef<HTMLDivElement>(null);
+  React.useEffect(() => {
+    if (focusToken !== undefined) {
+      setIsExpanded(true);
+      nodeRef.current?.scrollIntoView({ block: 'nearest' });
+    }
+  }, [focusToken]);
   const queryClient = useQueryClient();
   const { t } = useTranslation('common');
 
@@ -138,7 +150,7 @@ export const DatabaseConnectionNode: React.FC<DatabaseConnectionNodeProps> = ({
   const TypeIcon = getDatabaseTypeIcon(connection.type);
 
   return (
-    <ContextMenu>
+    <div ref={nodeRef}><ContextMenu>
       <ContextMenuTrigger>
         <TreeNode
           id={`db-${connection.id}`}
@@ -149,6 +161,8 @@ export const DatabaseConnectionNode: React.FC<DatabaseConnectionNodeProps> = ({
           isExpanded={isExpanded}
           statusIndicator={getStatusIndicator(connection.status)}
           onToggle={handleToggle}
+          isSelected={focusToken !== undefined}
+          actions={onEdit && <Button variant="quiet" size="icon" className="size-7" aria-label={t('page.datasource.flow.editNamed', { name: connection.name })} title={t('page.datasource.list.editConnection')} onClick={() => onEdit(connection)}><Pencil strokeWidth={1.5} className="size-3.5" /></Button>}
         >
           {isLoading && (
             <div className="flex items-center gap-2 pl-6 py-2 text-sm text-muted-foreground">
@@ -218,11 +232,12 @@ export const DatabaseConnectionNode: React.FC<DatabaseConnectionNodeProps> = ({
 
       {/* Task 7.2: 右键菜单 - 局部刷新 */}
       <ContextMenuContent>
+        {onEdit && <ContextMenuItem onSelect={() => onEdit(connection)}><Pencil strokeWidth={1.5} className="mr-2 size-4" />{t('page.datasource.list.editConnection')}</ContextMenuItem>}
         <ContextMenuItem onClick={handleRefreshConnection}>
           <RefreshCw className="mr-2 h-4 w-4" />
           {t('dataSource.refreshConnection')}
         </ContextMenuItem>
       </ContextMenuContent>
-    </ContextMenu>
+    </ContextMenu></div>
   );
 };

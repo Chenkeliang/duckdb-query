@@ -3,7 +3,7 @@
   "description": "DuckQuery · DuckDB visual analytics SPA frontend",
   "homepage": "https://chenkeliang.github.io/duckdb-query/",
   "private": true,
-  "version": "2.0.1",
+  "version": "2.1.0",
   "type": "module",
   "engines": {
     "node": ">=24"
@@ -38,6 +38,7 @@
     "@codemirror/language": "^6.12.3",
     "@codemirror/language-data": "^6.5.2",
     "@codemirror/lint": "^6.9.6",
+    "@codemirror/merge": "^6.12.2",
     "@codemirror/search": "^6.7.0",
     "@codemirror/state": "^6.6.0",
     "@codemirror/theme-one-dark": "^6.1.3",

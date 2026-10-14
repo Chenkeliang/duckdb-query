@@ -56,6 +56,8 @@ export interface AsyncTaskDialogProps {
   };
   /** 需要附加的外部数据库列表（联邦查询） */
   attachDatabases?: AttachDatabase[];
+  /** Captured query context shown before saving. */
+  queryOrigin?: 'editor' | 'result';
   /** 提交成功回调 */
   onSuccess?: (taskId: string) => void;
 }
@@ -104,6 +106,7 @@ export const AsyncTaskDialog: React.FC<AsyncTaskDialogProps> = ({
   datasource,
   attachDatabases,
   onSuccess,
+  queryOrigin = 'editor',
 }) => {
   const { t } = useTranslation('common');
   const queryClient = useQueryClient();
@@ -189,7 +192,7 @@ export const AsyncTaskDialog: React.FC<AsyncTaskDialogProps> = ({
 
   return (
     <Dialog open={open} onOpenChange={onOpenChange}>
-      <DialogContent className="sm:max-w-[500px]">
+      <DialogContent className="sm:max-w-lg">
         <DialogHeader className="flex-row flex-wrap items-baseline gap-x-2 gap-y-1 space-y-0">
           <DialogTitle>{t('async.dialog.title', '提交异步任务')}</DialogTitle>
           <DialogDescription>
@@ -198,6 +201,10 @@ export const AsyncTaskDialog: React.FC<AsyncTaskDialogProps> = ({
         </DialogHeader>
 
         <div className="space-y-3 py-2">
+          <div className="space-y-1 text-xs">
+            <p className="font-medium">{t('async.dialog.querySource')}</p>
+            <p className="text-muted-foreground">{t(queryOrigin === 'result' ? 'async.dialog.resultSource' : 'async.dialog.editorSource')}</p>
+          </div>
           {/* SQL 预览 */}
           <Accordion type="single" collapsible>
             <AccordionItem value="sql-preview" className="border-0">
@@ -298,7 +305,7 @@ export const AsyncTaskDialog: React.FC<AsyncTaskDialogProps> = ({
 
         <DialogFooter>
           <Button
-            variant="outline"
+            variant="subtle"
             onClick={() => onOpenChange(false)}
             disabled={submitMutation.isPending}
           >

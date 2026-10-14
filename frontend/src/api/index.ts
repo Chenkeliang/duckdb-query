@@ -141,6 +141,8 @@ export {
     type ListTasksResponse,
     type AsyncDownloadFormat,
     type DownloadOptions,
+  moveQueryToBackground,
+  getBackgroundQueryResult,
 } from './asyncTaskApi';
 
 // ==================== Table API ====================

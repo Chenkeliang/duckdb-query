@@ -100,7 +100,7 @@
 
 | 方法 | 路径 | 成功体 | `data` 要点 | 前端入口 |
 |------|------|--------|-------------|----------|
-| POST | `/api/duckdb/execute` | 对象 | `executeDuckDBSQL`；`data`: `columns`, `column_types[]`（`{name, duckdb_type}`；来自 `DESCRIBE (<sql>)`，PRAGMA/EXPLAIN/多语句等不可 DESCRIBE 时由同一次执行的游标 description 类型兜底）, `data`, `row_count`, `preview_limit_applied?`；解析/绑定错误的标准错误 `details.sql_location?={line,column,end_column}`，并带 `details.sql_identity={query_id?,sha256}` 绑定本次原 SQL；499 / 500 |
+| POST | `/api/duckdb/execute` | 对象 | `executeDuckDBSQL`；`data`: `columns`, `column_types[]`（`{name, duckdb_type, lineage?}`；来自 `DESCRIBE (<sql>)`，PRAGMA/EXPLAIN/多语句等不可 DESCRIBE 时由同一次执行的游标 description 类型兜底）, `data`, `row_count`, `preview_limit_applied?`；解析/绑定错误的标准错误 `details.sql_location?={line,column,end_column}`，并带 `details.sql_identity={query_id?,sha256}` 绑定本次原 SQL；499 / 500 |
 | POST | `/api/duckdb/federated-query` | 对象 | `executeFederatedQuery`；同上含 `column_types`、`details.sql_location?` 与 `details.sql_identity`；额外 `optimized_sql`（半连接下推改写后 SQL）、`suggestions[]`（审计列时间界建议，**不自动改结果**）、`saved_table`（仅在 `save_as_table` 已通过本地 staging 原子发布时有值）、`save_error`（兼容字段；新路径保存失败整体失败，不把失败降级为查询成功）；联邦内联保存只物化用户查询一次，预览从同一 staging 读取，系统预览 LIMIT 不写入结果表；所有共享 ATTACH 入口为 PostgreSQL 新连接注入剩余执行预算对应的服务端 `statement_timeout`，避免本地中断后远端继续运行；404 `connection_id`；503 ATTACH；499 / 500 / **504 超时** |
 | POST | `/api/query/cancel/{request_id}` | 对象 | `cancelSyncQuery`；取消在查询连接注册前到达时也作为幂等请求接受并在注册时生效；200 表示请求已受理，不承诺远端已停止 |
 | POST | `/api/save_query_to_duckdb` | 对象 | 保存结果表元数据（依请求）；`apply_row_limit`（默认 `false`，兼容 `applyRowLimit`）为保存对话框的最终选择：`false`＝移除查询页面最外层 `LIMIT` 后全量保存（子查询 `LIMIT` 保留），`true`＝保留页面最外层 `LIMIT`，页面无最外层 `LIMIT` 时补默认 `max_query_rows` | `saveQueryToDuckDB` |
@@ -176,6 +176,13 @@
 | GET | `/api/errors/statistics` | 对象 | `getErrorStatistics` |
 | POST | `/api/errors/clear` | 对象 | `clearOldErrors`（query: `days`） |
 
+### 执行中转后台与逐列来源
+
+- `POST /api/query/background/{request_id}`：接管带 `X-Request-ID` 的在途只读本地/联邦查询，返回 `{task_id}`；重复请求幂等返回同一任务。既不取消也不重新执行 SQL，保留该次查询的 LIMIT、精度与列元数据。结束与接管竞争时以服务端锁为准，已结束返回 409。保存表/写操作不参与接管。
+- 查询快照是持久化任务结果，不参与 24 小时临时导出文件清理。任务列表和详情对 `result_info.result_kind=snapshot` 附加 `result_info.available`（布尔），以实际文件存在性为准；为 false 时前端提供重新运行，不展示必然失败的预览。重新运行会创建新任务，不代表恢复原结果。
+- `GET /api/async-tasks/{task_id}/result`：读取 `foreground_query` 任务的持久化结果快照，返回原查询结果对象（含 data/columns/column_types/execution_time_ms）；未完成 409，缺失 404。界面恢复到结果区后使用现有导出功能。普通异步任务仍按现有结果表下载/预览。
+- `column_types[].lineage`：`{kind: direct|derived|constant|unresolved, sources: [{catalog?, schema?, table, column}]}`。按列位置对应去重后的结果名；基于原 SQL 与实际结构解析别名、星号、JOIN、CTE 和 UNION。常量没有来源，未知来源明确标记 unresolved；不以优化临时表冒充原始来源。
+
 ## 7. 透视查询与收藏（`pivotQueryApi.ts`）
 
 > **2026-05**：工作台已移除「可视化查询」Tab。`POST /api/pivot-query/*` 仅 **透视**（必填 `pivot_config`；响应 `data.mode` 为 `pivot`）。`config` 仅 `table_name`、`filters`、`limit`；`FilterConfig` 为 `column` / `operator` / `value`（`value2` 用于 BETWEEN）/ `logic_operator`。集合操作模型见 `set_operation_models.py`。
@@ -247,6 +254,7 @@ BY NAME、LIMIT、预览 vs 执行语义见 [QUERY_BEHAVIOR_ZH.md](QUERY_BEHAVIO
 **`setOperationsApi.ts` 已封装**：`generate`、`preview`、`validate`、`execute`、`simple-union`。
 
 执行时前端在 generate 返回的 SQL 后追加 `LIMIT`（与 `maxQueryRows` 一致）；**preview** 端点 LIMIT 由后端 `max_query_rows` 控制，结果写入结果面板。
+集合生成器的 `(SELECT …) UNION/INTERSECT/EXCEPT (SELECT …)` 同样属于只读查询；共享 SQL 分类及预览限行检查支持前置括号，仍要求单条语句并拦截写入或其他副作用。
 
 ## 9.2 多表 JOIN（`joinQueryApi.ts`）
 

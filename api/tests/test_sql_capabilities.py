@@ -180,3 +180,42 @@ def test_adversarial_nested_limits_do_not_disable_outer_total_limit():
     )
     assert top_level_row_limit_kind(sql) is None
     assert ensure_query_has_limit(sql, 50).endswith("LIMIT 50")
+
+
+@pytest.mark.parametrize("operation,use_by_name,expected_count", [
+    ("UNION", False, 3), ("UNION ALL", False, 4),
+    ("INTERSECT", False, 1), ("EXCEPT", False, 1),
+    ("UNION", True, 3), ("UNION ALL", True, 4),
+])
+def test_generated_parenthesized_sets_pass_query_guard_and_keep_limits(operation, use_by_name, expected_count):
+    """2026-10-12: Set UI SQL starts with '(' and was rejected as a write."""
+    import duckdb
+    from core.services.set_operation_generator import SetOperationQueryGenerator
+    from models.set_operation_models import SetOperationConfig, SetOperationType, TableConfig
+    from routers.query_sql_utils import apply_row_limit_choice
+    config = SetOperationConfig(operation_type=SetOperationType(operation), use_by_name=use_by_name,
+                                tables=[TableConfig(table_name="lhs", selected_columns=["id"]),
+                                        TableConfig(table_name="rhs", selected_columns=["id"])])
+    sql = SetOperationQueryGenerator().build_set_operation_query(config)
+    assert is_read_only_sql(sql)
+    assert statement_accepts_row_limit(sql)
+    assert_no_dangerous_write(sql, None)
+    with duckdb.connect() as con:
+        con.execute("CREATE TABLE lhs AS SELECT * FROM (VALUES (1),(2)) t(id)")
+        con.execute("CREATE TABLE rhs AS SELECT * FROM (VALUES (2),(3)) t(id)")
+        limited = ensure_query_has_limit(sql, 1)
+        assert len(con.execute(limited).fetchall()) == 1
+        assert len(con.execute(apply_row_limit_choice(limited, False)).fetchall()) == expected_count
+
+
+@pytest.mark.parametrize("sql", [
+    "(DELETE FROM items RETURNING *)",
+    "(WITH changed AS (DELETE FROM items RETURNING *) SELECT * FROM changed)",
+    "(SELECT 1); DROP TABLE items",
+    "(COPY items TO 'out.csv')",
+])
+def test_parentheses_do_not_authorize_side_effects(sql):
+    """2026-10-12: allowing parenthesized queries must not allow writes."""
+    assert not is_read_only_sql(sql)
+    with pytest.raises(APIValidationError):
+        assert_no_dangerous_write(sql, None)
