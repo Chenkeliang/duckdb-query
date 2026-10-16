@@ -5,164 +5,163 @@
 <h1 align="center">DuckQuery</h1>
 
 <p align="center">
-  <strong>Query local files and remote databases in a single SQL statement</strong><br>
-  Ad-hoc reconciliation, cross-source checks and data exploration — without importing first, and without standing up a warehouse for one analysis.<br>
-  <sub>Write SQL directly, or ask in natural language (NL-to-SQL) — the answer is returned together with reusable SQL.</sub>
+  <strong>Files, databases, and AI in one SQL workbench.</strong><br>
+  Reconcile Excel with your business database, join data sources in one query, or let an agent query before answering.
 </p>
 
 <p align="center">
   <a href="https://github.com/Chenkeliang/duckdb-query/releases/latest"><img src="https://img.shields.io/github/v/release/Chenkeliang/duckdb-query?label=Release&color=F97316" alt="Latest release"></a>
   <a href="LICENSE"><img src="https://img.shields.io/badge/License-MIT-green" alt="MIT License"></a>
-  <a href="https://github.com/Chenkeliang/duckdb-query/stargazers"><img src="https://img.shields.io/github/stars/Chenkeliang/duckdb-query?label=Star&color=F97316" alt="Stars"></a>
+  <a href="https://github.com/Chenkeliang/duckdb-query/stargazers"><img src="https://img.shields.io/github/stars/Chenkeliang/duckdb-query?label=Star&color=F97316" alt="GitHub Stars"></a>
 </p>
 
 <p align="center">
-  <a href="https://github.com/Chenkeliang/duckdb-query/releases/latest"><strong>Download Stable</strong></a>
-  · <a href="https://github.com/Chenkeliang/duckdb-query/releases">All releases</a>
-  · <a href="#get-started">Docker Self-hosting</a>
-  · <a href="README.md">中文</a>
+  <a href="https://github.com/Chenkeliang/duckdb-query/releases/latest"><strong>Download desktop</strong></a>
+  · <a href="#install-and-run">Installation</a>
+  · <a href="#what-you-can-do">Features</a>
+  · <a href="docs/README.md">Docs</a>
+  · <a href="https://chenkeliang.github.io/duckdb-query/">Browser demo</a>
+  · <a href="README.md">简体中文</a>
 </p>
 
-<p align="center">
-  <sub>Your data stays entirely local · AI runs on your own key and model</sub>
-</p>
+DuckQuery is an independently developed, local-first data workbench powered by DuckDB, built for ad-hoc reconciliation, cross-source checks, and exploration. Import files, connect databases, write SQL, build visual queries, chart results, and export—all in one interface, without setting up a warehouse for a single analysis.
 
-<p align="center">
-  <img src="docs/assets/readme/hero-cross-source-en.gif" alt="DuckQuery workbench running a cross-source JOIN between a local DuckDB table and MySQL" width="900">
-</p>
+**AI is optional: querying and analysis work without it.** When you enable AI, you choose the model service and supply your own API key.
 
-## Latest: v2.0.1 (MySQL federation and desktop fixes)
+## Install and Run
 
-v2.0.1 adds MySQL candidate filtering while preserving exact DuckDB comparisons, JOINs, ordering and LIMIT. It fixes slow typed-NULL queries, standalone `mysql_query` connection detection and multiple aliases for one connection. Queries, persistence, async execution and exports share execution boundaries and retain decimal and nanosecond precision.
+### Desktop (Recommended)
 
-Local Docker binds to `127.0.0.1` by default. For shared access, deploy behind an authenticated reverse proxy; `DUCKQUERY_BIND_HOST` changes the bind address, and the app itself does not provide multi-user authentication. URL imports validate each redirect and enforce streaming size limits; configured HTTP(S) proxies are trusted network boundaries.
+The latest release is **[v2.1.0](https://github.com/Chenkeliang/duckdb-query/releases/tag/v2.1.0)**. Features below describe this release; its source is available at the [v2.1.0 tag](https://github.com/Chenkeliang/duckdb-query/tree/v2.1.0).
 
-Default budgets allow up to 4 user-database connections, 4GB spill and a 256MiB disk reserve; engine memory is capped at 75% of detected physical/container memory. Settings → DuckDB database storage shows budgets, checks the latest backup and explains recovery; desktop users can open the validated backup folder. Database restoration is never automatic.
+Choose the installer for your machine from [GitHub Releases](https://github.com/Chenkeliang/duckdb-query/releases/latest):
 
-> [!IMPORTANT]
-> The v2.0.0 Python backend uses DuckDB `v2.0.0-alpha39998` (Python package `1.6.0.dev379`), and new databases explicitly use `v2.0.0` storage. This is [DuckDB's official 2.0 Alpha](https://duckdb.org/2026/09/02/try-duckdb-20-alpha), which DuckDB does not yet mark as production-ready; treat this as a major-version upgrade.
-
-What this release adds:
-
-- handwritten SQL support for `APPROX NEAREST`, recursive CTE `USING KEY`, `FETCH FIRST/NEXT`, VARIANT, and JSON mutation functions;
-- the workbench total-row LIMIT also protects `APPROX NEAREST` across async execution, persistence, export, and MCP;
-- a DuckDB 2.0 dynamic-Pivot fix and structured parser locations rendered directly in the SQL editor;
-- extension metadata that separates UI, `LOAD`, and artifact names; MySQL/PostgreSQL artifacts are verified with autoinstall disabled;
-- healthy bundled Excel is hidden from the optional-extension page, while a missing artifact remains repairable;
-- explicit app, Python package, engine, and storage versions in About; the browser demo reports its independent Wasm engine.
-- a versioned capability contract shared by Agent and MCP; MCP 0.4.0 uses backend SQL classification and falls back safely with older backends. Version 0.4.0 is available from both PyPI and the v2.0.0 release.
-- external DuckDB tables now preserve their catalog in zero/multiple-column pivot modes; storage migration uses durable recovery markers and restores the complete database/WAL set after interruption or any database failure.
-
-Upgrade notes:
-
-1. Back up `data/duckdb/main.db`, `system.db`, and their `.wal` files before upgrading. This release never migrates old files silently at startup.
-   When older files are detected, the major-version dialog can be deferred and reopened from Settings → DuckDB database storage; no persistent top banner is shown.
-2. DuckDB extension binaries are engine-version-specific. Standard builds may download the matching 2.0 MySQL/PostgreSQL/HTTPFS artifacts on first use; offline builds bundle them.
-3. New databases use v2 storage; DuckDB 2.0 can read old files in place. Once explicitly migrated, a v2 file cannot be opened directly by DuckDB 1.5.3—restore the backup or use export/import to downgrade.
-4. The browser demo embeds a separate DuckDB-Wasm engine and does not share the desktop/Docker 2.0 capability set; each UI reports its real engine version.
-5. Legacy lambda syntax `x -> x + 1` is disabled by default; use `lambda x: x + 1`. `CONNECT`, triggers, DML-in-CTE, custom extension repositories, and arbitrary `INSTALL/LOAD` SQL remain disabled.
-
-Full details: [v2.0.1 Release Notes](docs/releases/v2.0.1_en.md) · [v2.0.0 major-version notes](docs/releases/v2.0.0_en.md) · [DuckDB 2.0 technical design](docs/specs/duckdb-2-compatibility-and-capabilities.md)
-
-## Where It Fits
-
-- **DuckDB without the scripting**: create tables, import, join, pivot and export from the interface — no Python session or command line required.
-- **Ad-hoc reconciliation**: compare an Excel / CSV extract against database tables directly, without loading it into a warehouse for a single analysis.
-- **Cross-source analysis**: join and aggregate local Parquet / SQLite with a remote MySQL in a single statement to isolate missing, duplicated or mismatched records.
-- **Numerically reliable answers**: aggregation is executed as SQL inside DuckDB; the model performs no arithmetic, which rules out hallucinated figures.
-- **AI coding tool integration**: expose your connected data sources to Claude Code, Codex or Cursor over MCP, with no intermediate export.
-
-## 30 Seconds to First Result
-
-| Step | What it involves |
-|---|---|
-| **1. Connect the data** | Drop an Excel / CSV file to create a table, or connect MySQL / PostgreSQL / SQLite / DuckDB |
-| **2. Write SQL or ask** | Write the query yourself; or ask in natural language ("paid amount by city last month") and run the drafted SQL once you have reviewed it |
-| **3. Review and export** | Switch between grid and charts, drill into details, export to CSV / Excel / JSON / Parquet |
-
-![AI drafts SQL, it runs, the result becomes a chart](docs/assets/readme/workflow-ai-chart-en.gif)
-
-## Core Capabilities
-
-<table>
-<tr>
-  <th width="13%">Capability</th>
-  <th width="30%">Typical problem</th>
-  <th width="57%">What it provides</th>
-</tr>
-<tr>
-  <td><strong>Files as tables</strong></td>
-  <td>Defining tables or building an ETL step for a one-off analysis</td>
-  <td>Drop CSV / Excel / Parquet / JSON / JSONL to create a table; pasting tabular data, URL import and server directory reading are also supported</td>
-</tr>
-<tr>
-  <td><strong>Federated queries</strong></td>
-  <td>Database tables have to be reconciled against files on your machine</td>
-  <td>Connect MySQL / PostgreSQL / SQLite / DuckDB and join them with local tables in a single SQL statement, with automatic pushdown on large joins</td>
-</tr>
-<tr>
-  <td><strong>Query workflow</strong></td>
-  <td>The work is split across Excel, a SQL client and a BI tool</td>
-  <td>SQL editor, plus visual builders for joins, set operations and pivot tables; long queries run asynchronously and can be cancelled</td>
-</tr>
-<tr>
-  <td><strong>AI data Q&amp;A</strong></td>
-  <td>A figure is needed quickly, without writing the query first</td>
-  <td>Ask in natural language: the agent inspects schemas, verifies values and runs read-only queries before answering, and returns reusable SQL; it also repairs failing statements, explains SQL and suggests charts</td>
-</tr>
-<tr>
-  <td><strong>Results and export</strong></td>
-  <td>Results have to be presented and handed to someone else</td>
-  <td>Virtualized grid, bar / line / area / pie / donut / KPI charts, export to CSV / Excel / JSON / Parquet</td>
-</tr>
-<tr>
-  <td><strong>MCP automation</strong></td>
-  <td>AI coding tools such as Claude Code, Codex, Cursor, OpenCode or Pi need direct access to local data sources</td>
-  <td>25 tools exposed over MCP, with <code>read-only</code> / <code>normal</code> / <code>full</code> permission modes</td>
-</tr>
-</table>
-
-## Get Started
-
-**Desktop**: download **one** installer from [Releases](https://github.com/Chenkeliang/duckdb-query/releases/latest) according to the table below (`.sig`, `.app.tar.gz` and `latest.json` are used by the in-app updater and are not needed).
-
-| Your machine | Standard build (recommended) | Offline build (air-gapped) |
+| System | Standard build | Offline build |
 |---|---|---|
-| **Windows 10 / 11 (64-bit)** | `*_x64-setup.exe` | `*_x64-offline-setup.exe` |
-| **Mac · Apple silicon (M1–M4)** | `*_aarch64.dmg` | `*_aarch64-offline.dmg` |
-| **Mac · Intel** | `*_x64.dmg` | `*_x64-offline.dmg` |
+| Windows 10 / 11 · x64 | `*_x64-setup.exe` | `*_x64-offline-setup.exe` |
+| macOS · Apple silicon | `*_aarch64.dmg` | `*_aarch64-offline.dmg` |
+| macOS · Intel | `*_x64.dmg` | `*_x64-offline.dmg` |
 
-Use the standard build when online (DuckDB extensions are downloaded on first use of MySQL / PostgreSQL); use the `-offline` build on air-gapped machines, where extensions and WebView2 are bundled. No Linux package is provided yet.
+Use the standard build when online; some external database connections download DuckDB extensions on first use. Choose the offline build when extension downloads are unavailable. It bundles the relevant extensions; the Windows offline installer also includes WebView2. Linux desktop installers are not provided; use Docker instead.
 
-> [!WARNING]
-> The installers are **not signed with an Apple or Microsoft certificate**, so the first launch may be blocked. Windows: choose **More info → Run anyway**; macOS: run `xattr -cr /Applications/DuckQuery.app`.
-> How to identify your chip and what the offline build contains: [desktop guide (Chinese)](docs/guide/桌面版使用手册.md).
+`.sig`, `.app.tar.gz`, and `latest.json` are in-app updater assets and do not need a separate download. Installers are not signed with Apple Developer ID or a Microsoft publisher certificate, so your system may show a first-run prompt. See the [desktop guide (Chinese)](docs/guide/桌面版使用手册.md) for details.
 
-**Docker**:
+### Docker Images and Data
+
+Install Docker and Docker Compose, then run:
 
 ```bash
-git clone https://github.com/Chenkeliang/duckdb-query.git
+git clone --branch v2.1.0 --depth 1 https://github.com/Chenkeliang/duckdb-query.git
 cd duckdb-query
-./quick-start.sh   # Web UI → http://localhost:48000 ; API docs → :48001/docs ; data → ./data
+./quick-start.sh
 ```
 
-Configuration and image mirrors: [configuration reference](docs/CONFIGURATION.md).
+- Workbench: [http://localhost:48000](http://localhost:48000)
+- API docs: [http://localhost:48001/docs](http://localhost:48001/docs)
+- Databases and uploaded data live in the host's `./data` directory; configuration and keys live in `./config`. Keep both when backing up or moving an installation.
 
-## MCP
+The script supports configurable build-image mirrors; see the [configuration reference](docs/CONFIGURATION.md). By default, it binds to `127.0.0.1`. For shared access, use an authenticated reverse proxy; the application does not provide multi-user authentication.
 
-Start the desktop app or Docker first, then run:
+### Browser Demo (No Installation)
+
+[Try it online](https://chenkeliang.github.io/duckdb-query/). The demo uses a separate DuckDB-Wasm engine to parse CSV / TSV / Parquet / JSON in your browser without uploading files to the application server. Use desktop or Docker for Excel, external database connections, AI, and extension management. The demo engine is independent of the desktop / Docker backend.
+
+## What You Can Do
+
+| Your task | DuckQuery provides |
+|---|---|
+| Turn scattered files into queryable data | CSV / Excel / Parquet / JSON / JSONL import, table pasting, URL import, and server directory access |
+| Reconcile files against a business database | Cross-source joins with MySQL / PostgreSQL / SQLite / DuckDB, with eligible remote filters optimized |
+| Iterate on a query | SQL tabs, table and column completion, error locations, query history, and SQL bookmarks |
+| Analyze without writing every query | Visual JOIN, set-operation, and pivot builders with generated SQL available to inspect |
+| Keep long queries running | Async tasks, moving active queries to the background, task search, cancellation, retry, and result viewing; moving a query does not run it again |
+| Understand and present results | Virtualized grid, column origins, JSON viewer, bar / line / area / pie / donut / KPI charts, and chart drill-down |
+| Deliver the data | CSV / Excel / JSON / Parquet export, or save as a local DuckDB table |
+| Get AI assistance | Scoped data questions, schema and value inspection, read-only queries, SQL explanation and optimization, error repair, and chart suggestions |
+| Connect AI coding tools | An MCP server for Claude Code, Codex, Cursor, and other clients, with three permission modes |
+
+The workbench supports Chinese / English, dark / light themes, a command palette, and customizable keyboard shortcuts.
+
+## From Data to Results
+
+1. **Connect.** Drop CSV, Excel, Parquet, or JSON files; paste a table; or connect MySQL, PostgreSQL, SQLite, or DuckDB.
+2. **Query or ask.** Write SQL, use the visual JOIN / set-operation / pivot builders, or open the agent and choose the data sources and tables it can access.
+3. **Review and deliver.** Inspect the grid, charts, column origins, and SQL. Export results or save them as local tables. Move an active read-only query to the background and retrieve its result from the task panel later while the backend stays running.
+
+<details>
+<summary>Example: join local files with MySQL in one SQL query</summary>
+
+Join local orders with MySQL customer records to inspect completed orders:
+
+```sql
+SELECT
+  o.order_id,
+  c.customer_name,
+  c.segment,
+  o.amount
+FROM readme_demo_orders AS o
+JOIN mysql_readme_demo_mysql.customers AS c
+  ON o.customer_id = c.customer_id
+WHERE o.status = 'completed'
+ORDER BY o.amount DESC;
+```
+
+These table names and connection aliases come from the [demo dataset](docs/assets/readme/README.md); replace them with your own sources. A query can use local tables and connected external databases together.
+
+The animation below was recorded in **v1.1.4**. It illustrates the cross-source query flow and does not show the current interface.
+
+![Joining local orders with MySQL customer records](docs/assets/readme/hero-cross-source-en.gif)
+
+</details>
+
+## Working with the Agent
+
+Open the AI panel in the query workbench, select the sources and tables it may access, and describe your question. Type `@` to add a table. The input supports multiple lines: `Enter` sends and `Shift+Enter` adds a newline.
+
+- **Ask about data.** The agent inspects schemas, checks real values, and runs row-limited, read-only queries before answering with reusable SQL. The database performs the calculations; you should still review the query's assumptions and results.
+- **Explain or optimize SQL.** Quick actions fill an editable question draft for you to review before sending.
+- **Use returned SQL.** Review the diff before applying a change. Applying updates the editor and does not execute the SQL. If you edit the SQL while waiting, the preview flags the conflict.
+
+Files and local tables are stored on the computer or server running DuckQuery; external databases remain on their original servers. **When AI is enabled, schemas, questions, and limited query results within the selected scope may be sent to your configured model service.** Choose a local or remote model to suit your data requirements.
+
+## Connect AI Tools through MCP
+
+Start DuckQuery desktop or Docker, then run:
 
 ```bash
 uvx duckquery-mcp
-# or: claude mcp add duckquery -- uvx duckquery-mcp
 ```
 
-Permission modes (`read-only` / `normal` / `full`), the Cursor configuration and pointing at a specific backend: [mcp/README.md](mcp/README.md).
+For Claude Code:
 
----
+```bash
+claude mcp add duckquery -- uvx duckquery-mcp
+```
 
-If DuckQuery is useful to you, a ⭐ Star helps others find it. If something is missing or does not fit your workflow, open an [Issue](https://github.com/Chenkeliang/duckdb-query/issues) describing your case.
+| Permission mode | Behavior |
+|---|---|
+| `read-only` | Hides mutating tools and blocks mutation requests |
+| `normal` (default) | Exposes mutating tools; changes require explicit confirmation |
+| `full` | Bypasses MCP confirmation gates; backend restrictions still apply |
 
-Community acknowledgement: Thanks to [LINUX DO](https://linux.do/) for supporting open-source projects.
+See the [MCP documentation](mcp/README.md) for client configuration, backend discovery, and tools. The MCP package is versioned separately from the app.
 
-[Docs index](docs/README.md) · [API contract](docs/API_CONTRACT_FE_BE.md) · [Issues](https://github.com/Chenkeliang/duckdb-query/issues) · [Contributing](CONTRIBUTING.md) · [Code of Conduct](CODE_OF_CONDUCT.md) · [MIT License](LICENSE)
+## Engine and Upgrade Notes
+
+The **latest released app version is v2.1.0**. It updates the workbench layout, active-query backgrounding, SQL completion, and AI SQL diff previews. See the [v2.1.0 release notes](https://github.com/Chenkeliang/duckdb-query/blob/v2.1.0/docs/releases/v2.1.0_en.md).
+
+The app and DuckDB **engine versions** are maintained separately. Release v2.1.0 pins `v2.0.0-alpha39998`, Python package `1.6.0.dev379`, and `v2.0.0` storage for new databases. The engine remains a preview; updating the app does not switch it to a stable DuckDB engine.
+
+Upgrading from DuckQuery 2.0.x introduces no new storage migration. Before upgrading from 1.x, back up `main.db`, `system.db`, and their `.wal` files, then read the [2.0 major-version notes](docs/releases/v2.0.0_en.md). Existing databases are not silently migrated at startup. After an explicit migration to the new storage format, restore a pre-upgrade backup to return to an older version.
+
+Earlier release notes: [v2.0.1](docs/releases/v2.0.1_en.md) · [v2.0.0](docs/releases/v2.0.0_en.md).
+
+Settings → DuckDB database storage shows resource budgets, backup checks, and recovery guidance. Extensions are isolated by engine version; see the [engine upgrade specification](docs/specs/duckdb-2-compatibility-and-capabilities.md) for compatibility details.
+
+## Docs and Contributing
+
+[Docs index](docs/README.md) · [Configuration](docs/CONFIGURATION.md) · [Desktop guide](docs/guide/桌面版使用手册.md) · [Contributing](CONTRIBUTING.md) · [Code of Conduct](CODE_OF_CONDUCT.md)
+
+Found a problem or have a feature request? Open an [Issue](https://github.com/Chenkeliang/duckdb-query/issues) with your use case, app version, and reproduction steps. A Star helps others discover the project.
+
+Thanks to [LINUX DO](https://linux.do/) for supporting open source. DuckQuery is licensed under the [MIT License](LICENSE).
