@@ -115,7 +115,7 @@ export const SaveQueryDialog: React.FC<SaveQueryDialogProps> = ({
                     </Accordion>
                 </div>
                 <DialogFooter>
-                    <Button variant="outline" onClick={() => onOpenChange(false)} disabled={isSaving}>
+                    <Button variant="subtle" onClick={() => onOpenChange(false)} disabled={isSaving}>
                         {t('common.cancel')}
                     </Button>
                     <Button onClick={handleSave} disabled={isSaving || !name.trim()}>

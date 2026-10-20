@@ -48,7 +48,8 @@ export function useAppShell(): UseAppShellReturn {
     const { githubStars } = useGithubStars();
     const { refreshAllData, handleDatabaseConnect, handleDatabaseSaveConfig } = useAppActions();
 
-    const [currentTab, setCurrentTab] = useState('datasource');
+    // 工作台是首页（graphite redesign）：导入 / 连接之后都回到这里
+    const [currentTab, setCurrentTab] = useState('queryworkbench');
 
     const refreshData = useCallback(() => {
         refreshAllData();

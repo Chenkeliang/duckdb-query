@@ -135,8 +135,8 @@ export const JsonCellViewerDialog: React.FC<JsonCellViewerDialogProps> = ({
                 </Select>
                 <Button
                   size="sm"
-                  variant="ghost"
-                  className="h-6 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground"
+                  variant="quiet"
+                  className="h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground"
                   onClick={handleCopyPath}
                 >
                   {pathCopied ? (
@@ -152,8 +152,8 @@ export const JsonCellViewerDialog: React.FC<JsonCellViewerDialogProps> = ({
             )}
             <Button
               size="sm"
-              variant="ghost"
-              className="ml-auto h-6 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground"
+              variant="quiet"
+              className="ml-auto h-7 gap-1 px-2 text-xs text-muted-foreground hover:text-foreground"
               onClick={handleCopy}
             >
               {copied ? (

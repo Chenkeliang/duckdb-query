@@ -489,6 +489,15 @@ def submit_async_query(
         )
 
 
+def _with_snapshot_availability(task: Dict[str, Any]) -> Dict[str, Any]:
+    """Report missing durable results without changing persisted task history."""
+    info = task.get("result_info") or {}
+    if info.get("result_kind") != "snapshot":
+        return task
+    snapshot = os.path.join(EXPORTS_DIR, f"task-{task['task_id']}-snapshot.json")
+    return {**task, "result_info": {**info, "available": os.path.isfile(snapshot)}}
+
+
 @router.get("/api/async-tasks", tags=["Async Tasks"])
 def list_async_tasks(
     limit: int = 20, offset: int = 0, order_by: str = "created_at"
@@ -507,7 +516,7 @@ def list_async_tasks(
     try:
         tasks, total = task_manager.list_tasks(limit, offset, order_by)
         return create_list_response(
-            items=tasks,
+            items=[_with_snapshot_availability(task) for task in tasks],
             total=total,
             message_code=MessageCode.TASKS_RETRIEVED,
             page=offset // limit + 1 if limit > 0 else 1,
@@ -548,7 +557,7 @@ def get_async_task(task_id: str):
             pass
 
         return create_success_response(
-            data={"task": task_dict},
+            data={"task": _with_snapshot_availability(task_dict)},
             message_code=MessageCode.TASK_RETRIEVED,
         )
     except BaseAPIException:
@@ -685,6 +694,9 @@ def retry_async_task(
             )
 
         task_type = payload.get("task_type", "query")
+        was_foreground = task_type == "foreground_query"
+        if was_foreground:
+            task_type = "query"
         datasource = request.datasource_override or payload.get("datasource")
         custom_table_name = request.custom_table_name or payload.get(
             "custom_table_name"
@@ -704,6 +716,9 @@ def retry_async_task(
             )
 
         retry_metadata = dict(payload)
+        if was_foreground:
+            for key in ("request_id", "result_kind", "original_started_at"):
+                retry_metadata.pop(key, None)
         retry_metadata.update(
             {
                 "sql": sql,
@@ -1606,6 +1621,10 @@ def cleanup_old_files():
                 + glob.glob(os.path.join(EXPORTS_DIR, "*.json"))
                 + glob.glob(os.path.join(EXPORTS_DIR, "*.xlsx"))
             ):
+                # Query snapshots are durable task results, not disposable downloads.
+                filename = os.path.basename(file_path)
+                if filename.startswith("task-") and filename.endswith("-snapshot.json"):
+                    continue
                 try:
                     # 检查文件修改时间
                     file_mtime = datetime.fromtimestamp(os.path.getmtime(file_path))
@@ -1622,3 +1641,11 @@ def cleanup_old_files():
     except Exception as e:
         logger.error(f"File cleanup failed: {str(e)}")
         return 0
+
+
+@router.get("/api/async-tasks/{task_id}/result", tags=["Async Tasks"])
+def get_background_query_result(task_id: str):
+    """Return a completed foreground query's exact persisted response."""
+    from core.services.foreground_queries import read_snapshot
+
+    return create_success_response(data=read_snapshot(task_id), message_code=MessageCode.QUERY_EXECUTED)

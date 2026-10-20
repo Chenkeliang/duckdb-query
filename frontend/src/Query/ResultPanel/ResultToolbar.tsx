@@ -87,22 +87,22 @@ export const ResultToolbar: React.FC<ResultToolbarProps> = ({
         {onResultViewChange && (
           <>
             <Button
-              variant="ghost"
+              variant="quiet"
               size="sm"
-              className={`h-8 px-2 ${
-                resultView === 'table' ? 'text-primary hover:text-primary' : ''
-              }`}
+              className="h-7 px-2"
+              aria-pressed={resultView === 'table'}
+              aria-label={t('query.chart.table')}
               onClick={() => onResultViewChange('table')}
             >
               <Table2 className="h-4 w-4 mr-1" />
               <span className="hidden sm:inline">{t('query.chart.table', '表格')}</span>
             </Button>
             <Button
-              variant="ghost"
+              variant="quiet"
               size="sm"
-              className={`h-8 px-2 ${
-                resultView === 'chart' ? 'text-primary hover:text-primary' : ''
-              }`}
+              className="h-7 px-2"
+              aria-pressed={resultView === 'chart'}
+              aria-label={t('query.chart.chart')}
               onClick={() => onResultViewChange('chart')}
             >
               <BarChart3 className="h-4 w-4 mr-1" />
@@ -114,7 +114,7 @@ export const ResultToolbar: React.FC<ResultToolbarProps> = ({
         {gridColumns && gridColumns.length > 0 && (
           <Popover open={columnMenuOpen} onOpenChange={setColumnMenuOpen} modal>
             <PopoverTrigger asChild>
-              <Button variant="ghost" size="sm" className="h-8 px-2" disabled={disabled}>
+              <Button variant="quiet" size="sm" className="h-7 px-2" aria-label={t('query.result.columns')} disabled={disabled}>
                 <Columns className="h-4 w-4 mr-1" />
                 <span className="hidden sm:inline">{t('query.result.columns', '列')}</span>
                 {hiddenCount > 0 && (
@@ -128,7 +128,7 @@ export const ResultToolbar: React.FC<ResultToolbarProps> = ({
             <PopoverContent className="w-56 p-0" align="end" onOpenAutoFocus={(e) => e.preventDefault()}>
               <div className="p-2 space-y-1">
                 <Button
-                  variant="ghost"
+                  variant="quiet"
                   size="sm"
                   className="w-full justify-start h-8 text-xs"
                   onClick={(e) => {
@@ -143,7 +143,7 @@ export const ResultToolbar: React.FC<ResultToolbarProps> = ({
                 </Button>
                 {onResetColumns && (
                   <Button
-                    variant="ghost"
+                    variant="quiet"
                     size="sm"
                     className="w-full justify-start h-8 text-xs"
                     onClick={(e) => {
@@ -161,7 +161,7 @@ export const ResultToolbar: React.FC<ResultToolbarProps> = ({
               <div className="p-2 space-y-1">
                 {onAutoFitColumns && (
                   <Button
-                    variant="ghost"
+                    variant="quiet"
                     size="sm"
                     className="w-full justify-start h-8 text-xs"
                     onClick={(e) => {
@@ -176,7 +176,7 @@ export const ResultToolbar: React.FC<ResultToolbarProps> = ({
                 )}
                 {onFitToWidth && (
                   <Button
-                    variant="ghost"
+                    variant="quiet"
                     size="sm"
                     className="w-full justify-start h-8 text-xs"
                     onClick={(e) => {
@@ -195,7 +195,7 @@ export const ResultToolbar: React.FC<ResultToolbarProps> = ({
                   {gridColumns.map((col) => (
                     <Button
                       key={col.field}
-                      variant="ghost"
+                      variant="quiet"
                       size="sm"
                       className="h-8 w-full justify-start gap-2 px-2 text-xs font-normal"
                       onClick={(e) => {
@@ -222,27 +222,34 @@ export const ResultToolbar: React.FC<ResultToolbarProps> = ({
           <>
             <Separator orientation="vertical" className="h-4" />
             <Button
-              variant="default"
+              variant="quiet"
               size="sm"
-              className="h-8 px-3"
+              className="h-7 px-2"
+              aria-label={t('query.result.importToDuckDB', '导入到 DuckDB')}
+              title={t('query.result.importToDuckDB', '导入到 DuckDB')}
               onClick={onImportToDuckDB}
               disabled={disabled || stats.totalRows === 0}
             >
               <Download className="h-4 w-4 mr-1" />
-              <span>{t('query.result.importToDuckDB', '导入到 DuckDB')}</span>
+              <span className="hidden sm:inline">{t('query.result.importToDuckDB', '导入到 DuckDB')}</span>
             </Button>
           </>
         )}
 
         {hasExport && (
           <DropdownMenu>
-            <DropdownMenuTrigger
-              className="inline-flex items-center justify-center h-8 px-2 rounded-md text-sm font-medium hover:bg-accent hover:text-accent-foreground disabled:pointer-events-none disabled:opacity-50"
-              disabled={disabled || stats.totalRows === 0}
-            >
-              <Download className="h-4 w-4 mr-1" />
-              <span className="hidden sm:inline">{t('query.result.export', '导出')}</span>
-              <ChevronDown className="h-3 w-3 ml-1" />
+            <DropdownMenuTrigger asChild>
+              <Button
+                variant="subtle"
+                size="sm"
+                className="h-7 px-2"
+                aria-label={t('query.result.export')}
+                disabled={disabled || stats.totalRows === 0}
+              >
+                <Download className="h-4 w-4 mr-1" />
+                <span className="hidden sm:inline">{t('query.result.export', '导出')}</span>
+                <ChevronDown className="h-3 w-3 ml-1" />
+              </Button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="end">
               {/* 引导:客户端导出只含表格当前已加载的行(受查询行数上限截断),
@@ -287,9 +294,11 @@ export const ResultToolbar: React.FC<ResultToolbarProps> = ({
 
         {onToggleFullscreen && (
           <Button
-            variant="ghost"
+            variant="quiet"
             size="sm"
-            className="h-8 px-2"
+            className="h-7 px-2"
+            aria-label={t(isFullscreen ? 'common.exitFullscreen' : 'query.chart.fullscreen')}
+            title={t(isFullscreen ? 'common.exitFullscreen' : 'query.chart.fullscreen')}
             onClick={onToggleFullscreen}
             disabled={disabled}
           >

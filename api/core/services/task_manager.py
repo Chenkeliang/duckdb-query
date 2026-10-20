@@ -712,8 +712,15 @@ class TaskManager:
             return bool(rows)
 
         try:
+            task = self.get_task(task_id)
+            metadata = task.metadata if task and isinstance(task.metadata, dict) else {}
+            query_id = (
+                f"sync:{metadata['request_id']}"
+                if task and task.task_type == "foreground_query" and metadata.get("request_id")
+                else task_id
+            )
             success = connection_registry.cancel_if_not_published(
-                task_id, _accept_cancellation
+                query_id, _accept_cancellation
             )
         except Exception as exc:
             logger.warning("Failed to request task cancellation %s: %s", task_id, exc)

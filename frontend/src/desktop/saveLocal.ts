@@ -11,6 +11,7 @@
  */
 
 import { save } from '@tauri-apps/plugin-dialog';
+import { downloadDir, join } from '@tauri-apps/api/path';
 import { writeFile, writeTextFile } from '@tauri-apps/plugin-fs';
 
 const FILTER_NAMES: Record<string, string> = {
@@ -20,7 +21,7 @@ const FILTER_NAMES: Record<string, string> = {
   parquet: 'Parquet',
 };
 
-/** 弹原生存盘对话框;返回用户选定的绝对路径,取消返回 null */
+/** 弹原生存盘对话框，默认系统下载目录；返回选定的绝对路径，取消返回 null。 */
 export async function pickSavePath(
   defaultFileName: string,
   options?: { title?: string }
@@ -28,7 +29,7 @@ export async function pickSavePath(
   const ext = defaultFileName.split('.').pop() ?? '';
   return save({
     title: options?.title,
-    defaultPath: defaultFileName,
+    defaultPath: await join(await downloadDir(), defaultFileName),
     filters: [{ name: FILTER_NAMES[ext] ?? ext.toUpperCase(), extensions: [ext] }],
   });
 }

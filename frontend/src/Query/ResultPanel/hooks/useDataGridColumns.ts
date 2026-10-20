@@ -164,6 +164,8 @@ export function useDataGridColumns({
       const col: ColumnDef = {
         field,
         headerName: field,
+        databaseType: duckdbType,
+        lineage: duckdbColumnTypes?.find((column) => column.name === field)?.lineage,
         width: 120,
         sortable: enableSorting,
         filterable: enableFilters,
@@ -204,7 +206,7 @@ export function useDataGridColumns({
       return col;
     });
     // eslint-disable-next-line react-hooks/exhaustive-deps -- schemaKey/columnTypesKey 指纹
-  }, [fields, schemaKey, columnTypesKey, duckdbTypesKey, columnOverrides, enableFilters, enableSorting]);
+  }, [fields, schemaKey, columnTypesKey, duckdbTypesKey, duckdbColumnTypes, columnOverrides, enableFilters, enableSorting]);
 
   return { columns };
 }

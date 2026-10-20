@@ -22,7 +22,13 @@ export interface LastQuery {
   baseSql?: string;
 }
 
+export interface ColumnLineage {
+  kind: 'direct' | 'derived' | 'constant' | 'unresolved';
+  sources: Array<{ catalog?: string; schema?: string; table: string; column: string }>;
+}
+
 export interface DuckdbColumnType {
+  lineage?: ColumnLineage;
   name: string;
   duckdb_type: string;
 }

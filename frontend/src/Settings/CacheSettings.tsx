@@ -1,3 +1,4 @@
+import { SettingsSectionHeader } from "./SettingsSectionHeader";
 /**
  * 缓存设置组件
  *
@@ -11,9 +12,6 @@ import { Clock, RotateCcw, Trash2 } from 'lucide-react';
 import {
   Card,
   CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -114,20 +112,16 @@ export function CacheSettings() {
   };
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Clock className="h-4 w-4" />
-          {t('settings.cache.title', '缓存设置')}
-        </CardTitle>
-        <CardDescription>
-          {t('settings.cache.description', '配置查询数据的缓存有效期')}
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
+    <Card className="rounded-none border-0 bg-transparent shadow-none">
+      <SettingsSectionHeader
+        icon={Clock}
+        title={<> {t('settings.cache.title', '缓存设置')} </>}
+        description={<> {t('settings.cache.description', '配置查询数据的缓存有效期')} </>}
+      />
+      <CardContent className="px-0 pb-0">
         <div className="space-y-4">
           {/* 缓存有效期配置 */}
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-4">
             <div className="space-y-0.5">
               <Label htmlFor="cache-duration">
                 {t('settings.cache.duration', '缓存有效期')}
@@ -160,21 +154,21 @@ export function CacheSettings() {
           <Separator />
 
           {/* 操作按钮 */}
-          <div className="flex items-center justify-between">
+          <div className="flex flex-wrap items-center justify-between gap-4">
             <p className="text-sm text-muted-foreground">
               {t(
                 'settings.cache.actionsDesc',
                 '重置设置或清除所有缓存数据'
               )}
             </p>
-            <div className="flex gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <Button
-                variant="outline"
+                variant="quiet"
                 size="sm"
                 onClick={handleReset}
                 disabled={settings.cacheDuration === DEFAULT_CACHE_DURATION}
               >
-                <RotateCcw className="mr-2 h-4 w-4" />
+                <RotateCcw className="h-3.5 w-3.5" />
                 {t('settings.cache.reset', '重置为默认值')}
               </Button>
               <Button
@@ -183,7 +177,7 @@ export function CacheSettings() {
                 onClick={handleClearCache}
                 disabled={isLoading}
               >
-                <Trash2 className="mr-2 h-4 w-4" />
+                <Trash2 className="h-3.5 w-3.5" />
                 {t('settings.cache.clear', '清除所有缓存')}
               </Button>
             </div>

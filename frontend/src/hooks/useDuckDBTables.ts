@@ -25,6 +25,8 @@ import { getCacheConfig } from '../utils/cacheConfig';
  */
 
 export interface Table {
+  column_count?: number;
+  created_at?: string;
   name: string;
   type: string;
   row_count?: number;

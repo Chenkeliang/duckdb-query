@@ -46,19 +46,20 @@ export function useKeyboardShortcuts(
     // Skip if disabled or still loading
     if (!enabled || isLoading) return;
     
-    // Skip if user is actively typing in an input (must be focused)
+    // Protect focused text input; the AI action may also be used while editing SQL.
     const target = event.target as HTMLElement;
     const isInputFocused = (
       (target.tagName === 'INPUT' || target.tagName === 'TEXTAREA' || target.isContentEditable) &&
       document.activeElement === target
     );
     
-    if (isInputFocused) {
-      return;
-    }
+    const isAiEditorShortcut = isInputFocused &&
+      (event.metaKey || event.ctrlKey || event.altKey) &&
+      !!target.closest('.cm-editor');
     
     // Check each shortcut
     for (const [actionId, config] of Object.entries(shortcuts)) {
+      if (isInputFocused && (actionId !== 'toggleAiPanel' || !isAiEditorShortcut)) continue;
       if (matchesShortcut(event, config.shortcut)) {
         const handler = handlersRef.current[actionId];
         if (handler) {

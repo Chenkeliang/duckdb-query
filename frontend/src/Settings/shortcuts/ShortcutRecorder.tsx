@@ -99,12 +99,12 @@ export function ShortcutRecorder({
   };
 
   return (
-    <div className="flex items-center gap-2">
+    <div className="flex flex-wrap items-center gap-2">
       {isRecording ? (
         <>
           <div
             className={`
-              px-3 py-1.5 rounded-md border text-sm font-mono min-w-[120px] text-center
+              inline-flex h-7 items-center justify-center px-3 rounded-md border text-sm font-mono min-w-[120px] text-center
               ${conflict 
                 ? 'border-destructive bg-destructive/10 text-destructive' 
                 : 'border-primary bg-primary/10 text-primary'
@@ -123,7 +123,8 @@ export function ShortcutRecorder({
           
           <Button
             size="sm"
-            variant="ghost"
+            variant="subtle"
+            aria-label={t('common.apply')}
             onClick={handleConfirm}
             disabled={!recordedShortcut || !!conflict}
             className="h-7 w-7 p-0"
@@ -133,7 +134,8 @@ export function ShortcutRecorder({
           
           <Button
             size="sm"
-            variant="ghost"
+            variant="quiet"
+            aria-label={t('common.cancel')}
             onClick={handleCancel}
             className="h-7 w-7 p-0"
           >
@@ -143,7 +145,7 @@ export function ShortcutRecorder({
       ) : (
         <button
           onClick={handleStartRecording}
-          className="px-3 py-1.5 rounded-md border border-border bg-muted text-sm font-mono hover:bg-accent transition-colors min-w-[120px] text-center"
+          className="inline-flex h-7 items-center justify-center px-3 rounded-md border border-border bg-muted text-sm font-mono hover:bg-accent transition-colors min-w-[120px] text-center"
         >
           {value}
         </button>

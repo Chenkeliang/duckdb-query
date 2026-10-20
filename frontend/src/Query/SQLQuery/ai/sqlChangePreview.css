@@ -1,0 +1,15 @@
+.sql-change-preview .cm-mergeViewEditors { align-items: stretch; }
+.sql-change-preview .cm-mergeViewEditor { min-width: 0; }
+.sql-change-preview .cm-mergeViewEditor + .cm-mergeViewEditor { border-left: 1px solid hsl(var(--border)); }
+.sql-change-pane-label { padding: 10px 12px; border-bottom: 1px solid hsl(var(--border)); background: hsl(var(--surface)); color: hsl(var(--foreground)); font-size: 13px; font-weight: 500; }
+.sql-change-preview .cm-merge-a .cm-changedLine { background: hsl(var(--error) / 0.08); }
+.sql-change-preview .cm-merge-b .cm-changedLine { background: hsl(var(--success) / 0.08); }
+.sql-change-preview .cm-merge-a .cm-changedText { background: hsl(var(--error) / 0.18); }
+.sql-change-preview .cm-merge-b .cm-changedText { background: hsl(var(--success) / 0.18); }
+.sql-change-preview .cm-merge-a .cm-changedLineGutter { background: hsl(var(--error)); }
+.sql-change-preview .cm-merge-b .cm-changedLineGutter { background: hsl(var(--success)); }
+@media (max-width: 639px) {
+  .sql-change-preview .cm-mergeViewEditors { flex-direction: column; }
+  .sql-change-preview .cm-mergeViewEditor { flex: none; width: 100%; }
+  .sql-change-preview .cm-mergeViewEditor + .cm-mergeViewEditor { border-left: 0; border-top: 1px solid hsl(var(--border)); }
+}

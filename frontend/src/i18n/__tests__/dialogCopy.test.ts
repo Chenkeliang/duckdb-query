@@ -17,7 +17,9 @@ describe('dialog copy contract', () => {
       import: '保存',
     });
     expect(zh.async.dialog).toMatchObject({
-      description: '后台执行 · 结果保存为 DuckDB 表',
+      title: '保存为表',
+      description: '在后台执行查询并创建 DuckDB 表，可以继续编辑。',
+      resultSource: '此结果对应的 SQL · 重新执行保存，不读取或改写当前草稿',
       tableNameHint: '字母或 _ 开头；仅限字母、数字、_；最多 64 字符',
       rowLimitFull: '不限结果行数：移除 SQL 最外层 LIMIT，保留子查询 LIMIT',
       rowLimitLimited: '限制结果行数：保留 SQL 最外层 LIMIT；未设置时限制为 10,000 行',

@@ -32,7 +32,7 @@ DuckQuery is an independently developed, local-first data workbench powered by D
 
 ### Desktop (Recommended)
 
-The latest release is **[v2.1.0](https://github.com/Chenkeliang/duckdb-query/releases/tag/v2.1.0)**. Features below describe this release; its source is available at the [v2.1.0 tag](https://github.com/Chenkeliang/duckdb-query/tree/v2.1.0).
+The latest release is **[v2.1.1](https://github.com/Chenkeliang/duckdb-query/releases/tag/v2.1.1)**. Features below describe this release; its source is available at the [v2.1.1 tag](https://github.com/Chenkeliang/duckdb-query/tree/v2.1.1).
 
 Choose the installer for your machine from [GitHub Releases](https://github.com/Chenkeliang/duckdb-query/releases/latest):
 
@@ -51,7 +51,7 @@ Use the standard build when online; some external database connections download 
 Install Docker and Docker Compose, then run:
 
 ```bash
-git clone --branch v2.1.0 --depth 1 https://github.com/Chenkeliang/duckdb-query.git
+git clone --branch v2.1.1 --depth 1 https://github.com/Chenkeliang/duckdb-query.git
 cd duckdb-query
 ./quick-start.sh
 ```
@@ -73,7 +73,7 @@ The script supports configurable build-image mirrors; see the [configuration ref
 | Turn scattered files into queryable data | CSV / Excel / Parquet / JSON / JSONL import, table pasting, URL import, and server directory access |
 | Reconcile files against a business database | Cross-source joins with MySQL / PostgreSQL / SQLite / DuckDB, with eligible remote filters optimized |
 | Iterate on a query | SQL tabs, table and column completion, error locations, query history, and SQL bookmarks |
-| Analyze without writing every query | Visual JOIN, set-operation, and pivot builders with generated SQL available to inspect |
+| Analyze without writing every query | Visual JOIN, set-operation, and pivot builders, including statistics without grouping fields, with generated SQL available to inspect |
 | Keep long queries running | Async tasks, moving active queries to the background, task search, cancellation, retry, and result viewing; moving a query does not run it again |
 | Understand and present results | Virtualized grid, column origins, JSON viewer, bar / line / area / pie / donut / KPI charts, and chart drill-down |
 | Deliver the data | CSV / Excel / JSON / Parquet export, or save as a local DuckDB table |
@@ -148,13 +148,13 @@ See the [MCP documentation](mcp/README.md) for client configuration, backend dis
 
 ## Engine and Upgrade Notes
 
-The **latest released app version is v2.1.0**. It updates the workbench layout, active-query backgrounding, SQL completion, and AI SQL diff previews. See the [v2.1.0 release notes](https://github.com/Chenkeliang/duckdb-query/blob/v2.1.0/docs/releases/v2.1.0_en.md).
+The **latest released app version is v2.1.1**. It adds pivot statistics without grouping fields and retains the v2.1.0 workbench layout, active-query backgrounding, SQL completion, and AI SQL diff previews. See the [v2.1.1 release notes](https://github.com/Chenkeliang/duckdb-query/blob/v2.1.1/docs/releases/v2.1.1_en.md).
 
-The app and DuckDB **engine versions** are maintained separately. Release v2.1.0 pins `v2.0.0-alpha39998`, Python package `1.6.0.dev379`, and `v2.0.0` storage for new databases. The engine remains a preview; updating the app does not switch it to a stable DuckDB engine.
+The app and DuckDB **engine versions** are maintained separately. Release v2.1.1 pins `v2.0.0-alpha39998`, Python package `1.6.0.dev379`, and `v2.0.0` storage for new databases. The engine remains a preview; updating the app does not switch it to a stable DuckDB engine.
 
 Upgrading from DuckQuery 2.0.x introduces no new storage migration. Before upgrading from 1.x, back up `main.db`, `system.db`, and their `.wal` files, then read the [2.0 major-version notes](docs/releases/v2.0.0_en.md). Existing databases are not silently migrated at startup. After an explicit migration to the new storage format, restore a pre-upgrade backup to return to an older version.
 
-Earlier release notes: [v2.0.1](docs/releases/v2.0.1_en.md) · [v2.0.0](docs/releases/v2.0.0_en.md).
+Earlier release notes: [v2.1.0](docs/releases/v2.1.0_en.md) · [v2.0.1](docs/releases/v2.0.1_en.md) · [v2.0.0](docs/releases/v2.0.0_en.md).
 
 Settings → DuckDB database storage shows resource budgets, backup checks, and recovery guidance. Extensions are isolated by engine version; see the [engine upgrade specification](docs/specs/duckdb-2-compatibility-and-capabilities.md) for compatibility details.
 

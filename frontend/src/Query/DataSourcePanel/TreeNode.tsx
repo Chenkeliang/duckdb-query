@@ -15,6 +15,7 @@ interface TreeNodeProps {
   onClick?: () => void;
   onContextMenu?: (e: React.MouseEvent) => void;
   children?: React.ReactNode;
+  actions?: React.ReactNode;
 }
 
 /**
@@ -58,6 +59,7 @@ export const TreeNode: React.FC<TreeNodeProps> = ({
   onClick,
   onContextMenu,
   children,
+  actions,
 }) => {
   const handleClick = (e: React.MouseEvent) => {
     e.stopPropagation();
@@ -88,7 +90,7 @@ export const TreeNode: React.FC<TreeNodeProps> = ({
         className={`
           flex items-center h-8 cursor-pointer
           ${getIndentClass(level)}
-          ${isSelected ? 'bg-primary/10 text-primary' : 'hover:bg-surface-hover'}
+          ${isSelected ? 'bg-primary/10 text-primary' : 'hover:bg-surface-hover has-[[data-tree-actions]:hover]:bg-transparent'}
           transition-colors duration-fast
           rounded-lg
         `}
@@ -125,6 +127,7 @@ export const TreeNode: React.FC<TreeNodeProps> = ({
 
         {/* 标签 */}
         <span className="flex-1 text-sm truncate">{label}</span>
+        {actions && <div data-tree-actions className="flex shrink-0 items-center" onClick={(event) => event.stopPropagation()}>{actions}</div>}
 
         {/* 徽章 */}
         {badge !== undefined && (

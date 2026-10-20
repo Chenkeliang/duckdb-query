@@ -4,6 +4,7 @@ import {
   executeDuckDBSQL,
   executeFederatedQuery,
   cancelSyncQuery,
+  moveQueryToBackground,
   type ColumnInfo,
 } from "@/api";
 import { showSuccessToast, showErrorToast } from "@/utils/toastHelpers";
@@ -48,6 +49,8 @@ export interface JoinRestoreRequest {
 }
 
 export interface UseQueryWorkspaceReturn {
+  activeExecution: { requestId: string; key: string; startedAt: number } | null;
+  moveToBackground: () => Promise<string | undefined>;
   selectedTables: Record<string, SelectedTable[]>;
   currentTab: string;
   queryResults: QueryResult | null;
@@ -63,6 +66,7 @@ export interface UseQueryWorkspaceReturn {
   activeResultTabId: string | null;
   singleResultSlotLabel: string;
   handleTableSelect: (table: SelectedTable) => void;
+  restoreSqlTables: (tables: SelectedTable[]) => void;
   handleRemoveTable: (table: SelectedTable) => void;
   handleTabChange: (tab: string) => void;
   handleQueryExecute: (
@@ -162,6 +166,7 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
   } | null>(null);
   const [singleResultSlotLabel, setSingleResultSlotLabel] = useState('');
 
+  const [activeExecution, setActiveExecution] = useState<{ requestId: string; key: string; startedAt: number } | null>(null);
   const [isResultLoading, setIsResultLoading] = useState(false);
 
   const [isCancelling, setIsCancelling] = useState(false);
@@ -412,6 +417,7 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
     ) => {
       const querySource: TableSource = source || { type: 'duckdb' };
       const { requestId, key, signal } = beginQueryExecution(options);
+      setActiveExecution({ requestId, key, startedAt: Date.now() });
       // 该请求所属槽位是否已被更新的请求取代（同一 Tab 又刷新了一次）——只按本
       // 槽位判断，不看全局，这样其它 Tab 的并发请求不会误伤本请求（回归 #10）
       const isStale = () => latestRequestByKeyRef.current.get(key) !== requestId;
@@ -465,10 +471,32 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
         setLastFailure({ sql, source: querySource, errorMessage: (error as Error).message });
 
         showErrorToast(t, undefined, t('query.error', { message: (error as Error).message }));
+      } finally {
+        setActiveExecution((current) => current?.requestId === requestId ? null : current);
       }
     },
     [beginQueryExecution, commitSuccessfulResult, retainQueryResults, runSqlQuery, t, updateActiveTabResult]
   );
+
+  const moveToBackground = useCallback(async () => {
+    if (!activeExecution) return undefined;
+    const { requestId, key } = activeExecution;
+    const { task_id } = await moveQueryToBackground(requestId);
+    // Only detach the adopted slot. Abort the HTTP wait, not the server query.
+    if (latestRequestByKeyRef.current.get(key) === requestId) {
+      latestRequestByKeyRef.current.delete(key);
+      abortByKeyRef.current.get(key)?.abort();
+      abortByKeyRef.current.delete(key);
+      setIsResultLoading(false);
+      setSingleResult((current) => current ? { ...current, loading: false } : current);
+      if (key.startsWith('tab:')) {
+        setResultTabs((current) => current.map((tab) => tab.id === key.slice(4)
+          ? { ...tab, result: { ...tab.result, loading: false } } : tab));
+      }
+    }
+    setActiveExecution((current) => current?.requestId === requestId ? null : current);
+    return task_id;
+  }, [activeExecution]);
 
   const handleQueryExecute = useCallback(
     async (sql: string, source?: TableSource, options?: { baseSql?: string }) => {
@@ -594,6 +622,10 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
 
   const toggleResultTabPinById = useCallback((id: string) => {
     setResultTabs((prev) => toggleResultTabPin(prev, id));
+  }, []);
+
+  const restoreSqlTables = useCallback((tables: SelectedTable[]) => {
+    setSelectedTables((prev) => ({ ...prev, sql: tables }));
   }, []);
 
   const handleTableSelect = useCallback(
@@ -769,6 +801,8 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
   );
 
   return {
+    activeExecution,
+    moveToBackground,
     selectedTables,
     currentTab,
     queryResults,
@@ -779,6 +813,7 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
     activeResultTabId,
     singleResultSlotLabel,
     handleTableSelect,
+    restoreSqlTables,
     handleRemoveTable,
     handleTabChange,
     handleQueryExecute,

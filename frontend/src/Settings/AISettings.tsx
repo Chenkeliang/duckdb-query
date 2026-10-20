@@ -1,3 +1,4 @@
+import { SettingsSectionHeader } from "./SettingsSectionHeader";
 /**
  * AI / 模型 设置
  *
@@ -12,9 +13,6 @@ import { Sparkles, Plus, Trash2, Plug, Loader2, ChevronDown } from 'lucide-react
 import {
   Card,
   CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { Input } from '@/components/ui/input';
@@ -132,24 +130,15 @@ export function AISettings() {
   };
 
   return (
-    <Card id="settings-ai">
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div className="flex items-start gap-3">
-            <span className="flex h-9 w-9 shrink-0 items-center justify-center rounded-lg bg-primary/15">
-              <Sparkles className="h-[18px] w-[18px] text-primary" />
-            </span>
-            <div>
-              <CardTitle>{t('settings.ai.title', 'AI / 模型')}</CardTitle>
-              <CardDescription>
-                {t(
+    <Card id="settings-ai" className="rounded-none border-0 bg-transparent shadow-none">
+      <SettingsSectionHeader
+        icon={Sparkles}
+        title={<> {t('settings.ai.title', 'AI / 模型')} </>}
+        description={<> {t(
                   'settings.ai.description',
                   '配置 AI 供应商（云端或本地）。密钥仅存于服务端，默认关闭。'
-                )}
-              </CardDescription>
-            </div>
-          </div>
-          <div className="flex items-center gap-2 shrink-0">
+                )} </>}
+        actions={<div className="flex items-center gap-2 shrink-0">
             <span className="text-sm text-muted-foreground">
               {t('settings.ai.enable', '启用 AI')}
             </span>
@@ -159,10 +148,9 @@ export function AISettings() {
               aria-label={t('settings.ai.enable', '启用 AI')}
               className="border border-border data-[state=unchecked]:bg-muted"
             />
-          </div>
-        </div>
-      </CardHeader>
-      <CardContent className="space-y-4">
+          </div>}
+      />
+      <CardContent className="space-y-4 px-0 pb-0">
         {s.providers.length === 0 && (
           <EmptyState
             compact
@@ -178,17 +166,16 @@ export function AISettings() {
             <div
               key={p.id}
               className={cn(
-                'rounded-xl border bg-background transition-all',
-                isDefault && 'border-primary/45 ring-1 ring-primary/15',
+                '@container rounded-lg border border-border bg-background transition-colors',
                 !p.enabled && !isDefault && 'opacity-60'
               )}
             >
               {/* 行头：始终可见的紧凑列表行 */}
-              <div className="flex items-center gap-3 p-3">
+              <div className="flex flex-wrap items-center gap-3 p-3">
                 <button
                   type="button"
                   onClick={() => setExpandedId(isOpen ? null : p.id)}
-                  className="flex items-center gap-3 flex-1 min-w-0 text-left"
+                  className="flex min-h-8 min-w-0 basis-full flex-wrap items-center gap-2 text-left @2xl:basis-0 @2xl:flex-1"
                   aria-expanded={isOpen}
                 >
                   <ChevronDown
@@ -210,10 +197,10 @@ export function AISettings() {
                     </span>
                   )}
                 </button>
-                <div className="flex items-center gap-2.5 shrink-0">
+                <div className="flex w-full flex-wrap items-center justify-end gap-2 @2xl:w-auto @2xl:shrink-0">
                   {!isDefault && (
                     <Button
-                      variant="ghost"
+                      variant="subtle"
                       size="sm"
                       onClick={() =>
                         update({
@@ -249,7 +236,7 @@ export function AISettings() {
                     className="border border-border data-[state=unchecked]:bg-muted"
                   />
                   <Button
-                    variant="outline"
+                    variant="subtle"
                     size="sm"
                     disabled={testingId === p.id}
                     onClick={() => handleTest(p.id)}
@@ -261,7 +248,7 @@ export function AISettings() {
                     )}
                     <span className="ml-1">{t('settings.ai.test', '测试')}</span>
                   </Button>
-                  <Button variant="ghost" size="sm" onClick={() => removeProvider(p.id)}>
+                  <Button variant="quiet" size="sm" aria-label={t('actions.delete')} onClick={() => removeProvider(p.id)}>
                     <Trash2 className="h-4 w-4 text-destructive" />
                   </Button>
                 </div>
@@ -270,8 +257,8 @@ export function AISettings() {
               {/* 编辑体：展开才显示 */}
               {isOpen && (
               <div className="border-t p-3 space-y-3">
-              <div className="space-y-1">
-                <Label className="text-xs">{t('settings.ai.providerName', '供应商名称')}</Label>
+              <div className="flex min-w-0 flex-col gap-1">
+                <Label className="min-h-4 text-xs leading-4">{t('settings.ai.providerName', '供应商名称')}</Label>
                 <Input
                   value={p.name ?? ''}
                   onChange={(e) => updateProvider(p.id, { name: e.target.value })}
@@ -279,9 +266,9 @@ export function AISettings() {
                   className="max-w-[280px]"
                 />
               </div>
-              <div className="grid grid-cols-2 gap-3">
-              <div className="space-y-1">
-                <Label className="text-xs">{t('settings.ai.type', '类型')}</Label>
+              <div className="grid grid-cols-1 items-start gap-3 sm:grid-cols-2">
+              <div className="flex min-w-0 flex-col gap-1">
+                <Label className="min-h-4 text-xs leading-4">{t('settings.ai.type', '类型')}</Label>
                 <Select
                   value={p.type}
                   onValueChange={(v) => updateProvider(p.id, { type: v as AiProviderType })}
@@ -298,8 +285,8 @@ export function AISettings() {
                   </SelectContent>
                 </Select>
               </div>
-              <div className="space-y-1">
-                <Label className="text-xs">{t('settings.ai.models', '模型（逗号分隔）')}</Label>
+              <div className="flex min-w-0 flex-col gap-1">
+                <Label className="min-h-4 text-xs leading-4">{t('settings.ai.models', '模型（逗号分隔）')}</Label>
                 <Input
                   value={p.models.join(', ')}
                   onChange={(e) =>
@@ -313,8 +300,8 @@ export function AISettings() {
               {(p.type === 'ollama' ||
                 p.type === 'openai_compatible' ||
                 p.type === 'anthropic_compatible') && (
-                <div className="space-y-1">
-                  <Label className="text-xs">{t('settings.ai.baseUrl', '接口地址')}</Label>
+                <div className="flex min-w-0 flex-col gap-1">
+                  <Label className="min-h-4 text-xs leading-4">{t('settings.ai.baseUrl', '接口地址')}</Label>
                   <Input
                     value={p.base_url ?? ''}
                     onChange={(e) => updateProvider(p.id, { base_url: e.target.value || null })}
@@ -344,8 +331,8 @@ export function AISettings() {
                   )}
                 </div>
               )}
-              <div className="space-y-1">
-                <Label className="text-xs">{t('settings.ai.apiKey', 'API Key')}</Label>
+              <div className="flex min-w-0 flex-col gap-1">
+                <Label className="min-h-4 text-xs leading-4">{t('settings.ai.apiKey', 'API Key')}</Label>
                 <Input
                   type="password"
                   value={p.api_key ?? ''}
@@ -367,7 +354,7 @@ export function AISettings() {
         })}
 
         <div className="flex items-center justify-between">
-          <Button variant="outline" size="sm" onClick={addProvider}>
+          <Button variant="subtle" size="sm" onClick={addProvider}>
             <Plus className="h-4 w-4 mr-1" />
             {t('settings.ai.addProvider', '新增供应商')}
           </Button>

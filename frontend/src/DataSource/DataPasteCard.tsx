@@ -22,6 +22,7 @@ import { pasteData } from "@/api";
 import { useSmartParse } from "@/hooks/useSmartParse";
 
 interface DataPasteCardProps {
+  initialText?: string;
   onDataSourceSaved?: (dataSource: any) => void;
 }
 
@@ -31,10 +32,10 @@ interface ParsedDataState {
   columns: number;
 }
 
-const DataPasteCard: React.FC<DataPasteCardProps> = ({ onDataSourceSaved }) => {
+const DataPasteCard: React.FC<DataPasteCardProps> = ({ onDataSourceSaved, initialText = "" }) => {
   const { t } = useTranslation("common");
   const queryClient = useQueryClient();
-  const [pastedData, setPastedData] = useState("");
+  const [pastedData, setPastedData] = useState(initialText);
   const [parsedData, setParsedData] = useState<ParsedDataState | null>(null);
   const [tableName, setTableName] = useState("");
   const [columnNames, setColumnNames] = useState<string[]>([]);
@@ -50,6 +51,13 @@ const DataPasteCard: React.FC<DataPasteCardProps> = ({ onDataSourceSaved }) => {
     isLoading,
     error: parseError
   } = useSmartParse();
+
+  useEffect(() => {
+    if (initialText) {
+      setPastedData(initialText);
+      parse(initialText);
+    }
+  }, [initialText, parse]);
 
   const [delimiter, setDelimiter] = useState(","); // 仅用于手动覆盖
   const [hasHeader, setHasHeader] = useState(false);
@@ -317,7 +325,7 @@ const DataPasteCard: React.FC<DataPasteCardProps> = ({ onDataSourceSaved }) => {
                 ? t("page.datasource.paste.parsing")
                 : t("page.datasource.paste.btnParse")}
             </Button>
-            <Button variant="outline" onClick={clearForm}>
+            <Button variant="quiet" onClick={clearForm}>
               {t("page.datasource.paste.btnClear")}
             </Button>
 

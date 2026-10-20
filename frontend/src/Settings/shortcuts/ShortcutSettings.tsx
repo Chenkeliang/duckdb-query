@@ -1,10 +1,11 @@
+import { SettingsSectionHeader } from "../SettingsSectionHeader";
 /**
  * ShortcutSettings - Settings page component for managing keyboard shortcuts
  */
 
 import { useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { useShortcuts } from './ShortcutContext';
 import { ShortcutRecorder } from './ShortcutRecorder';
@@ -77,8 +78,8 @@ export function ShortcutSettings() {
 
   if (isLoading) {
     return (
-      <Card>
-        <CardContent className="py-8 text-center text-muted-foreground">
+      <Card className="rounded-none border-0 bg-transparent shadow-none">
+        <CardContent className="py-8 text-center text-muted-foreground px-0 pb-0">
           {t('common.loading', 'Loading...')}
         </CardContent>
       </Card>
@@ -86,28 +87,22 @@ export function ShortcutSettings() {
   }
 
   return (
-    <Card>
-      <CardHeader>
-        <div className="flex items-center justify-between">
-          <div className="flex items-center gap-2">
-            <Keyboard className="h-5 w-5" />
-            <CardTitle>{t('shortcuts.title', 'Keyboard Shortcuts')}</CardTitle>
-          </div>
-          <Button
-            variant="outline"
+    <Card className="rounded-none border-0 bg-transparent shadow-none">
+      <SettingsSectionHeader
+        icon={Keyboard}
+        title={<> {t('shortcuts.title', 'Keyboard Shortcuts')} </>}
+        description={<> {t('shortcuts.description', 'Customize keyboard shortcuts. Click on a shortcut to change it.')} </>}
+        actions={<Button
+            variant="quiet"
             size="sm"
             onClick={handleResetAll}
             className="gap-1"
           >
             <RotateCcw className="h-4 w-4" />
             {t('shortcuts.resetAll', 'Reset All')}
-          </Button>
-        </div>
-        <CardDescription>
-          {t('shortcuts.description', 'Customize keyboard shortcuts. Click on a shortcut to change it.')}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-6">
+          </Button>}
+      />
+      <CardContent className="space-y-6 px-0 pb-0">
         {Object.entries(groupedShortcuts).map(([category, categoryShortcuts]) => (
           <div key={category} className="space-y-3">
             <h3 className="text-sm font-medium text-muted-foreground">
@@ -152,8 +147,8 @@ function ShortcutItem({
   const { t } = useTranslation('common');
 
   return (
-    <div className="flex items-center justify-between py-2 px-3 rounded-md hover:bg-muted/50 transition-colors">
-      <div className="flex items-center gap-2">
+    <div className="flex flex-wrap items-center justify-between gap-3 py-2 px-0 rounded-md hover:bg-muted/50 transition-colors">
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
         {isCustomized && (
           <Circle className="h-2 w-2 fill-primary text-primary" />
         )}
@@ -164,7 +159,7 @@ function ShortcutItem({
           </span>
         )}
       </div>
-      <div className="flex items-center gap-2">
+      <div className="flex min-w-0 flex-wrap items-center gap-2">
         <ShortcutRecorder
           value={config.shortcut}
           onChange={onUpdate}
@@ -173,7 +168,7 @@ function ShortcutItem({
         />
         {isCustomized && (
           <Button
-            variant="ghost"
+            variant="quiet"
             size="sm"
             onClick={onReset}
             className="h-7 w-7 p-0"

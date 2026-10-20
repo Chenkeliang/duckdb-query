@@ -365,14 +365,14 @@ const ExcelSheetSelector: React.FC<ExcelSheetSelectorProps> = ({
               {/* 批量操作按钮 */}
               <div className="flex gap-2">
                 <Button
-                  variant="outline"
+                  variant="quiet"
                   size="sm"
                   onClick={() => toggleAll(true)}
                 >
                   {t('page.datasource.excelSheet.selectAll')}
                 </Button>
                 <Button
-                  variant="outline"
+                  variant="quiet"
                   size="sm"
                   onClick={() => toggleAll(false)}
                 >
@@ -544,7 +544,7 @@ const ExcelSheetSelector: React.FC<ExcelSheetSelectorProps> = ({
         </div>
 
         <DialogFooter>
-          <Button variant="outline" onClick={onClose} disabled={submitting}>
+          <Button variant="subtle" onClick={onClose} disabled={submitting}>
             {t('page.datasource.excelSheet.cancel')}
           </Button>
           <Button onClick={handleImport} disabled={submitting || loading}>

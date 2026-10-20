@@ -9,12 +9,13 @@ import {
   Database,
   Feather,
   Trash2,
-  Play,
+  Pencil,
   RefreshCw,
   Loader2,
   List,
   LayoutGrid,
   Plus,
+  Table2,
 } from "lucide-react";
 import {
   useDatabaseConnections,
@@ -35,8 +36,10 @@ import {
 
 interface SavedConnectionsListProps {
   onSelect: (config: DatabaseConnection) => void;
+  onBrowse?: (config: DatabaseConnection) => void;
   /** Open the drawer to create a new connection. */
   onNew?: () => void;
+  overview?: boolean;
 }
 
 type ViewMode = "list" | "card";
@@ -71,7 +74,7 @@ function connMeta(c: DatabaseConnection): { primary: string; secondary: string }
   return { primary: hostPort, secondary: dbUser };
 }
 
-const SavedConnectionsList = ({ onSelect, onNew }: SavedConnectionsListProps) => {
+const SavedConnectionsList = ({ onSelect, onBrowse, onNew, overview = false }: SavedConnectionsListProps) => {
   const { t } = useTranslation("common");
   const queryClient = useQueryClient();
   const { connections: configs, isLoading: loading, refresh } = useDatabaseConnections();
@@ -127,7 +130,7 @@ const SavedConnectionsList = ({ onSelect, onNew }: SavedConnectionsListProps) =>
     const Icon = meta.icon;
     return (
       <span
-        className={cn("grid place-items-center rounded-[10px] shrink-0", meta.bg, meta.color)}
+        className="grid shrink-0 place-items-center rounded-md border border-border text-muted-foreground"
         style={{ width: size, height: size }}
       >
         <Icon style={{ width: size * 0.5, height: size * 0.5 }} strokeWidth={1.7} />
@@ -145,13 +148,10 @@ const SavedConnectionsList = ({ onSelect, onNew }: SavedConnectionsListProps) =>
   );
 
   const ConnectBtn = ({ c }: { c: DatabaseConnection }) => (
-    <button
-      onClick={() => onSelect(c)}
-      className="inline-flex items-center gap-1.5 rounded-lg border border-primary/35 bg-primary/10 px-3 py-1.5 text-xs font-semibold text-primary transition-colors hover:bg-primary hover:text-white"
-    >
-      <Play className="h-3 w-3 fill-current" />
-      {t("page.datasource.list.connect")}
-    </button>
+    <Button variant="quiet" size="sm" onClick={() => onSelect(c)}>
+      <Pencil strokeWidth={1.5} className="h-3.5 w-3.5" />
+      {t("page.datasource.list.editConnection")}
+    </Button>
   );
 
   const DeleteBtn = ({ c }: { c: DatabaseConnection }) => (
@@ -163,17 +163,17 @@ const SavedConnectionsList = ({ onSelect, onNew }: SavedConnectionsListProps) =>
       title={t("actions.delete")}
       className="grid h-7 w-7 place-items-center rounded-md text-muted-foreground/70 transition-colors hover:bg-surface-hover hover:text-error"
     >
-      <Trash2 className="h-[15px] w-[15px]" />
+      <Trash2 className="h-3.5 w-3.5" />
     </button>
   );
 
   return (
     <div className="font-ds-sans">
       {/* header: title + count + view toggle + refresh */}
-      <div className="mb-4 flex items-center gap-3">
-        <h3 className="text-base font-bold tracking-tight text-foreground">
+      <div className="mb-4 flex flex-wrap items-center gap-3">
+        <h2 className="text-base font-semibold tracking-tight text-foreground">
           {t("page.datasource.list.title")}
-        </h3>
+        </h2>
         <span className="font-ds-mono text-xs text-muted-foreground">{configs.length}</span>
         <div className="flex-1" />
         {!isEmpty && (
@@ -195,13 +195,13 @@ const SavedConnectionsList = ({ onSelect, onNew }: SavedConnectionsListProps) =>
             ))}
           </div>
         )}
-        <Button variant="ghost" size="sm" onClick={() => refresh()} title={t("actions.refresh")}>
+        {!overview && <Button variant="quiet" size="sm" onClick={() => refresh()} title={t("actions.refresh")}>
           <RefreshCw className={cn("h-4 w-4", loading && "animate-spin")} />
-        </Button>
-        <Button size="sm" onClick={() => onNew?.()}>
+        </Button>}
+        {!overview && <Button size="sm" onClick={() => onNew?.()}>
           <Plus className="mr-1 h-4 w-4" />
           {t("page.datasource.list.newConnection", { defaultValue: "新建连接" })}
-        </Button>
+        </Button>}
       </div>
 
       {/* ===== EMPTY STATE ===== */}
@@ -209,7 +209,7 @@ const SavedConnectionsList = ({ onSelect, onNew }: SavedConnectionsListProps) =>
         <EmptyState
           variant="dashed"
           icon={Database}
-          className="bg-surface py-16"
+          className="bg-surface py-8"
           title={t("page.datasource.list.empty", { defaultValue: "还没有保存的连接" })}
           action={
             <Button size="sm" onClick={() => onNew?.()}>
@@ -228,24 +228,25 @@ const SavedConnectionsList = ({ onSelect, onNew }: SavedConnectionsListProps) =>
             return (
               <div
                 key={`${c.type}-${c.id}`}
-                onClick={() => onSelect(c)}
+                onClick={onBrowse ? undefined : () => onSelect(c)}
                 className={cn(
-                  "flex cursor-pointer items-center gap-4 px-4 py-3 transition-colors hover:bg-surface-hover",
+                  "flex flex-wrap items-center gap-3 px-4 py-3 sm:flex-nowrap transition-colors hover:bg-surface-hover",
+                  !onBrowse && "cursor-pointer",
                   i !== configs.length - 1 && "border-b border-border"
                 )}
               >
                 <Tile c={c} size={34} />
-                <div className="w-[168px] shrink-0">
+                <div className="w-40 shrink-0">
                   <div className="truncate text-sm font-semibold text-foreground">{c.name || c.id}</div>
                   <div className="text-xs text-muted-foreground">{TYPE_META[c.type]?.label}</div>
                 </div>
-                <div className="min-w-0 flex-1 truncate text-[13px]">
+                <div className="order-3 w-full min-w-0 truncate text-sm sm:order-none sm:w-auto sm:flex-1">
                   <span className="text-foreground/80">{meta.secondary || meta.primary}</span>
                   {meta.secondary && (
                     <span className="ml-2.5 text-muted-foreground/70">{meta.primary}</span>
                   )}
                 </div>
-                <div className="flex w-[84px] shrink-0 items-center gap-2 text-xs text-muted-foreground">
+                <div className="flex w-20 shrink-0 items-center gap-2 text-xs text-muted-foreground">
                   <Dot c={c} />
                   {statusLabel(c)}
                 </div>
@@ -254,6 +255,7 @@ const SavedConnectionsList = ({ onSelect, onNew }: SavedConnectionsListProps) =>
                   onClick={(e) => e.stopPropagation()}
                 >
                   <DeleteBtn c={c} />
+                  {onBrowse && <Button variant="quiet" size="sm" onClick={() => onBrowse(c)}><Table2 className="size-3.5" />{t('page.datasource.flow.viewTables')}</Button>}
                   <ConnectBtn c={c} />
                 </div>
               </div>
@@ -268,8 +270,8 @@ const SavedConnectionsList = ({ onSelect, onNew }: SavedConnectionsListProps) =>
             return (
               <div
                 key={`${c.type}-${c.id}`}
-                onClick={() => onSelect(c)}
-                className="group cursor-pointer rounded-xl border border-border bg-surface p-4 shadow-xs transition-all hover:-translate-y-0.5 hover:border-border-strong hover:shadow-lg"
+                onClick={onBrowse ? undefined : () => onSelect(c)}
+                className={cn("group rounded-lg border border-border bg-surface p-4 transition-colors hover:border-border-strong", !onBrowse && "cursor-pointer")}
               >
                 <div className="mb-3.5 flex items-center gap-2.5">
                   <Tile c={c} />
@@ -297,6 +299,7 @@ const SavedConnectionsList = ({ onSelect, onNew }: SavedConnectionsListProps) =>
                 >
                   <div className="flex-1" />
                   <DeleteBtn c={c} />
+                  {onBrowse && <Button variant="quiet" size="sm" onClick={() => onBrowse(c)}><Table2 className="size-3.5" />{t('page.datasource.flow.viewTables')}</Button>}
                   <ConnectBtn c={c} />
                 </div>
               </div>
@@ -316,7 +319,7 @@ const SavedConnectionsList = ({ onSelect, onNew }: SavedConnectionsListProps) =>
             </DialogDescription>
           </DialogHeader>
           <DialogFooter>
-            <Button variant="outline" onClick={() => setDeleteDialogOpen(false)} disabled={isDeleting}>
+            <Button variant="subtle" onClick={() => setDeleteDialogOpen(false)} disabled={isDeleting}>
               {t("actions.cancel")}
             </Button>
             <Button variant="destructive" onClick={handleDeleteConfirm} disabled={isDeleting}>

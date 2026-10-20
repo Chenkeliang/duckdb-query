@@ -32,7 +32,7 @@ DuckQuery 是独立开发、基于 DuckDB 的本地优先数据工作台，适�
 
 ### 桌面版（推荐）
 
-最新发布版本为 **[v2.1.0](https://github.com/Chenkeliang/duckdb-query/releases/tag/v2.1.0)**。本文功能说明以该发布版为准；对应源码见 [v2.1.0 标签](https://github.com/Chenkeliang/duckdb-query/tree/v2.1.0)。
+最新发布版本为 **[v2.1.1](https://github.com/Chenkeliang/duckdb-query/releases/tag/v2.1.1)**。本文功能说明以该发布版为准；对应源码见 [v2.1.1 标签](https://github.com/Chenkeliang/duckdb-query/tree/v2.1.1)。
 
 从 [GitHub Releases](https://github.com/Chenkeliang/duckdb-query/releases/latest) 选择与你的电脑匹配的安装包：
 
@@ -51,7 +51,7 @@ DuckQuery 是独立开发、基于 DuckDB 的本地优先数据工作台，适�
 先安装 Docker 与 Docker Compose，然后运行：
 
 ```bash
-git clone --branch v2.1.0 --depth 1 https://github.com/Chenkeliang/duckdb-query.git
+git clone --branch v2.1.1 --depth 1 https://github.com/Chenkeliang/duckdb-query.git
 cd duckdb-query
 ./quick-start.sh
 ```
@@ -73,7 +73,7 @@ cd duckdb-query
 | 把散落的文件变成可查询的数据 | CSV / Excel / Parquet / JSON / JSONL 导入、表格粘贴、URL 导入、服务器目录读取 |
 | 核对文件与业务库 | 本地表与 MySQL / PostgreSQL / SQLite / DuckDB 跨源关联，支持符合条件的远端筛选优化 |
 | 反复调整一条查询 | 多标签 SQL 编辑器、表与字段补全、错误位置提示、查询历史、SQL 收藏夹 |
-| 少写 SQL 完成分析 | 可视化关联查询、集合运算与透视表，可查看生成的 SQL |
+| 少写 SQL 完成分析 | 可视化关联查询、集合运算与透视表；支持不加分组字段直接统计，可查看生成的 SQL |
 | 让长查询继续跑 | 异步任务、执行中转后台、任务搜索、取消、重试与结果查看；转后台继续同一次查询，不重新执行 |
 | 看清结果并交付 | 虚拟滚动表格、列来源、JSON 查看、柱状 / 折线 / 面积 / 饼图 / 环形 / KPI 图表、图表下钻 |
 | 把结果带走 | CSV / Excel / JSON / Parquet 导出，或保存为 DuckDB 本地表 |
@@ -148,13 +148,13 @@ claude mcp add duckquery -- uvx duckquery-mcp
 
 ## 引擎与升级须知
 
-最新发布的 **应用版本为 v2.1.0**，主要更新包括工作台布局、执行中转后台、SQL 补全和 AI SQL 差异预览，详见 [v2.1.0 发布说明](https://github.com/Chenkeliang/duckdb-query/blob/v2.1.0/docs/releases/v2.1.0.md)。
+最新发布的 **应用版本为 v2.1.1**，新增透视表无分组统计，保留 v2.1.0 的工作台布局、执行中转后台、SQL 补全和 AI SQL 差异预览，详见 [v2.1.1 发布说明](https://github.com/Chenkeliang/duckdb-query/blob/v2.1.1/docs/releases/v2.1.1.md)。
 
-应用版本与 DuckDB **引擎版本**分别维护。v2.1.0 发布版固定引擎 `v2.0.0-alpha39998`，Python 包为 `1.6.0.dev379`；新数据库使用 `v2.0.0` 存储格式。DuckDB 引擎仍为预发布版本，应用更新不代表已切换到正式引擎。
+应用版本与 DuckDB **引擎版本**分别维护。v2.1.1 发布版固定引擎 `v2.0.0-alpha39998`，Python 包为 `1.6.0.dev379`；新数据库使用 `v2.0.0` 存储格式。DuckDB 引擎仍为预发布版本，应用更新不代表已切换到正式引擎。
 
 从 DuckQuery 2.0.x 升级不新增存储迁移。从 1.x 升级前，请备份 `main.db`、`system.db` 及对应 `.wal`，再阅读 [2.0 大版本说明](docs/releases/v2.0.0.md)。旧库不会在启动时静默迁移；显式迁移到新存储格式后，应通过升级前备份恢复旧版本。
 
-历史发布说明：[v2.0.1](docs/releases/v2.0.1.md) · [v2.0.0](docs/releases/v2.0.0.md)。
+历史发布说明：[v2.1.0](docs/releases/v2.1.0.md) · [v2.0.1](docs/releases/v2.0.1.md) · [v2.0.0](docs/releases/v2.0.0.md)。
 
 “设置 → DuckDB 数据库存储”可查看资源预算、检查最近备份和查看恢复指引。扩展按引擎版本隔离；详细兼容范围见[引擎升级方案](docs/specs/duckdb-2-compatibility-and-capabilities.md)。
 

@@ -1,6 +1,5 @@
 import { useTranslation } from "react-i18next";
 import { FileType, Link2 } from "lucide-react";
-import { Card, CardContent } from "@/components/ui/card";
 import { Button } from "@/components/ui/button";
 import { Input } from "@/components/ui/input";
 import { Label } from "@/components/ui/label";
@@ -31,8 +30,8 @@ export function RemoteUrlCard({
   const showS3ConfigHint = isS3Url && !remoteStorageConfigured;
 
   return (
-    <Card className="rounded-xl shadow-sm">
-      <CardContent className="p-6 space-y-5">
+    <div>
+      <div className="space-y-5">
         <p className="text-sm leading-relaxed text-muted-foreground">
           {t("page.datasource.cardRemoteDesc")}
         </p>
@@ -91,7 +90,7 @@ export function RemoteUrlCard({
               : t("page.datasource.btnReadRemote")}
           </Button>
         </div>
-      </CardContent>
-    </Card>
+      </div>
+    </div>
   );
 }

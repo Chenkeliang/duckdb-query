@@ -32,6 +32,8 @@ from core.common.timezone_utils import (
     get_current_time_iso,
 )
 from core.services import table_registry
+from core.services.foreground_queries import track_foreground_query
+from core.services.query_lineage import with_column_lineage, describe_column_lineage
 from core.common.utils import describe_query_column_types
 from core.common.sql_mysql_quotes import (
     normalize_mysql_double_quoted_strings_for_duckdb,
@@ -200,9 +202,10 @@ def _run_query_maybe_save(
     被改成 'keep',静默改数据,复审 P1)。落库即全量(不带预览 LIMIT),与联邦路由一致。
     """
     def _types(cur_types, describe_sql):
-        return describe_query_column_types(conn, describe_sql) or [
+        types = describe_query_column_types(conn, describe_sql) or [
             {"name": n, "duckdb_type": t} for n, t in cur_types
         ]
+        return with_column_lineage(conn, original_sql or sql_query, types)
 
     table_name = (save_as_table or "").strip()
     if table_name:
@@ -656,6 +659,7 @@ def execute_duckdb_query(
 
 
 @router.post("/api/duckdb/execute", tags=["DuckDB Query"])
+@track_foreground_query
 def execute_duckdb_sql(
     request: DuckDBQueryRequest,
     x_request_id: Optional[str] = Header(None, alias="X-Request-ID"),
@@ -867,6 +871,7 @@ def clear_old_errors(days: int = 30):
 
 
 @router.post("/api/duckdb/federated-query", tags=["DuckDB Query"])
+@track_foreground_query
 def execute_federated_query(
     request: FederatedQueryRequest,
     x_request_id: Optional[str] = Header(None, alias="X-Request-ID"),
@@ -917,11 +922,12 @@ def execute_federated_query(
 
     # 捕获优化器输出（通过 dict 跨闭包传递，避免 nonlocal 嵌套问题）
     _opt = {"sql": sql_query, "suggestions": None}
+    query_lineage = []
     saved_table = None
 
     def execute_in_connection(conn):
         """在连接内执行 ATTACH/QUERY/DETACH"""
-        nonlocal attached_aliases, warnings, saved_table
+        nonlocal attached_aliases, warnings, saved_table, query_lineage
 
         # 1. ATTACH 所有外部数据库（连接池复用时会容忍已挂载别名）
         if attach_configs:
@@ -990,6 +996,7 @@ def execute_federated_query(
                             table_name,
                         )
 
+                    query_lineage = describe_column_lineage(conn, base_sql_query, len(result_triplet[2]))
                     finalize_query_if_not_cancelled(query_id)
                     return result_triplet
                 except Exception as query_error:
@@ -1035,8 +1042,8 @@ def execute_federated_query(
                             execute_in_connection(conn)
                         )
                         query_column_types = [
-                            {"name": name, "duckdb_type": dtype}
-                            for name, dtype in cursor_types
+                            {"name": name, "duckdb_type": dtype, "lineage": query_lineage[index]}
+                            for index, (name, dtype) in enumerate(cursor_types)
                         ]
                 finally:
                     timer.cancel()

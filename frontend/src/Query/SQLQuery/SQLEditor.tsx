@@ -5,7 +5,14 @@
 
 import React, { useEffect, useRef, useMemo } from 'react';
 import { useTranslation } from 'react-i18next';
-import { EditorView, keymap, placeholder as placeholderExt } from '@codemirror/view';
+import {
+  EditorView,
+  keymap,
+  placeholder as placeholderExt,
+  lineNumbers,
+  highlightActiveLine,
+  highlightActiveLineGutter,
+} from '@codemirror/view';
 import { EditorState, Compartment } from '@codemirror/state';
 import { sql } from '@codemirror/lang-sql';
 import { duckDBDialect } from './sqlDialect';
@@ -24,6 +31,13 @@ export interface SQLErrorDiagnostic {
   column: number;
   endColumn?: number;
   message: string;
+}
+
+/** Imperative API for callers outside the editor (command palette, explorer). */
+export interface SQLEditorApi {
+  /** Replace the selection (or insert at the caret) and focus the editor. */
+  insertText: (text: string) => void;
+  focus: () => void;
 }
 
 export interface SQLEditorProps {
@@ -55,6 +69,10 @@ export interface SQLEditorProps {
   autoFocus?: boolean;
   /** DuckDB 返回的一处一基 SQL 错误位置 */
   diagnostic?: SQLErrorDiagnostic | null;
+  /** 铺满父容器（工作台用）：无边框、高度跟随父级，显示行号 */
+  fill?: boolean;
+  /** 编辑器创建后回填命令式 API */
+  apiRef?: React.MutableRefObject<SQLEditorApi | null>;
 }
 
 /**
@@ -75,11 +93,14 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
   defaultTable,
   autoFocus = false,
   diagnostic = null,
+  fill = false,
+  apiRef,
 }) => {
   const { t } = useTranslation('common');
   const isDarkMode = useSqlEditorDarkMode();
   const containerRef = useRef<HTMLDivElement>(null);
   const editorRef = useRef<EditorView | null>(null);
+  const placeholderCompartment = useRef(new Compartment());
   const themeCompartment = useRef(new Compartment());
   const layoutCompartment = useRef(new Compartment());
   const readOnlyCompartment = useRef(new Compartment());
@@ -178,6 +199,7 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
         // 基础功能
         history(),
         highlightSelectionMatches(),
+        ...(fill ? [lineNumbers(), highlightActiveLine(), highlightActiveLineGutter()] : []),
 
         // 快捷键
         keymap.of([
@@ -190,10 +212,10 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
         ]),
 
         // 占位符
-        placeholderExt(placeholderText),
+        placeholderCompartment.current.of(placeholderExt(placeholderText)),
 
         layoutCompartment.current.of(
-          createSqlEditorLayoutTheme({ minHeight, maxHeight })
+          createSqlEditorLayoutTheme(fill ? {} : { minHeight, maxHeight })
         ),
 
         sqlCompartment.current.of(buildSqlExtensions()),
@@ -220,6 +242,17 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
     });
 
     editorRef.current = view;
+    if (apiRef) {
+      apiRef.current = {
+        insertText: (text: string) => {
+          const v = editorRef.current;
+          if (!v || v.state.readOnly) return;
+          v.dispatch(v.state.replaceSelection(text));
+          v.focus();
+        },
+        focus: () => editorRef.current?.focus(),
+      };
+    }
 
     // 自动聚焦
     if (autoFocus) {
@@ -228,8 +261,13 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
 
     return () => {
       view.destroy();
+      if (apiRef) apiRef.current = null;
     };
-  }, [placeholderText]); // 当 placeholder 变化时重新初始化
+  }, []);
+
+  useEffect(() => {
+    editorRef.current?.dispatch({ effects: placeholderCompartment.current.reconfigure(placeholderExt(placeholderText)) });
+  }, [placeholderText]);
 
   // 同步外部值变化
   useEffect(() => {
@@ -277,7 +315,7 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
 
     view.dispatch({
       effects: layoutCompartment.current.reconfigure(
-        createSqlEditorLayoutTheme({ minHeight, maxHeight })
+        createSqlEditorLayoutTheme(fill ? {} : { minHeight, maxHeight })
       ),
     });
   }, [minHeight, maxHeight]);
@@ -342,13 +380,17 @@ export const SQLEditor: React.FC<SQLEditorProps> = ({
 
 
 
+  if (fill) {
+    return <div ref={containerRef} className={cn('h-full min-h-0 overflow-hidden bg-background', className)} />;
+  }
+
   return (
     <div
       ref={containerRef}
       className={cn(
         'border border-border rounded-md overflow-hidden',
         isDarkMode ? 'bg-transparent' : 'bg-background',
-        'focus-within:ring-2 focus-within:ring-primary focus-within:ring-offset-2 focus-within:ring-offset-background',
+        'focus-within:border-primary/60 focus-within:ring-2 focus-within:ring-primary/20',
         className
       )}
       style={{

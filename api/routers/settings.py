@@ -56,6 +56,8 @@ DEFAULT_SHORTCUTS = {
     "uploadFile": "Cmd+U",
     "toggleTheme": "Cmd+Shift+X",
     "toggleLanguage": "Cmd+Shift+Z",
+    "toggleAiPanel": "Cmd+L",
+    "toggleExplorer": "Cmd+B",
 }
 
 # ============================================================================

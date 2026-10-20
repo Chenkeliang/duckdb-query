@@ -14,7 +14,7 @@
 
 import * as React from 'react';
 import { useTranslation } from 'react-i18next';
-import { AlertTriangle, Wand2, CheckCircle2 } from 'lucide-react';
+import { AlertTriangle, Wand2, CheckCircle2, Loader2 } from 'lucide-react';
 import {
   Dialog,
   DialogContent,
@@ -79,6 +79,59 @@ export const TypeConflictDialog: React.FC<TypeConflictDialogProps> = ({
   const { t } = useTranslation('common');
   const dialogRef = React.useRef<HTMLDivElement>(null);
 
+  const [applying, setApplying] = React.useState(false);
+  const [recommendationMessage, setRecommendationMessage] = React.useState('');
+  const requestEpoch = React.useRef(0);
+  const latest = React.useRef({ open, conflicts });
+  latest.current = { open, conflicts };
+  React.useLayoutEffect(() => {
+    setApplying(false);
+    setRecommendationMessage('');
+    return () => { requestEpoch.current += 1; };
+  }, [open]);
+
+  const inferCurrent = React.useCallback(async (conflict: TypeConflict) => {
+    if (!onInferCast) return null;
+    const epoch = requestEpoch.current;
+    try {
+      const type = await onInferCast(conflict);
+      const current = latest.current.conflicts.find(item => item.key === conflict.key);
+      return epoch === requestEpoch.current && latest.current.open && current && current.resolvedType === conflict.resolvedType ? type : null;
+    } catch {
+      if (epoch === requestEpoch.current && latest.current.open) {
+        setRecommendationMessage(t('query.typeConflict.recommendationFailed', '检查失败，请重试或手动选择转换类型。'));
+      }
+      return null;
+    }
+  }, [onInferCast, t]);
+
+  const unresolved = conflicts.filter(conflict => !conflict.resolvedType);
+  const canRecommend = conflicts.some(conflict => conflict.recommendedType) || (!!onInferCast && unresolved.length > 0);
+  const applyRecommendations = React.useCallback(async () => {
+    if (applying || !canRecommend) return;
+    const epoch = requestEpoch.current;
+    const pending = conflicts.filter(conflict => !conflict.resolvedType || conflict.recommendedType);
+    let applied = pending.filter(conflict => conflict.recommendedType).length;
+    setApplying(true);
+    setRecommendationMessage('');
+    if (applied) onResolveAll();
+    for (const conflict of pending.filter(item => !item.recommendedType)) {
+      if (!onInferCast) continue;
+      const type = await inferCurrent(conflict);
+      if (epoch !== requestEpoch.current || !latest.current.open) return;
+      if (type) {
+        onResolve(conflict.key, type);
+        applied += 1;
+      }
+    }
+    if (epoch === requestEpoch.current && latest.current.open) {
+      setRecommendationMessage(current => current || (applied
+        ? t('query.typeConflict.recommendationsApplied', '已应用 {{count}} 项推荐；未解决的项请手动选择。', { count: applied })
+        : t('query.typeConflict.noSafeRecommendations', '没有可安全应用的推荐，请手动选择转换类型。')));
+      setApplying(false);
+    }
+  }, [applying, canRecommend, conflicts, onInferCast, inferCurrent, onResolveAll, onResolve, t]);
+
   // 计算统计信息
   const unresolvedCount = conflicts.filter(c => !c.resolvedType).length;
   const allResolved = conflicts.length > 0 && unresolvedCount === 0;
@@ -89,7 +142,7 @@ export const TypeConflictDialog: React.FC<TypeConflictDialogProps> = ({
 
     const handleKeyDown = (e: KeyboardEvent) => {
       // Enter - 确认（仅当所有冲突已解决）
-      if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey && allResolved) {
+      if (e.key === 'Enter' && !e.ctrlKey && !e.metaKey && allResolved && !applying) {
         e.preventDefault();
         onConfirm();
       }
@@ -104,14 +157,14 @@ export const TypeConflictDialog: React.FC<TypeConflictDialogProps> = ({
         const target = e.target as HTMLElement;
         if (target.tagName !== 'INPUT' && target.tagName !== 'TEXTAREA') {
           e.preventDefault();
-          onResolveAll();
+          void applyRecommendations();
         }
       }
     };
 
     document.addEventListener('keydown', handleKeyDown);
     return () => document.removeEventListener('keydown', handleKeyDown);
-  }, [open, allResolved, onConfirm, onClose, onResolveAll]);
+  }, [open, allResolved, applying, onConfirm, onClose, applyRecommendations]);
 
   // 默认标题
   const dialogTitle = title || (
@@ -129,7 +182,7 @@ export const TypeConflictDialog: React.FC<TypeConflictDialogProps> = ({
     <Dialog open={open} onOpenChange={(isOpen) => !isOpen && onClose()}>
         <DialogContent
         ref={dialogRef}
-        className="max-w-2xl max-h-[85vh] flex flex-col"
+        className="flex max-h-5/6 flex-col overflow-hidden sm:max-w-3xl"
         onPointerDownOutside={(e) => {
           // 允许与 portaled 的 Select 下拉交互；其余外侧点击仍阻止以保留对话框（与 Radix Dialog + Select 组合用法一致）
           const target = e.target as HTMLElement | null;
@@ -169,21 +222,21 @@ export const TypeConflictDialog: React.FC<TypeConflictDialogProps> = ({
         </Alert>
 
         {/* 冲突列表 */}
-        <div className="flex-1 overflow-auto">
+        <div className="min-h-0 flex-1 overflow-auto">
           <div className="border border-border rounded-lg overflow-hidden">
-            <table className="w-full text-sm">
+            <table className="w-full table-fixed text-sm">
               <thead className="bg-muted/50">
                 <tr>
-                  <th className="px-3 py-2 text-left font-mono text-sm font-semibold tracking-[0.01em] text-muted-foreground">
+                  <th className="w-1/3 px-3 py-2 text-left text-xs font-semibold text-muted-foreground">
                     {t('query.typeConflict.joinCondition', 'JOIN 条件')}
                   </th>
-                  <th className="px-3 py-2 text-left font-mono text-sm font-semibold tracking-[0.01em] text-muted-foreground">
+                  <th className="w-1/6 px-3 py-2 text-left text-xs font-semibold text-muted-foreground">
                     {t('query.typeConflict.leftType', '左侧类型')}
                   </th>
-                  <th className="px-3 py-2 text-left font-mono text-sm font-semibold tracking-[0.01em] text-muted-foreground">
+                  <th className="w-1/6 px-3 py-2 text-left text-xs font-semibold text-muted-foreground">
                     {t('query.typeConflict.rightType', '右侧类型')}
                   </th>
-                  <th className="px-3 py-2 text-left font-mono text-sm font-semibold tracking-[0.01em] text-muted-foreground">
+                  <th className="w-1/3 px-3 py-2 text-left text-xs font-semibold text-muted-foreground">
                     {t('query.typeConflict.convertTo', '转换为')}
                   </th>
                 </tr>
@@ -194,7 +247,8 @@ export const TypeConflictDialog: React.FC<TypeConflictDialogProps> = ({
                     key={conflict.key}
                     conflict={conflict}
                     onResolve={onResolve}
-                    onInferCast={onInferCast}
+                    onInferCast={onInferCast ? inferCurrent : undefined}
+                    busy={applying}
                   />
                 ))}
               </tbody>
@@ -203,20 +257,27 @@ export const TypeConflictDialog: React.FC<TypeConflictDialogProps> = ({
         </div>
 
         {/* 应用所有推荐按钮 */}
-        <div className="flex justify-start">
+        <div className="flex flex-wrap items-center gap-2" data-aligned-row>
           <Button
-            variant="outline"
+            variant="subtle"
             size="sm"
-            onClick={onResolveAll}
-            className="gap-1.5"
+            onClick={() => void applyRecommendations()}
+            disabled={!canRecommend || applying}
+            className="h-7 gap-1.5"
           >
-            <Wand2 className="w-3.5 h-3.5" />
+            {applying ? <Loader2 className="size-3.5 animate-spin" /> : <Wand2 className="size-3.5" />}
             {t('query.typeConflict.applyAllRecommendations', '应用所有推荐')}
           </Button>
           <span className="ml-2 text-xs text-muted-foreground self-center">
             {t('query.typeConflict.shortcutHint', '快捷键: Ctrl+A')}
           </span>
         </div>
+
+        <p role="status" className="text-xs text-muted-foreground">
+          {recommendationMessage || (!canRecommend && unresolvedCount > 0
+            ? t('query.typeConflict.noSafeRecommendations', '没有可安全应用的推荐，请手动选择转换类型。')
+            : t('query.typeConflict.recommendationHint', '应用已有推荐，并检查未选择项的数据；无法安全推荐时请手动选择。'))}
+        </p>
 
         {/* SQL 预览 */}
         {sqlPreview && (
@@ -235,12 +296,12 @@ export const TypeConflictDialog: React.FC<TypeConflictDialogProps> = ({
         )}
 
         <DialogFooter>
-          <Button variant="outline" onClick={onClose}>
+          <Button variant="subtle" onClick={onClose}>
             {t('common.cancel', '取消')}
           </Button>
           <Button
             onClick={onConfirm}
-            disabled={!allResolved}
+            disabled={!allResolved || applying}
             className={cn(
               allResolved && 'bg-success hover:bg-success/90'
             )}
@@ -260,9 +321,10 @@ interface ConflictRowProps {
   conflict: TypeConflict;
   onResolve: (key: string, targetType: string) => void;
   onInferCast?: (conflict: TypeConflict) => Promise<string | null>;
+  busy?: boolean;
 }
 
-const ConflictRow: React.FC<ConflictRowProps> = ({ conflict, onResolve, onInferCast }) => {
+const ConflictRow: React.FC<ConflictRowProps> = ({ conflict, onResolve, onInferCast, busy }) => {
   const { t } = useTranslation('common');
   const isResolved = !!conflict.resolvedType;
   const [inferring, setInferring] = React.useState(false);
@@ -289,16 +351,16 @@ const ConflictRow: React.FC<ConflictRowProps> = ({ conflict, onResolve, onInferC
       isResolved ? 'bg-success/5' : 'bg-warning/5'
     )}>
       {/* JOIN 条件 */}
-      <td className="px-3 py-2">
+      <td className="min-w-0 px-3 py-2 align-top">
         <div className="space-y-0.5">
-          <div className="font-medium text-foreground">
+          <div className="break-all font-medium text-foreground">
             {conflict.leftLabel}.{conflict.leftColumn}
           </div>
           <div className="flex items-center gap-1.5 text-muted-foreground">
             <Badge variant="outline" className="text-xs px-1.5 py-0">
               =
             </Badge>
-            <span className="font-medium text-foreground">
+            <span className="break-all font-medium text-foreground">
               {conflict.rightLabel}.{conflict.rightColumn}
             </span>
           </div>
@@ -306,27 +368,27 @@ const ConflictRow: React.FC<ConflictRowProps> = ({ conflict, onResolve, onInferC
       </td>
 
       {/* 左侧类型 */}
-      <td className="px-3 py-2">
-        <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
+      <td className="min-w-0 px-3 py-2 align-top">
+        <code className="block break-all rounded bg-muted px-1.5 py-0.5 text-xs">
           {conflict.leftTypeDisplay}
         </code>
       </td>
 
       {/* 右侧类型 */}
-      <td className="px-3 py-2">
-        <code className="text-xs bg-muted px-1.5 py-0.5 rounded">
+      <td className="min-w-0 px-3 py-2 align-top">
+        <code className="block break-all rounded bg-muted px-1.5 py-0.5 text-xs">
           {conflict.rightTypeDisplay}
         </code>
       </td>
 
       {/* 类型选择器:快速下拉 + 可手填 DECIMAL(x,x) + 数据感知推断 */}
-      <td className="px-3 py-2">
-        <div className="flex items-center gap-1">
+      <td className="min-w-0 px-3 py-2 align-top">
+        <div className="grid min-w-0 grid-cols-2 gap-1">
           <Select
             value={selectValue}
             onValueChange={(value) => onResolve(conflict.key, value)}
           >
-            <SelectTrigger className="w-28 h-8 text-xs">
+            <SelectTrigger className="h-7 w-full min-w-0 text-xs">
               <SelectValue placeholder={t('query.typeConflict.selectType', '选择类型')} />
             </SelectTrigger>
             <SelectContent position="popper" sideOffset={4}>
@@ -347,7 +409,9 @@ const ConflictRow: React.FC<ConflictRowProps> = ({ conflict, onResolve, onInferC
           {/* 手填(如 DECIMAL(38,2));key 随 resolvedType 变,推断/下拉结果会回填 */}
           <input
             key={`cast-${conflict.key}-${conflict.resolvedType ?? ''}`}
-            className="w-28 h-8 text-xs px-1.5 rounded border border-border bg-background text-foreground"
+            className="h-7 w-full min-w-0 rounded border border-border bg-background px-1.5 text-xs text-foreground"
+            aria-label={t('query.typeConflict.customType', '自定义转换类型')}
+            title={t('query.typeConflict.customPlaceholder', '手填 DECIMAL(x,x)')}
             defaultValue={conflict.resolvedType ?? ''}
             placeholder={t('query.typeConflict.customPlaceholder', '手填 DECIMAL(x,x)')}
             onBlur={(e) => { const v = e.target.value.trim(); if (v) onResolve(conflict.key, v); }}
@@ -356,9 +420,9 @@ const ConflictRow: React.FC<ConflictRowProps> = ({ conflict, onResolve, onInferC
           {onInferCast && (
             <button
               type="button"
-              disabled={inferring}
+              disabled={inferring || busy}
               onClick={handleInfer}
-              className="h-8 px-2 text-xs rounded border border-border hover:bg-muted whitespace-nowrap disabled:opacity-50"
+              className="col-span-2 h-7 rounded border border-border px-2 text-xs hover:bg-muted disabled:opacity-50"
               title={t('query.typeConflict.inferSafeHint', '在真实数据上推断安全类型(精度取自数据)')}
             >
               {inferring ? '…' : t('query.typeConflict.inferSafe', '推断')}
