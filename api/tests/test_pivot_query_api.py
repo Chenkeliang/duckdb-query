@@ -40,6 +40,48 @@ PIVOT_REQUEST_FIELDS = {
 }
 
 
+def test_ungrouped_statistics_generate_and_preview_on_duckdb():
+    """Regression #46 (2026-10-20): real HTTP handlers aggregate before LIMIT."""
+    import duckdb
+    from contextlib import nullcontext
+
+    body = {
+        "config": {
+            "table_name": "serials",
+            "filters": [{"column": "active", "operator": "=", "value": True}],
+            "limit": 1,
+        },
+        "pivot_config": {
+            "rows": [], "columns": [],
+            "values": [
+                {"column": "产品序列号", "aggregation": "COUNT_DISTINCT"},
+                {"column": "产品序列号", "aggregation": "COUNT"},
+            ],
+        },
+    }
+    with duckdb.connect(":memory:") as con:
+        con.execute('CREATE TABLE serials("产品序列号" VARCHAR, active BOOLEAN)')
+        con.execute("INSERT INTO serials SELECT 'A', true FROM range(10001)")
+        con.execute("INSERT INTO serials VALUES ('B', true), (NULL, true), ('C', false)")
+        with patch("routers.pivot_query.with_duckdb_connection", side_effect=lambda: nullcontext(con)):
+            generated = client.post("/api/pivot-query/generate", json=body)
+            assert generated.status_code == 200, generated.text
+            generated_data = api_data(generated.json())
+            assert generated_data["pivot_sql"] is None
+            assert generated_data["metadata"]["strategy"] == "aggregate"
+            assert con.execute(generated_data["sql"]).fetchall() == [(2, 10002)]
+
+            preview = client.post("/api/pivot-query/preview", json={**body, "limit": 1})
+            assert preview.status_code == 200, preview.text
+            data = api_data(preview.json())
+            assert data["data"] == [{
+                "count_distinct_产品序列号": 2,
+                "count_产品序列号": 10002,
+            }]
+            assert data["row_count"] == data["returned_rows"] == 1
+            assert data["mode"] == "pivot"
+
+
 def _with_pivot_request(body: dict) -> dict:
     return {**PIVOT_REQUEST_FIELDS, **body}
 

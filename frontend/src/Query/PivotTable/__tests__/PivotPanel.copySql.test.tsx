@@ -47,6 +47,19 @@ vi.mock('../PivotTableDesigner', () => ({
       <button
         type="button"
         onClick={() => {
+          props.onRowsChange([]);
+          props.onColumnsChange([]);
+          props.onValuesChange([
+            { column: '产品序列号', aggregation: AggregationFunction.COUNT_DISTINCT },
+            { column: 'amount', aggregation: AggregationFunction.SUM },
+          ]);
+        }}
+      >
+        configure statistics
+      </button>
+      <button
+        type="button"
+        onClick={() => {
           props.onRowsChange(['region']);
           props.onValuesChange([
             { column: 'amount', aggregation: AggregationFunction.SUM },
@@ -116,6 +129,46 @@ describe('PivotPanel SQL copy', () => {
     fireEvent.click(screen.getByRole('button', { name: '复制' }));
     await waitFor(() => expect(writeText).toHaveBeenCalledWith(displayedSql));
     expect(await screen.findByRole('button', { name: '已复制' })).toBeInTheDocument();
+  });
+
+  /** Regression #46, 2026-10-20: metrics alone must generate executable SQL. */
+  it.each([
+    { name: 'sales', source: 'duckdb' as const },
+    {
+      name: 'sales',
+      source: 'external' as const,
+      connection: { id: 'analysis', name: 'Analysis DuckDB', type: 'duckdb' as const },
+    },
+  ])('executes statistics without dimensions for $source tables', async (table) => {
+    const client = new QueryClient({ defaultOptions: { queries: { retry: false } } });
+    const onExecute = vi.fn().mockResolvedValue(undefined);
+    render(
+      <QueryClientProvider client={client}>
+        <PivotPanel selectedTables={[table]} onExecute={onExecute} />
+      </QueryClientProvider>
+    );
+
+    expect(screen.getByRole('button', { name: '执行' })).toBeDisabled();
+    // Cover both a fresh metrics-only configuration and removing existing dimensions.
+    if (table.source === 'external') {
+      fireEvent.click(screen.getByRole('button', { name: 'configure pivot' }));
+    }
+    fireEvent.click(screen.getByRole('button', { name: 'configure statistics' }));
+    const sql = (await screen.findByTestId('pivot-sql-preview')).textContent ?? '';
+    expect(sql).toContain('count(DISTINCT "产品序列号") AS "count_distinct_产品序列号"');
+    expect(sql).toContain('sum(amount) AS sum_amount');
+    expect(sql).not.toMatch(/GROUP BY|ORDER BY/);
+    expect(sql).toContain('LIMIT 10000');
+    expect(sql).toContain(table.source === 'external'
+      ? 'FROM duckdb_analysis_duckdb.sales' : 'FROM sales');
+    expect(screen.getByRole('button', { name: '执行' })).toBeEnabled();
+    fireEvent.click(screen.getByRole('button', { name: '执行' }));
+    await waitFor(() => expect(onExecute).toHaveBeenCalledOnce());
+    expect(onExecute.mock.calls[0][0]).toBe(sql);
+    expect(onExecute.mock.calls[0][2]).toEqual({ baseSql: sql.replace(/\nLIMIT 10000$/, '') });
+    fireEvent.click(screen.getByRole('button', { name: '清空' }));
+    expect(screen.getByRole('button', { name: '执行' })).toBeDisabled();
+    expect(screen.queryByTestId('pivot-sql-preview')).not.toBeInTheDocument();
   });
 
   it.each([

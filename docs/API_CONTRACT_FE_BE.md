@@ -180,6 +180,8 @@
 
 > **2026-05**：工作台已移除「可视化查询」Tab。`POST /api/pivot-query/*` 仅 **透视**（必填 `pivot_config`；响应 `data.mode` 为 `pivot`）。`config` 仅 `table_name`、`filters`、`limit`；`FilterConfig` 为 `column` / `operator` / `value`（`value2` 用于 BETWEEN）/ `logic_operator`。集合操作模型见 `set_operation_models.py`。
 
+**无分组统计（#46）**：`pivot_config.rows=[]`、`columns=[]` 时，至少提供一个 `values`，生成普通聚合 SELECT（无 GROUP BY），`pivot_sql=null`、`metadata.strategy="aggregate"`；结果为一行，列名为小写聚合名加字段名（如 `count_distinct_产品序列号`）。筛选先于聚合；预览 LIMIT 仅限制结果行，不截断统计输入。COUNT / COUNT_DISTINCT 忽略 NULL，空输入返回 0；SUM / AVG / MIN / MAX 在空输入时返回 null。此模式无额外小计/总计行，相关开关不改变结果。已有分组透视行为不变。
+
 | 方法 | 路径 | 成功体 | 前端入口 |
 |------|------|--------|----------|
 | POST | `/api/pivot-query/generate` | 对象 | `generatePivotQuery`（`pivot_config` 必填；可选 `attach_databases`；`pivot_config.values[].typeConversion`=聚合前 TRY_CAST 目标，走白名单校验）；列维度去重值超过 app `pivot_max_columns` 时 **400 `PIVOT_COLUMN_LIMIT_EXCEEDED`**，`error.details={column,cap,observed_at_least}`（前端据结构化字段提示，勿解析消息文本）；配置无效 400 `PIVOT_QUERY_INVALID`。**服务端路径出错时前端不回退本地 PIVOT**（本地 SQL 无列上限保护） |

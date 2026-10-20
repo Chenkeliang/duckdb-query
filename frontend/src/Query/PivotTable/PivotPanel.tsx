@@ -234,7 +234,9 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
     );
 
     const generateLocalSQL = React.useCallback((): string | null => {
-        if (!selectedTable || rows.length === 0 || values.length === 0) return null;
+        if (!selectedTable || values.length === 0) return null;
+        // 无维度时允许整表统计;有透视列的既有路径仍要求行分组。
+        if (rows.length === 0 && columns.length > 0) return null;
 
         // 本地路径同样在 DuckDB 上执行；表引用必须包含 ATTACH catalog，且只能
         // 使用 DuckDB 标识符规则。此前按源方言重拼 schema.table，丢了连接别名。
@@ -276,8 +278,10 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
         parts.push(`SELECT ${selectParts.join(", ")}`);
         parts.push(`FROM ${fullTableName}`);
         if (whereClause) parts.push(whereClause);
-        parts.push(`GROUP BY ${rowColumns.join(", ")}`);
-        parts.push(`ORDER BY ${rowColumns.join(", ")}`);
+        if (rowColumns.length > 0) {
+            parts.push(`GROUP BY ${rowColumns.join(", ")}`);
+            parts.push(`ORDER BY ${rowColumns.join(", ")}`);
+        }
         return parts.join("\n");
     }, [selectedTable, rows, columns, values, buildLocalWhereClause]);
 
