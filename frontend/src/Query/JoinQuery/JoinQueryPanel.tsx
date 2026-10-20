@@ -1,6 +1,7 @@
+import { QueryExecutionButtons } from '@/Query/SQLQuery/SQLToolbar';
 import * as React from 'react';
 import { useTranslation } from 'react-i18next';
-import { GitMerge, Play, X, Database, Table, Trash2, AlertTriangle, Link2, Columns, ArrowRightLeft, Edit2, StopCircle, Loader2, Star, Timer } from 'lucide-react';
+import { GitMerge, X, Database, Table, Trash2, AlertTriangle, Link2, Columns, ArrowRightLeft, Edit2, Star } from 'lucide-react';
 import { Input } from '@/components/ui/input';
 import { Button } from '@/components/ui/button';
 import { EmptyState as UiEmptyState } from '@/components/EmptyState';
@@ -1958,84 +1959,39 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
       {/* 头部工具栏 */}
       {/* 头部工具栏 - 双行布局 */}
       {/* 头部工具栏 - 单行紧凑布局 */}
-      <div className="flex items-center justify-between px-3 py-2 border-b border-border shrink-0 bg-muted/30">
-        <div className="flex items-center gap-3">
-          <div className="flex items-center gap-2">
-            {isExecuting ? (
-              <Button
-                variant="destructive"
-                size="sm"
-                onClick={handleCancel}
-                disabled={localIsCancelling}
-                className="gap-1.5"
-              >
-                {localIsCancelling ? (
-                  <Loader2 className="w-3.5 h-3.5 animate-spin" />
-                ) : (
-                  <StopCircle className="w-3.5 h-3.5" />
-                )}
-                {t('query.cancel', '取消')}
-              </Button>
-            ) : (
-              <Button
-                variant="default"
-                size="sm"
-                onClick={handleExecute}
-                disabled={!canExecute || isExecuting}
-                className="gap-1.5"
-              >
-                <Play className="w-3.5 h-3.5 fill-current" />
-                {t('query.execute', '执行')}
-              </Button>
-            )}
-
-            {/* 异步执行按钮 */}
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setAsyncDialogOpen(true)}
-                    disabled={!canExecute || isExecuting || !sql?.trim()}
-                    className="gap-1.5"
-                    aria-label={t('query.sql.asyncExecute', '异步执行')}
-                  >
-                    <Timer className="w-3.5 h-3.5" />
-                    <span className="hidden sm:inline">
-                      {t('query.sql.asyncExecute', '异步执行')}
-                    </span>
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>{t('query.sql.asyncExecuteHint', '后台执行，结果保存到表')}</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+      <div className="@container flex min-h-11 shrink-0 flex-wrap items-center justify-between gap-x-3 gap-y-1 border-b border-border px-3 py-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-1">
+          <div className="flex min-w-0 flex-wrap items-center gap-1">
+            <QueryExecutionButtons onExecute={handleExecute} onCancel={handleCancel}
+              onSaveTable={() => setAsyncDialogOpen(true)} disabled={!canExecute}
+              saveDisabled={!sql?.trim()} isExecuting={isExecuting} isCancelling={localIsCancelling} />
 
             <div className="w-px h-4 bg-border mx-1" />
 
             <Button
-              variant="ghost"
+              variant="quiet"
               size="sm"
+              aria-label={t('query.join.clear', '清空')}
+              title={t('query.join.clear', '清空')}
               onClick={handleClear}
               disabled={activeTables.length === 0}
               className="text-muted-foreground hover:text-foreground gap-1.5"
             >
               <Trash2 className="w-3.5 h-3.5" />
-              {t('query.join.clear', '清空')}
+              <span className="hidden @md:inline">{t('query.join.clear', '清空')}</span>
             </Button>
 
             <Button
-              variant="ghost"
+              variant="quiet"
               size="sm"
+              aria-label={t('query.bookmark.save', '收藏')}
               onClick={() => setIsSaveDialogOpen(true)}
               disabled={!sql}
-              className="text-muted-foreground hover:text-yellow-500 gap-1.5"
+              className="text-muted-foreground hover:text-foreground gap-1.5"
               title={t('query.bookmark.save', '收藏查询')}
             >
               <Star className="w-3.5 h-3.5" />
-              {t('query.bookmark.save', '收藏')}
+              <span className="hidden @md:inline">{t('query.bookmark.save', '收藏')}</span>
             </Button>
 
             {chatStatus.configured && (
@@ -2046,12 +2002,12 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
           <div className="w-px h-4 bg-border mx-1" />
 
           {/* 提示信息 - 留在左侧或中间 */}
-          <span className="text-muted-foreground text-xs hidden lg:inline-block">
+          <span className="text-muted-foreground text-xs hidden @3xl:inline-block">
             {t('query.join.hint', '双击左侧数据源添加表')}
           </span>
         </div>
 
-        <div className="flex items-center gap-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-1">
           {/* 标题 - 移至右侧，样式与 SQL 面板一致 */}
           <div className="flex items-center gap-1.5 px-2 py-1 rounded-md border border-border bg-background/50 text-xs text-muted-foreground">
             <GitMerge className="w-3.5 h-3.5" />
@@ -2073,7 +2029,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
                   <div className="text-xs space-y-1">
                     <div className="font-medium mb-1 text-foreground">{t('query.join.attachedDatabasesTitle', '将连接的数据库:')}</div>
                     {attachDatabases.map((db) => (
-                      <div key={db.connectionId} className="flex items-center gap-2">
+                      <div key={db.connectionId} className="flex min-w-0 flex-wrap items-center gap-1">
                         <Database className="w-3 h-3 text-muted-foreground" />
                         <span className="text-muted-foreground">{db.alias}</span>
                       </div>

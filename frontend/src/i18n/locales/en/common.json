@@ -49,23 +49,31 @@
     "fitToWidth": "Fit to width",
     "filterLabel": "Filters",
     "clearColFilter": "Clear {{col}} filter",
-    "highCardinalitySelectAllBlocked": "This column has too many distinct values; only the most frequent are shown. Uncheck some, or use the filter above."
+    "highCardinalitySelectAllBlocked": "This column has too many distinct values; only the most frequent are shown. Uncheck some, or use the filter above.",
+    "lineage": {
+      "derived": "Derived",
+      "constant": "Constant",
+      "unresolved": "Unresolved source"
+    }
   },
   "nav": {
     "datasource": "Data Sources",
     "queryworkbench": "Query Workbench",
     "tablemanagement": "Table Management",
-    "asynctasks": "Async Tasks",
+    "asynctasks": "Runs",
     "switchMain": "Main navigation",
     "settings": "Settings",
     "ai": "AI / Models",
-    "extensions": "Extensions"
+    "extensions": "Extensions",
+    "aiAssistant": "AI assistant"
   },
   "sidebar": {
     "collapse": "Collapse",
     "expand": "Expand"
   },
   "actions": {
+    "previousPage": "Previous page",
+    "nextPage": "Next page",
     "toggleDark": "Switch to dark",
     "toggleLight": "Switch to light",
     "toggleLang": "Switch language",
@@ -79,9 +87,11 @@
     "uploadFile": "Upload File",
     "exportData": "Export Data",
     "toggleTheme": "Toggle Theme",
-    "toggleLanguage": "Toggle Language"
+    "toggleLanguage": "Toggle Language",
+    "actions": "Actions"
   },
   "common": {
+    "exitFullscreen": "Exit fullscreen",
     "comingSoon": "Coming soon",
     "loading": "Loading...",
     "refresh": "Refresh",
@@ -101,7 +111,9 @@
     "execute": "Execute",
     "unknownError": "Unknown error",
     "remove": "Remove",
-    "copyTableName": "Copy table name"
+    "insertTableName": "Insert into editor",
+    "copyTableName": "Copy table name",
+    "tableRowCount": "{{count}} rows"
   },
   "dataSource": {
     "previewTable": "Preview table: {{tableName}}",
@@ -168,6 +180,8 @@
     "asyncTasksPending": "Async task list (pending)"
   },
   "async": {
+    "snapshotMissing": "Query snapshot unavailable",
+    "noMatches": "No runs match the current filters",
     "title": "Async Tasks",
     "empty": "No async tasks",
     "status": "Status",
@@ -181,7 +195,7 @@
     "actions": "Actions",
     "totalCount": "{{count}} total",
     "perPage": "Per page",
-    "previewResult": "Preview result",
+    "previewResult": "View result",
     "downloadBtn": "Download",
     "cancel": "Cancel",
     "cancelSuccess": "Task cancelled",
@@ -201,8 +215,8 @@
     "status.failed": "Failed",
     "status.cancelled": "Cancelled",
     "dialog": {
-      "title": "Submit Async Task",
-      "description": "Runs in background · results saved as a DuckDB table",
+      "title": "Save as table",
+      "description": "Run the query in the background and create a DuckDB table. Keep editing while it runs.",
       "sql": "SQL Statement",
       "tableName": "Result Table Name",
       "tableNameOptional": "optional",
@@ -215,7 +229,10 @@
       "externalSource": "Data from external database: {{name}} ({{type}})",
       "attachedDatabases": "Attached External Databases",
       "federatedQueryHint": "These databases will be temporarily attached during query execution",
-      "submit": "Submit Task"
+      "submit": "Save in background",
+      "querySource": "Query source",
+      "editorSource": "Current query · SQL captured at submission",
+      "resultSource": "This result’s SQL · Re-executed to save, without reading or replacing your draft"
     },
     "download": {
       "title": "Download Result",
@@ -228,7 +245,23 @@
       "success": "Download successful",
       "failed": "Download failed: {{message}}"
     },
-    "status.cancelling": "Cancelling"
+    "status.cancelling": "Cancelling",
+    "filter": {
+      "all": "All",
+      "running": "Running",
+      "completed": "Completed",
+      "failed": "Failed",
+      "cancelled": "Cancelled"
+    },
+    "search": "Search SQL or results",
+    "snapshot": "Query snapshot",
+    "statusLabel": "Status",
+    "cancelRequested": "Cancellation requested",
+    "tasksEntry": "Tasks",
+    "runningSummary": "{{count}} tasks running",
+    "panelSummary": "{{running}} running · {{completed}} completed",
+    "taskDetails": "Task details / SQL",
+    "panelTitle": "Background tasks"
   },
   "query": {
     "cancelled": "Query cancelled",
@@ -258,7 +291,7 @@
       "stop": "Stop",
       "scopeLocal": "Local DuckDB",
       "agentPlaceholder": "Ask the data agent… type @ to pick tables (Enter to send)",
-      "agentHint": "The agent runs read-only, row-capped, cancellable probe queries; final SQL is still only inserted into the editor",
+      "agentHint": "The agent runs read-only, row-capped, cancellable probe queries; final SQL is reviewed before being applied to the editor",
       "agentEmpty": "Ask me anything about your data. I inspect schemas, verify real values and dry-run read-only queries before answering; type @ to pin tables.",
       "agentFailed": "Agent run failed",
       "termProtocol": "The model broke the action protocol; run terminated honestly",
@@ -308,7 +341,30 @@
       "scopeMore": "{{n}} more — keep typing to narrow",
       "mentionMore": "{{n}} more — keep typing to narrow",
       "scopeRemoveOne": "Remove {{name}} from scope",
-      "scopeAddTable": "Add “{{name}}” and ask again"
+      "scopeAddTable": "Add “{{name}}” and ask again",
+      "previewChanges": "Preview changes",
+      "changePreview": {
+        "title": "Review AI changes",
+        "description": "Apply to replace the SQL in {{target}}. The query will not run automatically.",
+        "before": "Original SQL",
+        "after": "AI suggestion",
+        "removed": "− Removed or replaced",
+        "added": "+ Added or replaced",
+        "apply": "Apply changes",
+        "closed": "The target tab was closed. Cancel and select a SQL tab again.",
+        "stale": "The original SQL changed. Review the updated differences before applying.",
+        "same": "The SQL is unchanged. No changes to apply."
+      },
+      "emptyLead": "Start with the current SQL, or ask a question.",
+      "qaOptimizeCurrent": "Optimize current SQL",
+      "composerPlaceholder": "Ask the data agent…",
+      "composerLabel": "Ask the data agent",
+      "usageHelp": "Usage guide",
+      "scopeLocalSource": "Local DuckDB",
+      "scopeAllTables": "All tables",
+      "scopeNoTables": "No tables selected",
+      "send": "Send",
+      "scopeDone": "Done"
     },
     "tableSelector": {
       "selectTable": "Select table",
@@ -377,7 +433,7 @@
       "copySuccess": "Successfully copied {{count}} rows to clipboard",
       "rangeCopySuccess": "Successfully copied {{rows}} rows {{cols}} columns to clipboard",
       "copyFailed": "Failed to copy to clipboard",
-      "importToDuckDB": "Import to DuckDB",
+      "importToDuckDB": "Save as table",
       "previewCapHint": "Preview limited to {{max}} rows; more data may exist",
       "filter": {
         "search": "Search...",
@@ -510,7 +566,8 @@
       "cancel": "Cancel",
       "cancelTooltip": "Cancel the current query",
       "savedToTable": "Saved as table {{table}}",
-      "saveTableFailed": "Query succeeded but saving to table {{table}} failed"
+      "saveTableFailed": "Query succeeded but saving to table {{table}} failed",
+      "runOptions": "Run options"
     },
     "import": {
       "title": "Save as DuckDB table",
@@ -690,12 +747,17 @@
       "selectType": "Select type",
       "recommended": "Recommended",
       "customPlaceholder": "Type DECIMAL(x,x)",
-      "inferSafe": "Infer",
-      "inferSafeHint": "Infer a safe type from the real data (scale from data, avoids rounding false-matches)",
+      "inferSafe": "Inspect data",
+      "inferSafeHint": "Check whether both columns can convert safely; choose a type manually when uncertain",
       "applyAllRecommendations": "Apply All Recommendations",
       "shortcutHint": "Shortcut: Ctrl+A",
       "sqlPreview": "SQL Preview",
-      "applyAndContinue": "Apply Conversion and Continue"
+      "applyAndContinue": "Apply Conversion and Continue",
+      "noSafeRecommendations": "No safe recommendation is available. Choose a conversion type manually.",
+      "recommendationHint": "Apply existing recommendations and inspect unselected fields; choose manually when no safe type is available.",
+      "recommendationFailed": "Inspection failed. Retry or choose a conversion type manually.",
+      "recommendationsApplied": "Applied {{count}} recommendations; choose types manually for unresolved fields.",
+      "customType": "Custom conversion type"
     },
     "set": {
       "title": "Set Operations",
@@ -731,78 +793,84 @@
       "generatingSql": "Generating…",
       "mixedSources": "Cannot mix DuckDB local tables with external database tables. Please select tables from the same source only.",
       "noColumns": "No columns available",
-      "operationType": "Set operation type"
+      "operationType": "Set operation type",
+      "byNameHelp": "Column alignment help",
+      "byNameExampleLeft": "Left table: product_id, product_name",
+      "byNameExampleRight": "Right table: product_id, amount",
+      "byNameExampleResult": "Combined: product_id, product_name, amount",
+      "byNameExact": "Only identical names align. order_number and order_id remain separate columns.",
+      "byNameScope": "Only Union supports this option. Intersect and Except compare column positions and require the same number of columns."
     },
     "pivot": {
       "title": "Pivot Table",
       "dataSource": "Data Source",
       "selectTable": "Select data table",
-      "rowFields": "Row Fields",
-      "rowFieldsHint": "Select fields for grouping",
-      "addRowField": "Add row field",
-      "columnField": "Pivot Column",
-      "columnFieldHint": "Select a column to pivot; its distinct values become new columns",
-      "selectColumnField": "Select pivot column (optional)",
-      "noColumnField": "No pivot column",
-      "distinctValues": "Distinct values preview",
-      "noDistinctValues": "No distinct values",
-      "tooManyValues": "Too many distinct values; showing a subset",
-      "valueFields": "Value Fields",
-      "valueFieldsHint": "Select numeric fields to aggregate",
-      "addValue": "Add",
-      "noValues": "No value fields",
+      "rowFields": "Group rows by",
+      "rowFieldsHint": "One row per group, such as a region or product.",
+      "addRowField": "Add grouping field",
+      "columnField": "Expand into columns",
+      "columnFieldHint": "Distinct values become headings, such as Q1 and Q2 for a quarter field.",
+      "selectColumnField": "Choose a heading field (optional)",
+      "noColumnField": "Group and summarize without expanding headings",
+      "distinctValues": "Generated heading values",
+      "noDistinctValues": "No values to expand",
+      "tooManyValues": "Many heading values; showing a subset",
+      "valueFields": "Values to summarize",
+      "valueFieldsHint": "Choose a field and how to calculate it, such as sum, count or average.",
+      "addValue": "Add summary value",
+      "noValues": "No summary fields yet",
       "selectColumn": "Select column",
       "externalNotSupported": "Pivot tables are not supported for external tables. Please import the external table into DuckDB first.",
       "asyncNotSupportedForExternal": "Async execution is not supported for pivot tables on external database tables",
-      "availableFields": "Available Fields",
-      "textCastToNumber": "Text column \"{{column}}\" is summed as numbers; non-numeric values count as empty",
-      "textCastRecommended": "Text column \"{{column}}\" will be summed as {{cast}} (scale inferred from actual data)",
-      "textCastNonNumericRows": "Text column \"{{column}}\" has {{count}} rows that aren't numeric; they count as empty. Aggregated as {{cast}} — you can edit the type on the field",
-      "textCastUnsafe": "Text column \"{{column}}\" can't be safely inferred as numeric; pick a type on the field before running",
-      "textCastUnsafeNonNumeric": "Text column \"{{column}}\" has {{count}} non-numeric rows; enter a type on the field (e.g. DECIMAL(38,2)) before running",
-      "textCastUnsafeBinaryFloat": "Column \"{{column}}\" is floating-point; auto-quantizing to fixed-point would distort values. Enter a cast type on the field (e.g. DECIMAL(38,2)), or use Count/Min/Max",
-      "textCastUnsafeScientific": "Text column \"{{column}}\" contains scientific notation; scale can't be inferred reliably. Enter a type on the field before running",
-      "textCastUnsafeOverflow": "Column \"{{column}}\" has more digits than DECIMAL(38) capacity; enter a type on the field before running",
-      "castTypeHint": "Type conversion before aggregation; type e.g. DECIMAL(38,2), leave empty to clear",
-      "castInferring": "inferring…",
-      "castPickType": "pick type",
-      "castBlockedHint": "A value's type is still being inferred or needs a manual choice; execution is paused",
-      "castInvalid": "Invalid cast type \"{{type}}\"; enter a valid DuckDB type (e.g. DOUBLE, DECIMAL(38,2))",
-      "castInvalidBareDecimal": "Bare DECIMAL is implicitly DECIMAL(18,3) and lossy; use a full form like DECIMAL(38,6)",
-      "columnLimitHint": "Pivot column \"{{column}}\" has more than the {{cap}}-value limit (at least {{observed}}); add filters to narrow the range, or list the exact values to expand in \"Specific pivot values\" below",
+      "availableFields": "Fields to drag",
+      "textCastToNumber": "“{{column}}” will be summarized as numbers; values that cannot convert become NULL.",
+      "textCastRecommended": "“{{column}}” uses numeric type {{cast}} with your selected calculation.",
+      "textCastNonNumericRows": "“{{column}}” has {{count}} non-numeric rows, which become NULL; other values use {{cast}}.",
+      "textCastUnsafe": "Cannot determine a safe numeric type for “{{column}}”. Choose one manually before executing.",
+      "textCastUnsafeNonNumeric": "“{{column}}” has {{count}} invalid numeric rows. Choose a numeric type manually or use Count.",
+      "textCastUnsafeBinaryFloat": "“{{column}}” is floating point; automatic conversion may change values. Choose a type manually, or use Count, Max or Min.",
+      "textCastUnsafeScientific": "“{{column}}” contains scientific notation; decimal places cannot be determined safely. Choose a numeric type manually.",
+      "textCastUnsafeOverflow": "“{{column}}” exceeds 38 digits. Choose a type manually; no automatic recommendation is available.",
+      "castTypeHint": "Convert to this numeric type before summarizing, for example DECIMAL(38,2); leave empty for no conversion",
+      "castInferring": "Checking numeric type…",
+      "castPickType": "Choose a numeric type",
+      "castBlockedHint": "Choose a usable numeric type for the summary field first.",
+      "castInvalid": "“{{type}}” is not a valid numeric type. Use a type such as DOUBLE or DECIMAL(38,2).",
+      "castInvalidBareDecimal": "Specify total digits and decimal places, for example DECIMAL(38,2); bare DECIMAL may lose decimals.",
+      "columnLimitHint": "“{{column}}” has at least {{observed}} values, exceeding the {{cap}} automatic-heading limit. Filter rows first or specify the headings to show.",
       "generateFailed": "Failed to generate the pivot query; check the configuration or try again",
-      "subtotals": "Subtotals",
-      "grandTotals": "Grand totals",
-      "subtotalsNeedTwoRows": "Subtotals need at least 2 row dimensions",
-      "manualColumnValues": "Specific pivot values (optional)",
-      "manualColumnValuesHint": "Enter one value, then press Enter",
-      "manualColumnValuesDescription": "Leave empty to generate all columns; specified values generate only those columns and bypass the column limit",
-      "manualColumnValuesAdd": "Add column value",
-      "manualColumnValuesTitle": "Expand only these column values (bypasses the column limit); empty = auto-expand all",
+      "subtotals": "Show group subtotals",
+      "grandTotals": "Show grand total",
+      "subtotalsNeedTwoRows": "Choose at least 2 grouping fields to show group subtotals.",
+      "manualColumnValues": "Show only these headings (optional)",
+      "manualColumnValuesHint": "Enter one value and press Enter, for example Q1",
+      "manualColumnValuesDescription": "Enter one value at a time. Leave empty to generate headings from data. Specified values produce only those columns, without the automatic column limit.",
+      "manualColumnValuesAdd": "Add heading value",
+      "manualColumnValuesTitle": "Use fixed heading values; leave empty to discover values from data",
       "selectTableHint": "Please select a data table first",
       "allFieldsConfigured": "All fields have been configured",
-      "rows": "Row Fields",
-      "columns": "Pivot Column",
-      "values": "Aggregate Values",
-      "dropRowHint": "Drop fields here for row grouping",
-      "dropColumnHint": "Drop field here for pivot column",
-      "dropValueHint": "Drop fields here for aggregation",
-      "maxOne": "max 1",
-      "sampleValue": "Val",
-      "noRows": "no row fields",
-      "tablePreview": "Table Structure Preview",
-      "previewHint": "Aggregation preview: grouping by row fields then calculating aggregates",
-      "previewHintPivot": "Pivot preview: each unique value in [Pivot Column] becomes a separate column",
-      "previewReadyHint": "Configure fields and click Run to see results.",
+      "rows": "Group rows by",
+      "columns": "Expand into columns",
+      "values": "Values to summarize",
+      "dropRowHint": "Drag a grouping field, such as product or region",
+      "dropColumnHint": "Drag a field to turn into headings, such as quarter",
+      "dropValueHint": "Drag a value field, such as amount, then choose a calculation",
+      "maxOne": "At most 1 field",
+      "sampleValue": "Summary result",
+      "noRows": "No grouping: show the overall summary",
+      "tablePreview": "Result layout preview",
+      "previewHint": "One row per group, using the calculation you selected.",
+      "previewHintPivot": "Distinct values of the heading field become columns.",
+      "previewReadyHint": "Configure fields, then click Execute to view the result.",
       "previewRows": "Preview {{count}} rows",
       "previewRowsPartial": "Preview {{returned}} rows (~{{total}} rows match the query)",
-      "pivotMode": "Pivot Mode",
-      "rowDimension": "Row Dimension",
-      "pivotColumnValues": "Pivot Column",
-      "uniqueValues": "unique values",
+      "pivotMode": "Expand headings",
+      "rowDimension": "Group by these fields",
+      "pivotColumnValues": "Headings use",
+      "uniqueValues": "distinct values",
       "filters": "Filters",
       "addFilter": "Add condition",
-      "filtersEmpty": "Optional: filter rows before pivot (WHERE)",
+      "filtersEmpty": "Optional: filter the rows before summarizing them",
       "filterColumn": "Column",
       "filterOperator": "Operator",
       "filterValue": "Value",
@@ -840,7 +908,9 @@
       "sql": "SQL Query",
       "join": "JOIN Query",
       "set": "Set Operations",
-      "pivot": "Pivot Table"
+      "pivot": "Pivot Table",
+      "label": "Query tabs",
+      "new": "New tab"
     },
     "federated": {
       "attachedDatabases": "{{count}} external database(s)",
@@ -911,10 +981,21 @@
       "createSuccess": "Bookmarked",
       "deleteFailed": "Delete failed",
       "deleteSuccess": "Bookmark removed"
+    },
+    "background": {
+      "running": "Running for {{seconds}}s. Continue in background with the same query and row limit; no rerun.",
+      "move": "Move to background",
+      "moving": "Moving…",
+      "moved": "Running in the background. Open Tasks at the top right to view the result.",
+      "moveFailed": "Could not move query; it may have already finished."
     }
   },
   "page": {
     "datasource": {
+      "sourceMethod": "Data source",
+      "sourceLocal": "Local file",
+      "sourceDatabase": "Database connection",
+      "importOptions": "Import options",
       "intro1": "Upload files: clipboard / CSV / Excel / JSON / Parquet / remote files, auto create tables for analysis (default max 50GB, configurable).",
       "intro2": "Connect remote DB: MySQL / PostgreSQL, then query and load into local tables.",
       "tabUpload": "File upload",
@@ -1194,7 +1275,8 @@
         "local": "Local",
         "viewList": "List",
         "viewCard": "Cards",
-        "newConnection": "New connection"
+        "newConnection": "New connection",
+        "editConnection": "Edit connection"
       },
       "status": {
         "active": "Active",
@@ -1217,6 +1299,30 @@
         "headerNo": "No header",
         "encoding": "Encoding",
         "encodingAuto": "Auto-detect"
+      },
+      "overviewIntro": "Local files and remote databases, joined in one SQL statement.",
+      "localTables": "Local tables · DuckDB",
+      "searchLocal": "Search local tables",
+      "tableName": "Table",
+      "rows": "Rows",
+      "columns": "Columns",
+      "created": "Created",
+      "query": "Query",
+      "noLocalTables": "No matching local tables. Add a file or paste data to get started.",
+      "deleteTitle": "Delete local table",
+      "deleteDescription": "Delete “{{name}}”? Its table and data will be removed.",
+      "flow": {
+        "importData": "Import data",
+        "importOther": "Other import methods",
+        "backToWorkbench": "Back to workbench",
+        "viewTables": "Browse tables",
+        "editConnection": "Edit connection",
+        "editNamed": "Edit connection {{name}}",
+        "saveChanges": "Save changes",
+        "saveConnection": "Save connection",
+        "editHint": "Update the connection settings for {{name}} and continue where you left off.",
+        "newHint": "Save your settings directly; the connection is validated before saving. Use Test connection to check them separately.",
+        "importHint": "Choose a file, paste data or enter an address. Imported tables become available in the explorer."
       }
     }
   },
@@ -1358,7 +1464,8 @@
       "checking": "Checking…",
       "upToDate": "You are on the latest version v{{version}}",
       "checkFailed": "Update check failed — please check your network and retry"
-    }
+    },
+    "aiNeedsConfig": "Configure an AI model to use the assistant"
   },
   "extensions": {
     "title": "Extensions",
@@ -1405,10 +1512,29 @@
     "resetSuccess": "Shortcut reset to default",
     "resetError": "Failed to reset shortcut",
     "resetAllSuccess": "All shortcuts reset to defaults",
-    "resetAllError": "Failed to reset shortcuts"
+    "resetAllError": "Failed to reset shortcuts",
+    "toggleAiPanel": "Toggle AI assistant",
+    "toggleExplorer": "Toggle explorer"
   },
   "command": {
-    "aiChat": "Data assistant chat"
+    "aiChat": "Data assistant chat",
+    "placeholder": "Search actions, tables or recent queries…",
+    "noResults": "No matches",
+    "groupRecent": "Recent runs",
+    "groupActions": "Actions",
+    "groupGoto": "Go to",
+    "groupTables": "Tables",
+    "run": "Run current query",
+    "runAsync": "Save current query as a table",
+    "format": "Format SQL",
+    "newSqlTab": "New SQL tab",
+    "newJoinTab": "New JOIN query",
+    "addData": "Add data",
+    "connectDatabase": "Connect a database",
+    "aiAssistant": "Open AI assistant",
+    "asyncTasks": "View async tasks",
+    "refresh": "Refresh data sources",
+    "help": "Help & docs (GitHub)"
   },
   "demo": {
     "banner": "Browser demo (DuckDB-Wasm) · sample tables preloaded — write SQL / JOIN / chart right away. DB connections & AI need self-hosting.",
@@ -1584,5 +1710,14 @@
       "helpText": "ON-clause conditions apply during the JOIN and keep unmatched rows (shown as NULL). WHERE-clause conditions apply after the JOIN and filter out unmatched rows. When querying external database tables, add a time-range condition to avoid slow full-table scans."
     }
   },
-  "success": "Operation succeeded"
+  "success": "Operation succeeded",
+  "status": {
+    "engine": "DuckDB {{version}}",
+    "engineDown": "Local engine not responding",
+    "engineChecking": "Connecting to local engine…",
+    "engineDemo": "DuckDB-Wasm · in browser",
+    "connections": "{{count}} connections",
+    "offline": "{{count}} offline",
+    "asyncRunning": "{{count}} save tasks running"
+  }
 }

@@ -37,10 +37,10 @@ def test_desktop_release_version_is_consistent_everywhere():
         cargo["package"]["version"],
         duckquery_lock["version"],
     }
-    assert versions == {"2.0.1"}
+    assert versions == {"2.1.1"}
     for source, marker in (
-        ("api/main.py", 'version="2.0.1"'),
-        ("api/core/common/duckdb_capabilities.py", '"product_version": "2.0.1"'),
+        ("api/main.py", 'version="2.1.1"'),
+        ("api/core/common/duckdb_capabilities.py", '"product_version": "2.1.1"'),
     ):
         assert marker in (ROOT / source).read_text(encoding="utf-8")
 
@@ -50,11 +50,11 @@ def test_release_docs_and_default_duckdb_engine_pin_are_consistent():
     assert re.search(r"^duckdb==1\.6\.0\.dev379$", requirements, re.MULTILINE)
     for readme in ("README.md", "README_en.md"):
         text = (ROOT / readme).read_text(encoding="utf-8")
-        assert "v2.0.1" in text
+        assert "v2.1.1" in text
         assert "v2.0.0-alpha39998" in text
 
-    release_notes = ROOT / "docs/releases/v2.0.1.md"
-    english_release_notes = ROOT / "docs/releases/v2.0.1_en.md"
+    release_notes = ROOT / "docs/releases/v2.1.1.md"
+    english_release_notes = ROOT / "docs/releases/v2.1.1_en.md"
     assert release_notes.exists() and english_release_notes.exists()
     assert "存储" in release_notes.read_text(encoding="utf-8")
     assert "new-database storage" in english_release_notes.read_text(

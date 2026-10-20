@@ -1,3 +1,4 @@
+import { SettingsSectionHeader } from "./SettingsSectionHeader";
 /**
  * 关于与更新(仅桌面):当前版本号 + 手动检查更新。
  * 复用 desktop/UpdateChecker 的 checkForUpdate/promptUpdate——与启动时
@@ -13,9 +14,6 @@ import { getVersion } from '@tauri-apps/api/app';
 import {
   Card,
   CardContent,
-  CardDescription,
-  CardHeader,
-  CardTitle,
 } from '@/components/ui/card';
 import { Button } from '@/components/ui/button';
 import { isTauri } from '@/desktop/openExternal';
@@ -68,18 +66,14 @@ export function AboutUpdateSettings() {
   if (!onDesktop) return null;
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2">
-          <Info className="h-5 w-5" />
-          {t('settings.about.title', '关于与更新')}
-        </CardTitle>
-        <CardDescription>
-          {t('settings.about.description', '查看当前版本,手动检查并安装新版本')}
-        </CardDescription>
-      </CardHeader>
-      <CardContent>
-        <div className="flex items-center justify-between gap-4">
+    <Card className="rounded-none border-0 bg-transparent shadow-none">
+      <SettingsSectionHeader
+        icon={Info}
+        title={<> {t('settings.about.title', '关于与更新')} </>}
+        description={<> {t('settings.about.description', '查看当前版本,手动检查并安装新版本')} </>}
+      />
+      <CardContent className="px-0 pb-0">
+        <div className="flex flex-wrap items-center justify-between gap-4">
           <div className="space-y-1 text-sm">
             <div>
             <span className="text-muted-foreground">
@@ -111,8 +105,8 @@ export function AboutUpdateSettings() {
               </span>
             </div>
           </div>
-          <Button variant="outline" size="sm" onClick={handleCheck} disabled={checking}>
-            <RefreshCw className={`h-4 w-4 mr-2 ${checking ? 'animate-spin' : ''}`} />
+          <Button variant="subtle" size="sm" onClick={handleCheck} disabled={checking}>
+            <RefreshCw className={`h-3.5 w-3.5 ${checking ? 'animate-spin' : ''}`} />
             {checking
               ? t('settings.about.checking', '检查中…')
               : t('settings.about.checkUpdate', '检查更新')}

@@ -58,3 +58,12 @@ async def cancel_sync_query(request_id: str):
         "Query does not exist or has already completed",
         details={"request_id": request_id},
     )
+
+
+@router.post("/api/query/background/{request_id}")
+def move_query_to_background(request_id: str):
+    """Adopt an in-flight read-only query without replaying it."""
+    from core.services.foreground_queries import foreground_queries
+
+    task_id = foreground_queries.promote(request_id)
+    return create_success_response(data={"task_id": task_id}, message_code=MessageCode.OPERATION_SUCCESS)

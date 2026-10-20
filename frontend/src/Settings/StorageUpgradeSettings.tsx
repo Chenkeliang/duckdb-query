@@ -1,10 +1,11 @@
+import { SettingsSectionHeader } from "./SettingsSectionHeader";
 import { useState } from 'react';
 import { useQuery, useMutation } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { CheckCircle2, Database, ExternalLink, RotateCcw } from 'lucide-react';
 
 import { Button } from '@/components/ui/button';
-import { Card, CardContent, CardDescription, CardHeader, CardTitle } from '@/components/ui/card';
+import { Card, CardContent } from '@/components/ui/card';
 import { OPEN_STORAGE_UPGRADE_EVENT } from '@/components/MajorVersionNotice';
 import { useStorageUpgrade } from '@/hooks/useStorageUpgrade';
 import { useDuckDBCapabilities } from '@/hooks/useDuckDBCapabilities';
@@ -35,17 +36,13 @@ export function StorageUpgradeSettings() {
     }) : null;
 
   return (
-    <Card>
-      <CardHeader>
-        <CardTitle className="flex items-center gap-2 text-base">
-          <Database className="h-4 w-4" />
-          {t('settings.storageUpgrade.title', 'DuckDB 数据库存储')}
-        </CardTitle>
-        <CardDescription>
-          {t('settings.storageUpgrade.description', '查看 main/system 实际格式，并管理 DuckDB 2.0 storage 迁移。')}
-        </CardDescription>
-      </CardHeader>
-      <CardContent className="space-y-4">
+    <Card className="rounded-none border-0 bg-transparent shadow-none">
+      <SettingsSectionHeader
+        icon={Database}
+        title={<> {t('settings.storageUpgrade.title', 'DuckDB 数据库存储')} </>}
+        description={<> {t('settings.storageUpgrade.description', '查看 main/system 实际格式，并管理 DuckDB 2.0 storage 迁移。')} </>}
+      />
+      <CardContent className="space-y-4 px-0 pb-0">
         {capabilities.data && (
           <div className="rounded-lg border border-border bg-muted/20 p-3 text-sm">
             <div className="font-medium">
@@ -107,9 +104,9 @@ export function StorageUpgradeSettings() {
             <Button size="sm" onClick={openUpgrade}><RotateCcw className="mr-2 h-4 w-4" />{t('settings.storageUpgrade.action', '升级到 v2 storage')}</Button>
           )}
           {report && (
-            <Button size="sm" variant="outline" aria-expanded={showReport} onClick={() => setShowReport((value) => !value)}><ExternalLink className="mr-2 h-4 w-4" />{t('settings.storageUpgrade.report')}</Button>
+            <Button size="sm" variant="quiet" aria-expanded={showReport} onClick={() => setShowReport((value) => !value)}><ExternalLink className="mr-2 h-4 w-4" />{t('settings.storageUpgrade.report')}</Button>
           )}
-          <Button size="sm" variant="outline" aria-expanded={showRecovery} onClick={() => setShowRecovery(v => !v)}>
+          <Button size="sm" variant="quiet" aria-expanded={showRecovery} onClick={() => setShowRecovery(v => !v)}>
             {t('settings.storageUpgrade.recovery')}
           </Button>
           </div>
@@ -127,8 +124,8 @@ export function StorageUpgradeSettings() {
             </ol>
             <p className="text-xs text-warning">{t('settings.storageUpgrade.recoverWarning')}</p>
             <div className="flex flex-wrap gap-2">
-              <Button size="sm" variant="outline" disabled={backup.isFetching} onClick={() => void backup.refetch()}>{t('settings.storageUpgrade.recheckBackup')}</Button>
-              {isTauri() && <Button size="sm" disabled={!backup.data?.available || openBackup.isPending} onClick={() => openBackup.mutate()}>{t('settings.storageUpgrade.openBackup')}</Button>}
+              <Button size="sm" variant="quiet" disabled={backup.isFetching} onClick={() => void backup.refetch()}>{t('settings.storageUpgrade.recheckBackup')}</Button>
+              {isTauri() && <Button size="sm" variant="subtle" disabled={!backup.data?.available || openBackup.isPending} onClick={() => openBackup.mutate()}>{t('settings.storageUpgrade.openBackup')}</Button>}
             </div>
           </section>
         )}

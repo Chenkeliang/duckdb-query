@@ -1,10 +1,12 @@
 import * as React from 'react';
 import { forwardRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Check, Copy, Database, Table2 } from 'lucide-react';
+import { Check, Copy, Database, Table2, Plus } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
 import { TableContextMenu } from './ContextMenu';
 import type { SelectedTableObject } from '@/types/SelectedTable';
+import { queueWorkbenchCommand } from '../workbenchCommands';
+import { generateExternalTableReference } from '@/utils/sqlUtils';
 import { getIndentClass } from './TreeNode';
 
 /**
@@ -182,7 +184,7 @@ export const TableItem = forwardRef<HTMLDivElement, TableItemProps>(({
 
   // 处理键盘事件（支持 Enter 和 Space 键选择）
   const handleKeyDown = React.useCallback((e: React.KeyboardEvent) => {
-    if (disabled) return;
+    if (disabled || e.target !== e.currentTarget) return;
     if (e.key === 'Enter' || e.key === ' ') {
       e.preventDefault();
       if (batchMode) {
@@ -248,18 +250,29 @@ export const TableItem = forwardRef<HTMLDivElement, TableItemProps>(({
             {/* 外部表不显示行数（无法准确获取） */}
             {rowCount !== undefined && table.source !== 'external' && (
               <div className="text-xs text-muted-foreground mt-0.5">
-                {rowCount.toLocaleString()} 行
+                {t('common.tableRowCount', { count: rowCount, defaultValue: '{{count}} 行' })}
               </div>
             )}
           </div>
 
+          {!batchMode && <button
+            type="button"
+            disabled={disabled}
+            onClick={(event) => {
+              event.stopPropagation();
+              queueWorkbenchCommand('insertText', generateExternalTableReference(table).qualifiedName);
+            }}
+            title={t('common.insertTableName')}
+            aria-label={t('common.insertTableName')}
+            className="shrink-0 rounded p-1 text-muted-foreground opacity-100 sm:opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 hover:bg-accent hover:text-foreground"
+          ><Plus className="h-3.5 w-3.5" /></button>}
           {/* 复制表名：悬停/聚焦时可见 */}
           <button
             type="button"
             onClick={handleCopyName}
             title={t('common.copyTableName', '复制表名')}
             aria-label={t('common.copyTableName', '复制表名')}
-            className="shrink-0 rounded p-1 text-muted-foreground opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 hover:bg-accent hover:text-foreground"
+            className="shrink-0 rounded p-1 text-muted-foreground opacity-100 sm:opacity-0 transition-opacity group-hover:opacity-100 focus-visible:opacity-100 hover:bg-accent hover:text-foreground"
           >
             {nameCopied ? (
               <Check className="h-3.5 w-3.5 text-primary" />

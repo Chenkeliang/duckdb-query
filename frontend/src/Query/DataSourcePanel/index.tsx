@@ -16,7 +16,7 @@ import {
 } from '@/components/ui/dialog';
 import { deleteDuckDBTable } from '@/api';
 import { useDuckDBTables, type Table } from '@/hooks/useDuckDBTables';
-import { useDatabaseConnections } from '@/hooks/useDatabaseConnections';
+import { useDatabaseConnections, type DatabaseConnection } from '@/hooks/useDatabaseConnections';
 import { invalidateAllDataCaches, invalidateAfterTableDelete } from '@/utils/cacheInvalidation';
 import { createDuckDBTable, isTableSelected } from '@/utils/tableUtils';
 import { showSuccessToast, showErrorToast } from '@/utils/toastHelpers';
@@ -46,6 +46,9 @@ interface DataSourcePanelProps {
   onProfile?: (table: SelectedTable) => void;
   onDelete?: (tableName: string) => Promise<void> | void;
   onImport?: (table: SelectedTable) => void;
+  onEditConnection?: (connection: DatabaseConnection) => void;
+  focusedConnection?: { id: string; token: number };
+  focusedTable?: { name: string; token: number };
 }
 
 export const DataSourcePanel: React.FC<DataSourcePanelProps> = ({
@@ -58,10 +61,22 @@ export const DataSourcePanel: React.FC<DataSourcePanelProps> = ({
   onProfile,
   onDelete,
   onImport,
+  onEditConnection,
+  focusedConnection,
+  focusedTable,
 }) => {
   const { t } = useTranslation('common');
   const [searchQuery, setSearchQuery] = React.useState('');
   const [debouncedSearch, setDebouncedSearch] = React.useState('');
+  React.useEffect(() => {
+    if (focusedConnection || focusedTable) { setSearchQuery(''); setDebouncedSearch(''); }
+  }, [focusedConnection, focusedTable]);
+  const focusedTableRef = React.useRef<HTMLDivElement | null>(null);
+  const revealTableRef = React.useCallback((node: HTMLDivElement | null) => {
+    focusedTableRef.current = node;
+    node?.scrollIntoView({ block: 'nearest' });
+  }, []);
+  React.useEffect(() => { focusedTableRef.current?.scrollIntoView({ block: 'nearest' }); }, [focusedTable]);
 
   // 防抖搜索
   React.useEffect(() => {
@@ -201,9 +216,9 @@ export const DataSourcePanel: React.FC<DataSourcePanelProps> = ({
   }, [selectedForDelete, queryClient, t, exitBatchMode]);
 
   return (
-    <div className="h-full flex flex-col bg-card border-r border-border">
+    <div className="flex h-full min-h-0 min-w-0 flex-col border-r border-border bg-surface">
       {/* 搜索栏 - 与右侧标签页高度对齐 */}
-      <div className="h-12 border-b border-border flex items-center px-4 shrink-0">
+      <div className="h-12 border-b border-border flex items-center px-2 shrink-0">
         <div className="relative w-full">
           <Search className="absolute left-3 top-1/2 -translate-y-1/2 h-4 w-4 text-muted-foreground" />
           <Input
@@ -217,7 +232,7 @@ export const DataSourcePanel: React.FC<DataSourcePanelProps> = ({
       </div>
 
       {/* 表列表 */}
-      <div className="flex-1 overflow-y-auto">
+      <div className="min-h-0 flex-1 overflow-y-auto overscroll-contain">
         {(isLoading || isLoadingConnections) ? (
           /* 加载骨架 */
           <div className="space-y-1.5 p-2">
@@ -234,6 +249,7 @@ export const DataSourcePanel: React.FC<DataSourcePanelProps> = ({
             {connections.length > 0 && (
               <TreeSection
                 id="database-connections"
+                expandToken={focusedConnection?.token}
                 title={t('dataSource.databaseConnections')}
                 count={connections.length}
                 defaultExpanded={true}
@@ -247,6 +263,8 @@ export const DataSourcePanel: React.FC<DataSourcePanelProps> = ({
                     selectionMode={selectionMode}
                     onPreview={onPreview}
                     onImport={onImport}
+                    onEdit={onEditConnection}
+                    focusToken={focusedConnection?.id === connection.id ? focusedConnection.token : undefined}
                     searchQuery={debouncedSearch}
                     forceExpanded={!!debouncedSearch}
                   />
@@ -277,6 +295,7 @@ export const DataSourcePanel: React.FC<DataSourcePanelProps> = ({
                 {groupedTables.normal.length > 0 && (
                   <TreeSection
                     id="normal-tables"
+                    expandToken={focusedTable && !focusedTable.name.startsWith('system_') ? focusedTable.token : undefined}
                     title={t('dataSource.duckdbTables', 'DuckDB 表')}
                     count={groupedTables.normal.length}
                     defaultExpanded={true}
@@ -284,8 +303,7 @@ export const DataSourcePanel: React.FC<DataSourcePanelProps> = ({
                     {groupedTables.normal.map((table: Table) => {
                       const tableObj = createDuckDBTable(table.name);
                       return (
-                        <TableItem
-                          key={table.name}
+                        <div key={table.name} ref={focusedTable?.name === table.name ? revealTableRef : undefined} className={focusedTable?.name === table.name ? 'rounded-md ring-1 ring-inset ring-primary' : undefined}><TableItem
                           table={tableObj}
                           rowCount={table.row_count}
                           isSelected={isTableSelected(tableObj, selectedTables)}
@@ -298,7 +316,7 @@ export const DataSourcePanel: React.FC<DataSourcePanelProps> = ({
                           batchMode={batchMode}
                           batchChecked={selectedForDelete.has(table.name)}
                           onBatchToggle={toggleBatchSelect}
-                        />
+                        /></div>
                       );
                     })}
                   </TreeSection>
@@ -308,6 +326,7 @@ export const DataSourcePanel: React.FC<DataSourcePanelProps> = ({
                 {groupedTables.system.length > 0 && (
                   <TreeSection
                     id="system-tables"
+                    expandToken={focusedTable?.name.startsWith('system_') ? focusedTable.token : undefined}
                     title={t('dataSource.systemTables')}
                     count={groupedTables.system.length}
                     defaultExpanded={false}
@@ -315,8 +334,7 @@ export const DataSourcePanel: React.FC<DataSourcePanelProps> = ({
                     {groupedTables.system.map((table: Table) => {
                       const tableObj = createDuckDBTable(table.name);
                       return (
-                        <TableItem
-                          key={table.name}
+                        <div key={table.name} ref={focusedTable?.name === table.name ? revealTableRef : undefined} className={focusedTable?.name === table.name ? 'rounded-md ring-1 ring-inset ring-primary' : undefined}><TableItem
                           table={tableObj}
                           rowCount={table.row_count}
                           isSelected={isTableSelected(tableObj, selectedTables)}
@@ -326,7 +344,7 @@ export const DataSourcePanel: React.FC<DataSourcePanelProps> = ({
                           onProfile={onProfile}
                           onDelete={handleDelete}
                           searchQuery={debouncedSearch}
-                        />
+                        /></div>
                       );
                     })}
                   </TreeSection>
@@ -338,16 +356,15 @@ export const DataSourcePanel: React.FC<DataSourcePanelProps> = ({
       </div>
 
       {/* 底部操作按钮 */}
-      <div className="h-14 px-3 border-t border-border flex items-center gap-2">
+      <div className={batchMode ? "grid shrink-0 grid-cols-2 items-center gap-1 border-t border-border p-2" : "flex h-12 shrink-0 items-center gap-1 border-t border-border px-2"}>
         {batchMode ? (
           <>
             <Button variant="ghost" size="sm" onClick={toggleSelectAll} className="shrink-0">
               {allNormalSelected ? t('dataSource.deselectAll') : t('dataSource.selectAll')}
             </Button>
-            <span className="text-xs text-muted-foreground whitespace-nowrap">
+            <span className="min-w-0 truncate text-right text-xs text-muted-foreground">
               {t('dataSource.selectedCount', { count: selectedForDelete.size })}
             </span>
-            <div className="flex-1" />
             <Button
               variant="destructive"
               size="sm"
@@ -375,10 +392,12 @@ export const DataSourcePanel: React.FC<DataSourcePanelProps> = ({
               size="sm"
               onClick={handleRefresh}
               disabled={isFetching || isFetchingConnections}
-              className="flex-1"
+              className="min-w-0 flex-1 gap-1.5"
+              aria-label={t('common.refresh')}
+              title={t('common.refresh')}
             >
-              <RefreshCw className={`h-4 w-4 mr-2 ${(isFetching || isFetchingConnections) ? 'animate-spin' : ''}`} />
-              {t('common.refresh')}
+              <RefreshCw className={`h-4 w-4 shrink-0 ${(isFetching || isFetchingConnections) ? 'animate-spin' : ''}`} />
+              <span className="min-w-0 truncate">{t('common.refresh')}</span>
             </Button>
             {groupedTables.normal.length > 0 && (
               <Button
@@ -387,7 +406,7 @@ export const DataSourcePanel: React.FC<DataSourcePanelProps> = ({
                 onClick={() => setBatchMode(true)}
                 aria-label={t('dataSource.batchDelete')}
                 title={t('dataSource.batchDelete')}
-                className="shrink-0"
+                className="h-7 w-7 shrink-0 p-0"
               >
                 <Trash2 className="h-4 w-4" />
               </Button>
@@ -398,7 +417,8 @@ export const DataSourcePanel: React.FC<DataSourcePanelProps> = ({
                 size="sm"
                 onClick={onCollapse}
                 aria-label={t('dataSource.collapsePanel')}
-                className="shrink-0"
+                title={t('dataSource.collapsePanel')}
+                className="h-7 w-7 shrink-0 p-0"
               >
                 <ChevronLeft className="h-4 w-4" />
               </Button>

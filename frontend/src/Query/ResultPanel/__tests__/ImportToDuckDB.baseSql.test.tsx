@@ -38,8 +38,8 @@ vi.mock('@/api', () => ({
 }));
 
 // ResultPanel 接线探针:记录 dialog 实际收到的 sql prop
-vi.mock('../ImportToDuckDBDialog', () => ({
-  ImportToDuckDBDialog: (props: { sql: string }) => (
+vi.mock('@/Query/AsyncTasks/AsyncTaskDialog', () => ({
+  AsyncTaskDialog: (props: { sql: string }) => (
     <div data-testid="import-sql-probe">{props.sql}</div>
   ),
 }));

@@ -2,14 +2,15 @@ import React, { ReactNode } from "react";
 import { QueryProvider } from "@/providers/QueryProvider";
 
 interface PageShellProps {
-  sidebar?: ReactNode;
-  header?: ReactNode;
+  /** 56px icon rail */
+  rail?: ReactNode;
+  /** 28px status bar along the bottom edge */
+  statusBar?: ReactNode;
   children: ReactNode;
-  sidebarCollapsed?: boolean;
 }
 
-// macOS desktop runs an Overlay title bar (tauri.conf), so the native white bar is
-// gone — reserve a slim dark draggable strip for the traffic lights. Web/Docker and
+// macOS desktop runs an Overlay title bar (tauri.conf), so the native bar is
+// gone — reserve a slim draggable strip for the traffic lights. Web/Docker and
 // other desktop platforms keep their normal chrome (strip not rendered).
 const isTauri =
   typeof window !== "undefined" &&
@@ -20,38 +21,24 @@ const isMac =
 const macOverlayTitlebar = isTauri && isMac;
 
 /**
- * Minimal page shell for the new layout.
- * Provides sidebar + header slots with tokenized background/border.
- * Includes QueryProvider for TanStack Query support.
- * Supports collapsible sidebar.
- * 
- * Note: Toaster is rendered globally in main.jsx
+ * App shell (graphite redesign): icon rail | page, status bar underneath.
+ * There is no global header — each page owns its own top row.
+ * Includes QueryProvider for TanStack Query support; Toaster is global (main.tsx).
  */
-const PageShell: React.FC<PageShellProps> = ({ sidebar, header, children, sidebarCollapsed = false }) => {
+const PageShell: React.FC<PageShellProps> = ({ rail, statusBar, children }) => {
   return (
     <QueryProvider>
-      <div className="dq-layout-shell flex flex-col h-screen bg-background text-foreground overflow-hidden">
+      <div className="dq-layout-shell flex h-screen flex-col overflow-hidden bg-background text-foreground">
         {macOverlayTitlebar && (
-          <div
-            data-tauri-drag-region
-            className="h-7 shrink-0 bg-surface border-b border-border"
-          />
+          <div data-tauri-drag-region className="h-7 shrink-0 border-b border-border bg-background" />
         )}
-        <div className="flex min-h-0 flex-1">
-          <aside
-            className={`bg-surface border-r border-border flex flex-col shrink-0 z-50 transition-all duration-200 ${
-              sidebarCollapsed ? 'w-14' : 'w-64'
-            }`}
-          >
-            {sidebar}
-          </aside>
-          <div className="flex min-w-0 flex-1 flex-col h-full">
-            <header className="dq-layout-header shrink-0">{header}</header>
-            <main className="dq-layout-main flex-1 min-w-0 min-h-0 overflow-hidden bg-background">
-              {children}
-            </main>
-          </div>
+        <div className="flex min-h-0 flex-1 flex-col-reverse sm:flex-row">
+          <aside className="z-50 flex shrink-0 border-t border-border bg-background sm:flex-col sm:border-r sm:border-t-0">{rail}</aside>
+          <main className="dq-layout-main flex min-h-0 min-w-0 flex-1 flex-col overflow-hidden bg-background">
+            {children}
+          </main>
         </div>
+        <div className="hidden sm:block">{statusBar}</div>
       </div>
     </QueryProvider>
   );

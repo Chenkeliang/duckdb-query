@@ -17,6 +17,9 @@
 
   --color-primary: hsl(var(--primary));
   --color-primary-foreground: hsl(var(--primary-foreground));
+  --color-primary-ink: hsl(var(--primary-ink));
+  --color-faint: hsl(var(--faint));
+  --color-chart-1: var(--chart-1);
 
   --color-border: hsl(var(--border));
   --color-border-subtle: hsl(var(--border-subtle));
@@ -57,6 +60,12 @@
   --radius-lg: var(--radius);
   --radius-md: calc(var(--radius) - 2px);
   --radius-sm: calc(var(--radius) - 4px);
+  --radius-xl: calc(var(--radius) + 2px);
+  --radius-2xl: calc(var(--radius) + 4px);
+
+  /* 13px / 20px is the body size of the workbench */
+  --text-sm: 0.8125rem;
+  --text-sm--line-height: 1.25rem;
 
   --shadow-xs: var(--shadow-xs);
   --shadow-sm: var(--shadow-sm);
@@ -71,8 +80,8 @@
   --font-mono: var(--font-mono);
 
   /* Data-source redesign fonts + type colors (theme-aware via --ds-* vars). */
-  --font-ds-sans: "IBM Plex Sans", var(--font-sans);
-  --font-ds-mono: "JetBrains Mono", var(--font-mono);
+  --font-ds-sans: var(--font-sans);
+  --font-ds-mono: var(--font-mono);
   --color-ds-mysql: var(--ds-mysql);
   --color-ds-pg: var(--ds-pg);
   --color-ds-sqlite: var(--ds-sqlite);
@@ -248,56 +257,37 @@
    TanStack DataGrid Styles (AG Grid 风格)
    ============================================ */
 
-  /* DataGrid 容器 - 浅色主题（.dq-grid-table 复用同一套 token） */
+  /* DataGrid 容器（.dq-grid-table 复用同一套 token）
+     Graphite: raised header on the elevated step, 1px rules everywhere,
+     orange only for the selection outline. Values follow the theme tokens,
+     so light/dark come from :root / .dark without a second block. */
   .dq-data-grid,
   .dq-grid-table {
-    /* 亮色主题 · Amber Line —— 浅暖表头 + 2px amber 下划线 */
-    --dg-background: hsl(0 0% 100%);
-    --dg-foreground: hsl(30 8% 18%);
-    --dg-header-background: hsl(40 33% 98%);
-    --dg-header-foreground: hsl(30 7% 40%);
-    --dg-header-border: hsl(var(--primary));
-    --dg-header-border-width: 2px;
-    --dg-header-weight: 600;
+    --dg-background: hsl(var(--background));
+    --dg-foreground: hsl(var(--foreground));
+    --dg-header-background: hsl(var(--muted));
+    --dg-header-foreground: hsl(var(--foreground));
+    --dg-header-border: hsl(var(--border));
+    --dg-header-border-width: 1px;
+    --dg-header-cell-border: hsl(var(--border));
+    --dg-header-weight: 500;
     --dg-header-size: 12px;
-    --dg-header-tracking: 0.01em;
-    --dg-row-odd-background: hsl(40 30% 99%);
-    --dg-row-hover-background: hsl(36 60% 95.5%);
-    --dg-row-selected-background: hsl(var(--primary) / 0.1);
-    --dg-border-color: hsl(36 16% 90%);
+    --dg-header-tracking: 0;
+    --dg-row-odd-background: transparent;
+    --dg-row-hover-background: hsl(var(--surface-hover));
+    --dg-row-selected-background: hsl(var(--primary) / 0.12);
+    --dg-border-color: hsl(var(--border));
     --dg-cell-padding: 0 12px;
     --dg-row-height: 32px;
-    --dg-header-height: 36px;
+    --dg-header-height: 44px;
     --dg-font-family: var(--font-mono);
-    --dg-font-size: 13px;
-    --dg-null-color: hsl(30 8% 66%);
+    --dg-font-size: 12.5px;
+    --dg-null-color: hsl(var(--muted-foreground));
     --dg-selection-border: hsl(var(--primary));
-    --dg-selection-background: hsl(var(--primary) / 0.09);
-    --dg-footer-background: hsl(40 33% 98%);
-    --dg-footer-foreground: hsl(30 7% 40%);
+    --dg-selection-background: hsl(var(--primary) / 0.12);
+    --dg-footer-background: hsl(var(--surface));
+    --dg-footer-foreground: hsl(var(--muted-foreground));
   }
-
-  /* DataGrid 容器 - 深色主题 */
-  .dark .dq-data-grid,
-  .dark .dq-grid-table {
-    /* 暗色主题 · Warm Ink —— 暖石灰黑 + 2px amber 下划线,与亮色 Amber Line 对称 */
-    --dg-background: hsl(30 8% 6.5%);
-    --dg-foreground: hsl(40 10% 90%);
-    --dg-header-background: hsl(30 8% 10%);
-    --dg-header-foreground: hsl(36 10% 72%);
-    --dg-header-border: hsl(var(--primary));
-    --dg-header-cell-border: hsl(30 7% 17%);
-    --dg-row-odd-background: hsl(30 8% 8%);
-    --dg-row-hover-background: hsl(32 9% 15%);
-    --dg-row-selected-background: hsl(var(--primary) / 0.15);
-    --dg-border-color: hsl(30 7% 18%);
-    --dg-null-color: hsl(30 6% 52%);
-    --dg-selection-border: hsl(var(--primary));
-    --dg-selection-background: hsl(var(--primary) / 0.15);
-    --dg-footer-background: hsl(30 8% 10%);
-    --dg-footer-foreground: hsl(36 8% 64%);
-  }
-
   /* DataGrid 主容器 */
   .dq-data-grid {
     font-family: var(--dg-font-family);
@@ -346,7 +336,7 @@
 
   .dq-data-grid-sort-icon.active {
     opacity: 1;
-    color: hsl(var(--primary));
+    color: hsl(var(--foreground));
   }
 
   /* DataGrid 列头筛选图标 */
@@ -357,7 +347,7 @@
 
   .dq-data-grid-filter-icon.active {
     opacity: 1;
-    color: hsl(var(--primary));
+    color: hsl(var(--foreground));
   }
 
   /* DataGrid 列宽调整手柄 */
@@ -548,83 +538,98 @@
 }
 @layer base {
   :root {
-    /* Base colors · 暖白（与暗色 Warm Ink、结果表 Amber Line 同一暖调） */
-    --background: 40 30% 99%;
-    --foreground: 30 8% 16%;
+    /* Graphite redesign · light ("cool paper"). Source of truth: DESIGN.md. */
+    --background: 240 14.3% 98.6%;
+    --foreground: 222.9 13.7% 10%;
 
-    /* Surface colors —— 背景暖白，面板纯白略提亮形成层次 */
-    --surface: 40 33% 99.5%;
-    --surface-hover: 36 30% 96%;
-    --surface-active: 36 24% 93.5%;
-    --surface-elevated: 0 0% 100%;
+    /* Surfaces: ground → panel → elevated, separated by 1px rules */
+    --surface: 220 14.3% 95.9%;
+    --surface-hover: 214.3 14.9% 90.8%;
+    --surface-active: 216 16.7% 88.2%;
+    --surface-elevated: 214.3 18.9% 92.7%;
 
-    /* Muted */
-    --muted: 36 20% 92%;
-    --muted-foreground: 30 7% 42%;
+    --muted: 214.3 18.9% 92.7%;
+    --muted-foreground: 218.2 10.9% 39.6%;
+    /* Decorative only (chevrons, off-state dots); never body text */
+    --faint: 216.7 8.3% 57.6%;
 
-    /* Primary — amber brand, consistent with dark mode (was a leftover blue). */
+    /* Orange is the single signal: Run, active underline, focus, caret */
     --primary: 24.6 95% 53.1%;
-    --primary-foreground: 0 0% 100%;
+    --primary-foreground: 28.6 67.7% 6.1%;
+    /* Orange used as text or a thin ring needs a darker step on light ground */
+    --primary-ink: 17.5 88.3% 40.4%;
 
-    /* Border */
-    --border: 36 16% 87%;
-    --border-subtle: 36 18% 91%;
-    --border-strong: 30 8% 22%;
+    --border: 217.5 15.4% 89.8%;
+    --border-subtle: 214.3 18.9% 92.7%;
+    --border-strong: 215 14.6% 83.9%;
 
-    /* Input */
-    --input: 40 33% 99.5%;
+    --input: 240 14.3% 98.6%;
 
-    /* State colors */
-    --success: 142 76% 36%;
+    --success: 137.2 66% 30%;
     --success-foreground: 0 0% 100%;
-    --success-bg: 142 76% 96%;
-    --success-border: 142 76% 86%;
+    --success-bg: 141.8 25.6% 91.6%;
+    --success-border: 138 27% 71%;
 
-    --warning: 38 92% 50%;
+    --warning: 40.1 100% 30.2%;
     --warning-foreground: 0 0% 100%;
-    --warning-bg: 38 92% 96%;
-    --warning-border: 38 92% 86%;
+    --warning-bg: 38.6 33.3% 91.8%;
+    --warning-border: 40.3 41.5% 71.2%;
 
-    --error: 0 72% 51%;
+    --error: 355.8 71.8% 47.3%;
     --error-foreground: 0 0% 100%;
-    --error-bg: 0 72% 96%;
-    --error-border: 0 72% 86%;
+    --error-bg: 353.3 52.9% 93.3%;
+    --error-border: 354.8 61.1% 77.8%;
 
-    --info: 199 89% 48%;
+    --info: 212.4 92.1% 44.5%;
     --info-foreground: 0 0% 100%;
-    --info-bg: 199 89% 96%;
-    --info-border: 199 89% 86%;
+    --info-bg: 215.5 64.7% 93.3%;
+    --info-border: 212.1 71.2% 76.9%;
 
     /* Shadcn aliases */
-    --card: 40 33% 99.5%;
-    --card-foreground: 30 8% 16%;
-    --secondary: 40 33% 99.5%;
-    --secondary-foreground: 30 8% 16%;
-    --accent: 36 24% 93.5%;
-    --accent-foreground: 30 8% 16%;
-    --ring: 24.6 95% 53.1%;
+    --card: 220 14.3% 95.9%;
+    --card-foreground: 222.9 13.7% 10%;
+    --secondary: 220 14.3% 95.9%;
+    --secondary-foreground: 222.9 13.7% 10%;
+    --accent: 216 16.7% 88.2%;
+    --accent-foreground: 222.9 13.7% 10%;
+    --ring: 17.5 88.3% 40.4%;
 
-    /* Radius */
+    /* Categorical chart series, validated for CVD; never orange (orange is chrome) */
+    --chart-1: #2a78d6;
+    --chart-2: #1baf7a;
+    --chart-3: #4a3aa7;
+    --chart-4: #eda100;
+    --chart-5: #e87ba4;
+    --chart-6: #008300;
+    --chart-7: #e34948;
+
+    /* SQL syntax */
+    --syn-keyword: 228.2 58.6% 49.2%;
+    --syn-string: 122.3 45.3% 33.7%;
+    --syn-number: 26 90.5% 37.1%;
+    --syn-function: 189.3 84.7% 28.2%;
+    --syn-comment: 220 8.9% 46.1%;
+    --syn-punct: 220 8.9% 46.1%;
+
+    /* 6px controls, 8px menus, 10px containers */
     --radius: 0.5rem;
 
-    /* Shadows */
-    --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.05);
-    --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.1);
-    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.1);
-    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.1);
-    --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.1);
-    --shadow-2xl: 0 25px 50px -12px rgba(0, 0, 0, 0.25);
-    --shadow-inner: inset 0 2px 4px 0 rgba(0, 0, 0, 0.06);
+    /* Depth at rest is a border; shadows belong to floating overlays only */
+    --shadow-xs: 0 0 #0000;
+    --shadow-sm: 0 0 #0000;
+    --shadow-md: 0 4px 12px -4px rgba(16, 24, 40, 0.12);
+    --shadow-lg: 0 12px 32px -8px rgba(16, 24, 40, 0.18), 0 2px 6px rgba(16, 24, 40, 0.08);
+    --shadow-xl: 0 12px 32px -8px rgba(16, 24, 40, 0.18), 0 2px 6px rgba(16, 24, 40, 0.08);
+    --shadow-2xl: 0 16px 40px -10px rgba(16, 24, 40, 0.22), 0 2px 8px rgba(16, 24, 40, 0.08);
+    --shadow-inner: inset 0 1px 2px 0 rgba(16, 24, 40, 0.06);
 
-    /* Typography
-       Latin -> Inter; CJK falls back to the OS native UI font so Chinese is
-       pinned across platforms (PingFang on macOS, YaHei on Windows, Noto on Linux). */
+    /* Typography: Inter for UI; JetBrains Mono only for code and data.
+       CJK falls back to the OS UI font (PingFang / YaHei / Noto). */
     --font-sans: "Inter", -apple-system, BlinkMacSystemFont, "Segoe UI",
       "Helvetica Neue", "PingFang SC", "Microsoft YaHei", "Noto Sans SC", Arial,
       sans-serif;
-    /* One single monospace stack shared by editor, result grid and code blocks. */
-    --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas,
-      "Liberation Mono", "Courier New", monospace;
+    --font-mono: "JetBrains Mono", ui-monospace, SFMono-Regular, Menlo, Monaco,
+      Consolas, "PingFang SC", "Microsoft YaHei", monospace;
 
     /* Data-source type colors — light theme (deeper for white bg contrast). */
     --ds-mysql: #3b7fd4;
@@ -638,23 +643,22 @@
 
 @layer base {
   .dark {
-    /* Dark mode · Warm Ink —— 暖石灰 + 明度层叠（与结果表暖主题一脉相承） */
-    --background: 28 10% 4.5%;
-    --foreground: 40 12% 96%;
+    /* Graphite redesign · dark (default scene: long sessions, any light) */
+    --background: 220 16.7% 7.1%;
+    --foreground: 216 11.1% 91.2%;
 
-    /* Surface colors —— 背景最暗 → 面板/卡片提亮 → elevated 更亮，形成层次 */
-    --surface: 30 9% 7.5%;
-    --surface-hover: 32 8% 16%;
-    --surface-active: 32 8% 19%;
-    --surface-elevated: 32 10% 12%;
+    --surface: 220 17% 10.4%;
+    --surface-hover: 220 17.6% 16.7%;
+    --surface-active: 218.8 16.8% 19.8%;
+    --surface-elevated: 220 16.7% 14.1%;
 
-    /* Muted */
-    --muted: 30 7% 14%;
-    --muted-foreground: 34 9% 72%;
+    --muted: 220 16.7% 14.1%;
+    --muted-foreground: 215.5 10.4% 58.4%;
+    --faint: 216 11.7% 41.8%;
 
-    /* Primary */
     --primary: 24.6 95% 53.1%;
-    --primary-foreground: 0 0% 100%;
+    --primary-foreground: 28.2 73.9% 4.5%;
+    --primary-ink: 27 96% 61%;
 
     /* Data-source type colors — dark theme (brighter on charcoal). */
     --ds-mysql: #4f93e6;
@@ -662,51 +666,100 @@
     --ds-sqlite: #54c98a;
     --ds-live: #3fd07f;
 
-    /* Border */
-    --border: 32 9% 21%;
-    --border-subtle: 32 9% 17%;
-    --border-strong: 40 30% 100% / 0.16;
+    --border: 218.6 15.6% 17.6%;
+    --border-subtle: 220 15.8% 14.9%;
+    --border-strong: 217.9 15.7% 23.7%;
 
-    /* Input */
-    --input: 30 9% 8%;
+    --input: 220 16.7% 7.1%;
 
-    /* State colors */
-    --success: 142 76% 46%;
-    --success-foreground: 0 0% 100%;
-    --success-bg: 142 76% 10%;
-    --success-border: 142 76% 20%;
+    --success: 128.4 49.2% 48.6%;
+    --success-foreground: 28.2 73.9% 4.5%;
+    --success-bg: 150 25.9% 10.6%;
+    --success-border: 133.2 42.4% 23.1%;
 
-    --warning: 38 92% 60%;
-    --warning-foreground: 0 0% 100%;
-    --warning-bg: 38 92% 10%;
-    --warning-border: 38 92% 20%;
+    --warning: 40.6 72.1% 47.8%;
+    --warning-foreground: 28.2 73.9% 4.5%;
+    --warning-bg: 45 21.4% 11%;
+    --warning-border: 40.3 56.3% 23.3%;
 
-    --error: 0 72% 61%;
-    --error-foreground: 0 0% 100%;
-    --error-bg: 0 72% 10%;
-    --error-border: 0 72% 20%;
+    --error: 2.7 92.6% 62.9%;
+    --error-foreground: 28.2 73.9% 4.5%;
+    --error-bg: 348 24.6% 12%;
+    --error-border: 0.9 44% 29.4%;
 
-    --info: 199 89% 58%;
-    --info-foreground: 0 0% 100%;
-    --info-bg: 199 89% 10%;
-    --info-border: 199 89% 20%;
+    --info: 212 100% 67.3%;
+    --info-foreground: 28.2 73.9% 4.5%;
+    --info-bg: 212.7 33.3% 12.9%;
+    --info-border: 212.1 44.7% 31.2%;
 
-    /* Shadcn aliases */
-    --card: 30 9% 7.5%;
-    --card-foreground: 40 12% 96%;
-    --secondary: 30 9% 9%;
-    --secondary-foreground: 40 12% 96%;
-    --accent: 32 8% 17%;
-    --accent-foreground: 40 12% 96%;
-    --ring: 24.6 95% 53.1%;
+    --card: 220 17% 10.4%;
+    --card-foreground: 216 11.1% 91.2%;
+    --secondary: 220 17% 10.4%;
+    --secondary-foreground: 216 11.1% 91.2%;
+    --accent: 218.8 16.8% 19.8%;
+    --accent-foreground: 216 11.1% 91.2%;
+    --ring: 27 96% 61%;
 
-    /* Shadows */
-    --shadow-xs: 0 1px 2px 0 rgba(0, 0, 0, 0.3);
-    --shadow-sm: 0 1px 3px 0 rgba(0, 0, 0, 0.4);
-    --shadow-md: 0 4px 6px -1px rgba(0, 0, 0, 0.4);
-    --shadow-lg: 0 10px 15px -3px rgba(0, 0, 0, 0.5);
-    --shadow-xl: 0 20px 25px -5px rgba(0, 0, 0, 0.5);
-    --shadow-2xl: 0 25px 50px -12px rgba(0, 0, 0, 0.7);
-    --shadow-inner: inset 0 2px 4px 0 rgba(0, 0, 0, 0.3);
+    --chart-1: #3987e5;
+    --chart-2: #199e70;
+    --chart-3: #9085e9;
+    --chart-4: #c98500;
+    --chart-5: #d55181;
+    --chart-6: #008300;
+    --chart-7: #e66767;
+
+    --syn-keyword: 226.6 100% 78%;
+    --syn-string: 124.2 46.4% 70%;
+    --syn-number: 27.9 79.2% 71.8%;
+    --syn-function: 202.2 100% 74.5%;
+    --syn-comment: 216.9 10.8% 47.1%;
+    --syn-punct: 215.5 10.4% 58.4%;
+
+    --shadow-xs: 0 0 #0000;
+    --shadow-sm: 0 0 #0000;
+    --shadow-md: 0 6px 16px -6px rgba(0, 0, 0, 0.5);
+    --shadow-lg: 0 12px 32px -8px rgba(0, 0, 0, 0.6), 0 2px 6px rgba(0, 0, 0, 0.35);
+    --shadow-xl: 0 12px 32px -8px rgba(0, 0, 0, 0.6), 0 2px 6px rgba(0, 0, 0, 0.35);
+    --shadow-2xl: 0 16px 40px -10px rgba(0, 0, 0, 0.65), 0 2px 8px rgba(0, 0, 0, 0.4);
+    --shadow-inner: inset 0 1px 2px 0 rgba(0, 0, 0, 0.3);
+  }
+}
+
+/* Browser surfaces carry the design too: selection, caret, scrollbars, numerals */
+@layer base {
+  html,
+  body {
+    background-color: hsl(var(--background));
+    color: hsl(var(--foreground));
+    font-family: var(--font-sans);
+    font-feature-settings: "cv11", "ss03";
+  }
+  ::selection {
+    background-color: hsl(var(--primary) / 0.28);
+  }
+  input,
+  textarea {
+    caret-color: hsl(var(--primary));
+  }
+  * {
+    scrollbar-width: thin;
+    scrollbar-color: hsl(var(--border-strong)) transparent;
+  }
+  ::-webkit-scrollbar {
+    width: 10px;
+    height: 10px;
+  }
+  ::-webkit-scrollbar-thumb {
+    background-color: hsl(var(--border-strong));
+    border-radius: 10px;
+    border: 3px solid transparent;
+    background-clip: content-box;
+  }
+  ::-webkit-scrollbar-track,
+  ::-webkit-scrollbar-corner {
+    background: transparent;
+  }
+  kbd {
+    font-family: var(--font-mono);
   }
 }

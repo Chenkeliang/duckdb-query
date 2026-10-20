@@ -49,6 +49,7 @@ export const agentChatBus = {
   /** SQL 编辑器面板挂载时注册回填函数,卸载时传 null */
   registerInserter(fn: ((sql: string) => void) | null) {
     inserter = fn;
+    return () => { if (inserter === fn) inserter = null; };
   },
   insertSql(sql: string) {
     inserter?.(sql);

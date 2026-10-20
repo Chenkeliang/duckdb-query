@@ -163,7 +163,7 @@ export const DownloadResultDialog: React.FC<DownloadResultDialogProps> = ({
     <Dialog open={open} onOpenChange={onOpenChange}>
       <DialogContent className="sm:max-w-[400px]">
         <DialogHeader className="flex-row flex-wrap items-baseline gap-x-2 gap-y-1 space-y-0">
-          <DialogTitle className="flex items-center gap-2">
+          <DialogTitle className="flex h-5 items-center gap-2 text-sm leading-5">
             <Download className="h-5 w-5" />
             {t('async.download.title', '下载结果')}
           </DialogTitle>
@@ -220,7 +220,7 @@ export const DownloadResultDialog: React.FC<DownloadResultDialogProps> = ({
                     {isSelected && <Check className="h-3 w-3" />}
                   </div>
                   <div className="flex-1">
-                    <div className="flex items-center gap-2">
+                    <div className="flex h-5 items-center gap-2 text-sm leading-5">
                       <Icon className={cn(
                         'h-4 w-4',
                         isSelected ? 'text-primary' : 'text-foreground'
@@ -242,7 +242,7 @@ export const DownloadResultDialog: React.FC<DownloadResultDialogProps> = ({
 
         <DialogFooter>
           <Button
-            variant="outline"
+            variant="subtle"
             onClick={() => onOpenChange(false)}
             disabled={isDownloading}
           >
@@ -253,9 +253,9 @@ export const DownloadResultDialog: React.FC<DownloadResultDialogProps> = ({
             disabled={isDownloading || (format === 'xlsx' && xlsxDisabled)}
           >
             {isDownloading ? (
-              <Loader2 className="h-4 w-4 mr-2 animate-spin" />
+              <Loader2 className="h-4 w-4 animate-spin" />
             ) : (
-              <Download className="h-4 w-4 mr-2" />
+              <Download className="h-4 w-4" />
             )}
             {t('async.download.download', '下载')}
           </Button>

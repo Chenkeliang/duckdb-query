@@ -97,7 +97,7 @@ export const GlobalHistoryPanel: React.FC<GlobalHistoryPanelProps> = ({
                             />
                         </div>
                         {history.length > 0 && (
-                            <Button variant="ghost" size="icon" onClick={onClear} title={t('query.history.clearAll', '清空历史')}>
+                            <Button variant="quiet" size="icon" onClick={onClear} title={t('query.history.clearAll', '清空历史')}>
                                 <Trash2 className="h-4 w-4 text-muted-foreground hover:text-destructive" />
                             </Button>
                         )}
@@ -153,9 +153,9 @@ export const GlobalHistoryPanel: React.FC<GlobalHistoryPanelProps> = ({
                                                 )}
                                             </div>
 
-                                            <div className="flex items-center gap-1 opacity-0 group-hover:opacity-100 transition-opacity">
+                                            <div className="flex items-center gap-1 opacity-100 sm:opacity-0 sm:group-hover:opacity-100 group-focus-within:opacity-100 transition-opacity">
                                                 <Button
-                                                    variant="ghost"
+                                                    variant="subtle"
                                                     size="sm"
                                                     className="h-7 px-2 text-xs"
                                                     onClick={(e) => {
@@ -167,9 +167,10 @@ export const GlobalHistoryPanel: React.FC<GlobalHistoryPanelProps> = ({
                                                     {t('query.history.load', '加载')}
                                                 </Button>
                                                 <Button
-                                                    variant="ghost"
+                                                    variant="quiet"
                                                     size="icon"
                                                     className="h-7 w-7 hover:text-destructive"
+                                                    aria-label={t('common.delete')}
                                                     onClick={(e) => {
                                                         e.stopPropagation();
                                                         onDelete(item.id);

@@ -269,4 +269,47 @@ describe('TypeConflictDialog', () => {
       expect(screen.queryByText('JOIN 条件')).not.toBeInTheDocument();
     });
   });
+  // Regression 2026-10-12: type-only recommendations can be empty; applying
+  // recommendations must inspect data or explain why no safe type is available.
+  it('inspects and resolves a conflict with no type-only recommendation', async () => {
+    const conflict = { ...createConflict('a.id::b.id', 'INTEGER', 'VARCHAR'), recommendedType: '' };
+    const onResolve = vi.fn(); const infer = vi.fn().mockResolvedValue('BIGINT');
+    render(<TypeConflictDialog {...defaultProps} conflicts={[conflict]} onResolve={onResolve} onInferCast={infer} />);
+    fireEvent.click(screen.getByText('应用所有推荐'));
+    await waitFor(() => expect(infer).toHaveBeenCalledWith(conflict));
+    expect(onResolve).toHaveBeenCalledWith(conflict.key, 'BIGINT');
+  });
+
+  it('explains that an unsafe conflict needs a manual type', async () => {
+    const conflict = { ...createConflict('a.id::b.id', 'INTEGER', 'VARCHAR'), recommendedType: '' };
+    const onResolve = vi.fn(); const infer = vi.fn().mockResolvedValue(null);
+    render(<TypeConflictDialog {...defaultProps} conflicts={[conflict]} onResolve={onResolve} onInferCast={infer} />);
+    fireEvent.click(screen.getByText('应用所有推荐'));
+    expect(await screen.findByText('没有可安全应用的推荐，请手动选择转换类型。')).toBeInTheDocument();
+    expect(onResolve).not.toHaveBeenCalled();
+  });
+
+  // Regression 2026-10-12: an explicit data check may replace an existing
+  // choice, but a delayed result must not replace a newer manual choice.
+  it('allows explicit inference to replace an existing type', async () => {
+    const conflict = createConflict('a.id::b.id', 'INTEGER', 'VARCHAR', 'INTEGER');
+    const onResolve = vi.fn();
+    render(<TypeConflictDialog {...defaultProps} conflicts={[conflict]} onResolve={onResolve} onInferCast={vi.fn().mockResolvedValue('BIGINT')} />);
+    fireEvent.click(screen.getByRole('button', { name: '推断' }));
+    await waitFor(() => expect(onResolve).toHaveBeenCalledWith(conflict.key, 'BIGINT'));
+  });
+
+  it('does not replace a manual choice made during inference', async () => {
+    const conflict = createConflict('a.id::b.id', 'INTEGER', 'VARCHAR', 'INTEGER');
+    const onResolve = vi.fn();
+    let finish!: (type: string) => void;
+    const onInferCast = vi.fn(() => new Promise<string>(resolve => { finish = resolve; }));
+    const view = render(<TypeConflictDialog {...defaultProps} conflicts={[conflict]} onResolve={onResolve} onInferCast={onInferCast} />);
+    fireEvent.click(screen.getByRole('button', { name: '推断' }));
+    view.rerender(<TypeConflictDialog {...defaultProps} conflicts={[{ ...conflict, resolvedType: 'VARCHAR' }]} onResolve={onResolve} onInferCast={onInferCast} />);
+    finish('BIGINT');
+    await waitFor(() => expect(screen.getByRole('button', { name: '推断' })).toBeEnabled());
+    expect(onResolve).not.toHaveBeenCalled();
+  });
+
 });

@@ -90,6 +90,7 @@ export interface QueryRequest {
 
 /** DuckDB 列类型（查询结果 `column_types`） */
 export interface DuckdbColumnType {
+  lineage?: import('../types/queryWorkspace').ColumnLineage;
   name: string;
   duckdb_type: string;
 }
@@ -247,6 +248,8 @@ export interface CreateTaskRequest {
 // ==================== Table Types ====================
 
 export interface TableInfo {
+  column_count?: number;
+  created_at?: string;
   name: string;
   type: "TABLE" | "VIEW";
   row_count?: number;

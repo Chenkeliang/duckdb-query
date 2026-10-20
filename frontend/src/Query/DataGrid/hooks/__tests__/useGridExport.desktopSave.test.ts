@@ -19,6 +19,10 @@ const { mocks } = vi.hoisted(() => ({
 }));
 
 vi.mock('@tauri-apps/plugin-dialog', () => ({ save: mocks.save }));
+vi.mock('@tauri-apps/api/path', () => ({
+  downloadDir: vi.fn(async () => '/Users/me/Downloads'),
+  join: vi.fn(async (directory: string, filename: string) => `${directory}/${filename}`),
+}));
 vi.mock('@tauri-apps/plugin-fs', () => ({
   writeTextFile: mocks.writeTextFile,
   writeFile: mocks.writeFile,
@@ -57,7 +61,7 @@ describe('useGridExport 桌面直写', () => {
     });
 
     expect(mocks.save).toHaveBeenCalledWith(
-      expect.objectContaining({ defaultPath: 'out.csv' })
+      expect.objectContaining({ defaultPath: '/Users/me/Downloads/out.csv' })
     );
     expect(mocks.writeTextFile).toHaveBeenCalledTimes(1);
     const [path, content] = mocks.writeTextFile.mock.calls[0];

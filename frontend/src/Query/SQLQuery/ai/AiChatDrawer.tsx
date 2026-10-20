@@ -1,4 +1,5 @@
-import { useEffect, useRef, useState } from 'react';
+import { useEffect, useLayoutEffect, useRef, useState } from 'react';
+import { createPortal } from 'react-dom';
 import { useTranslation } from 'react-i18next';
 import {
   Send,
@@ -6,8 +7,6 @@ import {
   MessageSquarePlus,
   Loader2,
   Sparkles,
-  CornerDownLeft,
-  MessageSquare,
   User,
   BookOpen,
   Wand2,
@@ -19,7 +18,8 @@ import {
   Database,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
-import { Input } from '@/components/ui/input';
+import { Textarea } from '@/components/ui/textarea';
+import { Tooltip, TooltipContent, TooltipProvider, TooltipTrigger } from '@/components/ui/tooltip';
 import { showErrorToast } from '@/utils/toastHelpers';
 import {
   streamAgent,
@@ -49,6 +49,7 @@ import {
   type ScopeEntry,
 } from './agentScope';
 import { ScopeSourceRow } from './ScopeSourceRow';
+import { useAiDock } from './aiDockContext';
 
 /** 工具栏「对话」开关按钮，样式与 解释/格式化/收藏 统一。 */
 export function ChatToggleButton({
@@ -61,16 +62,16 @@ export function ChatToggleButton({
   const { t } = useTranslation('common');
   return (
     <Button
-      variant="ghost"
+      variant="quiet"
       size="sm"
       onClick={onClick}
       title={t('query.ai.chat', '数据助手对话')}
-      className={
-        active ? 'text-primary hover:text-primary' : 'text-muted-foreground hover:text-foreground'
-      }
+      aria-label={t('query.ai.chat', '数据助手对话')}
+      aria-pressed={active}
+      className={active ? 'bg-muted text-foreground' : undefined}
     >
-      <MessageSquare className="h-4 w-4 mr-1" />
-      <span className="hidden sm:inline">{t('query.ai.chat', '对话')}</span>
+      <Sparkles className="h-3.5 w-3.5" />
+      <span className="hidden @md:inline">AI</span>
     </Button>
   );
 }
@@ -123,7 +124,7 @@ function ScopeCard({ scope, label }: { scope: DrawerMsg['scope']; label: string 
         <span key={s.label} className="inline-flex items-center gap-1 text-foreground">
           <span
             className={`h-1.5 w-1.5 rounded-full ${
-              s.kind === 'local' ? 'bg-primary' : 'bg-info'
+              s.kind === 'local' ? 'bg-foreground' : 'bg-info'
             }`}
           />
           {s.label}
@@ -155,7 +156,7 @@ function AssistantMarkdown({
         ol: ({ node: _n, ...p }) => <ol className="my-1 list-decimal space-y-0.5 pl-5" {...p} />,
         strong: ({ node: _n, ...p }) => <strong className="font-semibold" {...p} />,
         a: ({ node: _n, ...p }) => (
-          <a className="text-primary underline" target="_blank" rel="noreferrer" {...p} />
+          <a className="text-primary-ink underline underline-offset-2" target="_blank" rel="noreferrer" {...p} />
         ),
         hr: () => <hr className="my-2 border-border" />,
         blockquote: ({ node: _n, ...p }) => (
@@ -198,7 +199,7 @@ function AssistantMarkdown({
                   <button
                     type="button"
                     onClick={() => onInsertSQL(text)}
-                    className="text-xs text-primary hover:underline"
+                    className="text-xs text-primary-ink underline-offset-2 hover:underline"
                   >
                     {insertLabel}
                   </button>
@@ -245,7 +246,7 @@ function AgentSteps({
         className="flex w-full items-center gap-1.5 px-2 py-1 text-[10px] font-medium text-muted-foreground hover:text-foreground"
       >
         {streaming ? (
-          <Loader2 className="h-3 w-3 shrink-0 animate-spin text-primary" />
+          <Loader2 className="h-3 w-3 shrink-0 animate-spin text-primary-ink" />
         ) : (
           <ChevronRight
             className={`h-3 w-3 shrink-0 transition-transform ${open ? 'rotate-90' : ''}`}
@@ -258,9 +259,9 @@ function AgentSteps({
           {steps.map((s) => (
             <div key={s.id} className="flex items-center gap-1.5 text-[11px]">
               {s.running ? (
-                <Loader2 className="h-3 w-3 shrink-0 animate-spin text-primary" />
+                <Loader2 className="h-3 w-3 shrink-0 animate-spin text-primary-ink" />
               ) : s.ok ? (
-                <Check className="h-3 w-3 shrink-0 text-primary" />
+                <Check className="h-3 w-3 shrink-0 text-success" />
               ) : (
                 <CircleAlert className="h-3 w-3 shrink-0 text-destructive" />
               )}
@@ -276,15 +277,6 @@ function AgentSteps({
 
 /** 输入框 @ 提及的表选择浮层触发正则:末尾 "@前缀"。 */
 const MENTION_RE = /(^|\s)@([^\s@]*)$/;
-
-const DRAWER_WIDTH_KEY = 'dq-ai-drawer-width';
-const DRAWER_DEFAULT_W = 480;
-const DRAWER_MIN_W = 380;
-const DRAWER_MAX_W = 860;
-const DRAWER_TOP_KEY = 'dq-ai-drawer-top';
-const DRAWER_MIN_H = 240;
-/** 顶栏兜底高度:macOS 桌面端还有一条 28px 标题栏拖拽条,所以实际以 DOM 实测为准。 */
-const HEADER_FALLBACK = 56;
 
 export function AiChatDrawer({
   open,
@@ -311,85 +303,34 @@ export function AiChatDrawer({
   const [expandedSource, setExpandedSource] = useState<string | null>(null);
   const [actionsOpen, setActionsOpen] = useState(false);
   const listRef = useRef<HTMLDivElement>(null);
+  const composerRef = useRef<HTMLTextAreaElement>(null);
+  const composingRef = useRef(false);
   const abortRef = useRef<AbortController | null>(null);
   const typewriterRef = useRef<ReturnType<typeof setInterval> | null>(null);
-  // 抽屉宽度可拖拽:跨源回答常是多列表格,420px 会把表头挤成竖排
-  const [width, setWidth] = useState(() => {
-    const saved = Number(localStorage.getItem(DRAWER_WIDTH_KEY));
-    return saved >= DRAWER_MIN_W && saved <= DRAWER_MAX_W ? saved : DRAWER_DEFAULT_W;
-  });
-  const dragRef = useRef<{ startX: number; startW: number } | null>(null);
-  // 顶边对齐:桌面端顶栏由「标题栏拖拽条 + Header」两段组成,高度按 DOM 实测,
-  // 不写死(写死 top-14 会压在 Header 下半截上,就是错位的来源)。
-  const [headerBottom, setHeaderBottom] = useState(HEADER_FALLBACK);
-  const [topOffset, setTopOffset] = useState(() => {
-    const saved = Number(localStorage.getItem(DRAWER_TOP_KEY));
-    return Number.isFinite(saved) && saved >= 0 ? saved : 0;
-  });
-  const topDragRef = useRef<{ startY: number; startOffset: number } | null>(null);
+  // 停靠位：工作台右侧分栏（宽度由分栏拖拽决定，不再自管宽度/上边距）
+  const dock = useAiDock();
 
+  const resizeComposer = () => {
+    const element = composerRef.current;
+    if (!element) return;
+    element.style.height = '0px';
+    // leading-5 (20px) and p-1 (8px): two initial lines, five visible lines maximum.
+    element.style.height = `${Math.min(Math.max(element.scrollHeight, 48), 108)}px`;
+    element.style.overflowY = element.scrollHeight > 108 ? 'auto' : 'hidden';
+  };
+  useLayoutEffect(resizeComposer, [input, open, dock]);
   useEffect(() => {
-    if (!open) return undefined;
-    const measure = () => {
-      const el = document.querySelector('.dq-layout-header-inner');
-      setHeaderBottom(el ? Math.round(el.getBoundingClientRect().bottom) : HEADER_FALLBACK);
-    };
-    measure();
-    window.addEventListener('resize', measure);
-    return () => window.removeEventListener('resize', measure);
-  }, [open]);
-
-  const onTopGripDown = (e: React.MouseEvent) => {
-    e.preventDefault();
-    topDragRef.current = { startY: e.clientY, startOffset: topOffset };
-    const onMove = (ev: MouseEvent) => {
-      if (!topDragRef.current) return;
-      const maxOffset = Math.max(
-        0,
-        window.innerHeight - headerBottom - DRAWER_MIN_H,
-      );
-      const next = Math.min(
-        maxOffset,
-        Math.max(0, topDragRef.current.startOffset + (ev.clientY - topDragRef.current.startY)),
-      );
-      setTopOffset(next);
-    };
-    const onUp = () => {
-      topDragRef.current = null;
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-      setTopOffset((v) => {
-        localStorage.setItem(DRAWER_TOP_KEY, String(v));
-        return v;
-      });
-    };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-  };
-
-  const onGripDown = (e: React.MouseEvent) => {
-    e.preventDefault();
-    dragRef.current = { startX: e.clientX, startW: width };
-    const onMove = (ev: MouseEvent) => {
-      if (!dragRef.current) return;
-      const next = Math.min(
-        DRAWER_MAX_W,
-        Math.max(DRAWER_MIN_W, dragRef.current.startW - (ev.clientX - dragRef.current.startX)),
-      );
-      setWidth(next);
-    };
-    const onUp = () => {
-      dragRef.current = null;
-      window.removeEventListener('mousemove', onMove);
-      window.removeEventListener('mouseup', onUp);
-      setWidth((w) => {
-        localStorage.setItem(DRAWER_WIDTH_KEY, String(w));
-        return w;
-      });
-    };
-    window.addEventListener('mousemove', onMove);
-    window.addEventListener('mouseup', onUp);
-  };
+    const element = composerRef.current;
+    if (!element) return;
+    let width = element.getBoundingClientRect().width;
+    const observer = new ResizeObserver(([entry]) => {
+      if (entry.contentRect.width === width) return;
+      width = entry.contentRect.width;
+      resizeComposer();
+    });
+    observer.observe(element);
+    return () => observer.disconnect();
+  }, [open, dock]);
 
   const clearTypewriter = () => {
     if (typewriterRef.current) {
@@ -672,6 +613,7 @@ export function AiChatDrawer({
       return addCandidateToScope(cur, cand, connections);
     });
     setInput((prev) => prev.replace(MENTION_RE, '$1'));
+    composerRef.current?.focus();
   };
 
   const pickedRefs = new Set(scopeEntries.flatMap((e) => e.tables));
@@ -765,41 +707,30 @@ export function AiChatDrawer({
   const knownAliases = scopeEntries.map((e) => e.alias).filter(Boolean) as string[];
   const sqlSources = (sql: string) => sqlSourcesFrom(sql, knownAliases);
 
-  return (
-    <div
-      className="fixed right-0 bottom-0 z-40 flex max-w-[95vw] flex-col border-l border-t border-border bg-surface shadow-xl"
-      style={{ width, top: headerBottom + topOffset }}
+  const sqlActionPrompt = (action: 'explain' | 'optimize') =>
+    `${action === 'explain'
+      ? t('query.ai.qaExplainLead', '请解释这段 SQL 在做什么（用中文，分点说明）：')
+      : t('query.ai.qaOptimizeLead', '请帮我优化这段 SQL，并说明优化点和原因：')}\n\`\`\`sql\n${(currentSql || '').trim()}\n\`\`\``;
+  const fillSqlAction = (action: 'explain' | 'optimize') => {
+    setInput(sqlActionPrompt(action));
+    composerRef.current?.focus();
+  };
+
+  const panel = (
+    <section
+      aria-label={t('query.ai.agentTitle', '数据智能体')}
+      className="flex h-full min-h-0 w-full flex-col bg-surface"
     >
-      {/* 顶边拖拽把手:上下拖动改变抽屉起始位置(向下拖露出下方内容) */}
-      <div
-        onMouseDown={onTopGripDown}
-        role="separator"
-        aria-orientation="horizontal"
-        aria-label={t('query.ai.resizeTop', '调整上边距')}
-        className="group absolute left-0 right-0 top-0 z-50 h-1.5 -translate-y-1/2 cursor-row-resize"
-      >
-        <div className="my-auto h-0.5 w-full bg-transparent transition-colors group-hover:bg-primary/60" />
-      </div>
-      {/* 左缘拖拽把手:向左拖变宽 */}
-      <div
-        onMouseDown={onGripDown}
-        role="separator"
-        aria-orientation="vertical"
-        aria-label={t('query.ai.resize', '调整宽度')}
-        className="group absolute left-0 top-0 bottom-0 z-50 w-1.5 -translate-x-1/2 cursor-col-resize"
-      >
-        <div className="mx-auto h-full w-0.5 bg-transparent transition-colors group-hover:bg-primary/60" />
-      </div>
       {/* 头 */}
       <div className="flex items-center justify-between border-b border-border px-3 py-2">
         <span className="flex items-center gap-1.5 text-sm font-medium">
-          <Sparkles className="h-4 w-4 text-primary" />
+          <Sparkles className="h-4 w-4 text-primary-ink" />
           {t('query.ai.agentTitle', '数据智能体')}
         </span>
         <div className="flex items-center gap-1">
           {messages.length > 0 && (
             <Button
-              variant="ghost"
+              variant="quiet"
               size="sm"
               onClick={() => {
                 // 新对话 = 中断进行中的回答 + 清空上下文(多轮追问的信封随消息一起
@@ -817,7 +748,7 @@ export function AiChatDrawer({
             </Button>
           )}
           <Button
-            variant="ghost"
+            variant="quiet"
             size="sm"
             onClick={onClose}
             title={t('common.close', '关闭')}
@@ -829,49 +760,64 @@ export function AiChatDrawer({
       </div>
 
       {/* 作用域常驻条:它是"能问什么"的前置条件,所以放在标题下方第一行 */}
-      <div className="relative flex items-center gap-2 border-b border-border bg-surface-elevated px-3 py-1.5">
-        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1.5">
+      <div className="relative flex items-center gap-1 border-b border-border bg-surface-elevated px-2 py-1">
+        <div className="flex min-w-0 flex-1 flex-wrap items-center gap-1">
           {scopeEntries.length === 0 && (
             <span className="text-[11px] text-muted-foreground">
               {t('query.ai.scopeEmpty', '未选任何数据源 · 仅普通对话')}
             </span>
           )}
-          {scopeEntries.map((e) => (
-            <span
-              key={e.id}
-              className="inline-flex items-center gap-1 rounded-full border border-primary/50 bg-primary/10 py-0.5 pl-2 pr-1 text-[11px] text-primary"
-              title={e.mode === 'tables' && e.tables.length ? e.tables.join('\n') : undefined}
-            >
-              {/* chip 本身就是入口:点一下直接编辑这个源的表清单 */}
+          {scopeEntries.map((e) => {
+            const sourceLabel = e.kind === 'local' ? t('query.ai.scopeLocalSource', '本地 DuckDB') : e.label;
+            const tableLabel = e.mode === 'all' ? t('query.ai.scopeAllTables', '全部表') : e.tables[0] || t('query.ai.scopeNoTables', '未选表');
+            return (
+            <span key={e.id} className="inline-flex min-w-0 max-w-full items-stretch overflow-hidden rounded-md border border-border-strong bg-surface-elevated text-xs">
               <button
                 type="button"
                 onClick={() => openSourceEditor(e.id)}
-                className="inline-flex items-center gap-1"
-                aria-label={t('query.ai.scopeEdit', '编辑该数据源的范围')}
+                className="flex h-7 min-w-0 items-center gap-1 px-2 text-left focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
+                aria-label={`${t('query.ai.scopeEdit', '编辑该数据源的范围')}: ${sourceLabel}: ${e.mode === 'tables' && e.tables.length ? e.tables.join(', ') : tableLabel}`}
+                title={e.mode === 'tables' && e.tables.length ? e.tables.join('\n') : `${sourceLabel}: ${tableLabel}`}
               >
-                {scopeChipLabel(e)}
-                <ChevronRight className="h-3 w-3 rotate-90 opacity-70" />
+                <span className="flex min-w-0 items-center gap-1 whitespace-nowrap">
+                  <span className="truncate text-muted-foreground">{sourceLabel}</span>
+                  <span aria-hidden="true" className="shrink-0 text-muted-foreground">·</span>
+                  <span className="flex min-w-0 items-center gap-1 text-foreground">
+                    <span className={e.mode === 'tables' && e.tables.length ? 'truncate font-mono' : 'truncate'}>
+                      {tableLabel}
+                    </span>
+                    {e.mode === 'tables' && e.tables.length > 1 && <span className="shrink-0 text-muted-foreground">+{e.tables.length - 1}</span>}
+                  </span>
+                </span>
+                <ChevronRight className="h-3 w-3 shrink-0 rotate-90 text-muted-foreground" />
               </button>
               <button
                 type="button"
                 onClick={() => removeScopeEntry(e.id)}
-                aria-label={t('query.ai.scopeRemoveOne', '移出作用域：{{name}}', {
-                  name: e.label,
-                })}
-                className="opacity-70 hover:opacity-100"
+                aria-label={t('query.ai.scopeRemoveOne', '移出作用域：{{name}}', { name: sourceLabel })}
+                title={t('query.ai.scopeRemoveOne', '移出作用域：{{name}}', { name: sourceLabel })}
+                className="grid w-7 shrink-0 place-items-center border-l border-border text-muted-foreground hover:text-foreground focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-inset focus-visible:ring-ring"
               >
                 <X className="h-3 w-3" />
               </button>
             </span>
-          ))}
-          <button
-            type="button"
-            onClick={() => setScopeOpen((v) => !v)}
-            className="inline-flex items-center gap-1 rounded-full border border-dashed border-border px-2 py-0.5 text-[11px] text-muted-foreground hover:border-primary/50 hover:text-primary"
-          >
-            <Plus className="h-3 w-3" />
-            {t('query.ai.scopeAdd', '添加数据源')}
-          </button>
+            );
+          })}
+          <TooltipProvider delayDuration={300}>
+            <Tooltip>
+              <TooltipTrigger asChild>
+                <button
+                  type="button"
+                  onClick={() => setScopeOpen((v) => !v)}
+                  aria-label={t('query.ai.scopeAdd', '添加数据源')}
+                  className="grid h-7 w-7 shrink-0 place-items-center rounded-md border border-dashed border-border text-muted-foreground hover:border-primary/50 hover:text-primary focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring"
+                >
+                  <Plus className="h-3.5 w-3.5" aria-hidden="true" />
+                </button>
+              </TooltipTrigger>
+              <TooltipContent side="bottom">{t('query.ai.scopeAdd', '添加数据源')}</TooltipContent>
+            </Tooltip>
+          </TooltipProvider>
         </div>
 
         {scopeOpen && (
@@ -920,7 +866,7 @@ export function AiChatDrawer({
                     <Database className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                     <span className="truncate font-medium text-muted-foreground">{c.name}</span>
                     <span className="text-[10px] uppercase text-muted-foreground">{c.type}</span>
-                    <span className="ml-auto text-[11px] text-primary">
+                    <span className="ml-auto text-xs text-primary-ink">
                       {t('query.ai.scopeJoin', '加入')}
                     </span>
                   </button>
@@ -941,7 +887,7 @@ export function AiChatDrawer({
                 >
                   <Database className="h-3.5 w-3.5 shrink-0 text-muted-foreground" />
                   <span className="truncate font-medium text-muted-foreground">本地 DuckDB</span>
-                  <span className="ml-auto text-[11px] text-primary">
+                  <span className="ml-auto text-xs text-primary-ink">
                     {t('query.ai.scopeJoin', '加入')}
                   </span>
                 </button>
@@ -952,7 +898,7 @@ export function AiChatDrawer({
                 {t('query.ai.scopeFoot', '作用域只影响智能体能查什么，不改变左侧表格选择。')}
               </span>
               <Button size="sm" onClick={() => setScopeOpen(false)}>
-                {t('common.done', '完成')}
+                {t('query.ai.scopeDone', '完成')}
               </Button>
             </div>
           </div>
@@ -962,11 +908,17 @@ export function AiChatDrawer({
       {/* 消息区 */}
       <div ref={listRef} className="min-h-0 min-w-0 flex-1 space-y-3 overflow-auto p-3">
         {messages.length === 0 && (
-          <div className="text-xs text-muted-foreground">
-            {t(
-              'query.ai.agentEmpty',
-              '问我关于你数据的任何问题。我会查看表结构、验证真实取值、试跑只读查询后再回答;输入 @ 可指定表。',
-            )}
+          <div className="space-y-3">
+            <p className="text-sm text-muted-foreground">{t('query.ai.emptyLead', '从当前 SQL 开始，或直接提问。')}</p>
+            <div className="flex flex-col items-start gap-2">
+              <Button variant="subtle" size="sm" className="h-8 w-full justify-start" disabled={!currentSql?.trim() || loading} onClick={() => fillSqlAction('explain')}>
+                <BookOpen className="h-3.5 w-3.5" />{t('query.ai.qaExplain', '解释当前 SQL')}
+              </Button>
+              <Button variant="subtle" size="sm" className="h-8 w-full justify-start" disabled={!currentSql?.trim() || loading} onClick={() => fillSqlAction('optimize')}>
+                <Wand2 className="h-3.5 w-3.5" />{t('query.ai.qaOptimizeCurrent', '优化当前 SQL')}
+              </Button>
+            </div>
+            {!currentSql?.trim() && <p className="text-xs text-muted-foreground">{t('query.ai.qaNeedSql', '编辑器里有 SQL 时可用')}</p>}
           </div>
         )}
         {messages.map((m, i) => {
@@ -976,7 +928,7 @@ export function AiChatDrawer({
               {/* 头像 */}
               <div
                 className={`mt-0.5 flex h-6 w-6 shrink-0 items-center justify-center rounded-full ${
-                  isUser ? 'bg-primary text-primary-foreground' : 'bg-primary/15 text-primary'
+                  isUser ? 'bg-foreground text-background' : 'bg-muted text-foreground'
                 }`}
               >
                 {isUser ? <User className="h-3.5 w-3.5" /> : <Sparkles className="h-3.5 w-3.5" />}
@@ -985,7 +937,7 @@ export function AiChatDrawer({
               <div
                 className={`min-w-0 max-w-full wrap-anywhere rounded-2xl px-3 py-2 text-sm ${
                   isUser
-                    ? 'rounded-tr-sm bg-primary text-primary-foreground'
+                    ? 'rounded-tr-sm border border-border bg-muted text-foreground'
                     : 'rounded-tl-sm bg-muted text-foreground'
                 }`}
               >
@@ -1012,7 +964,7 @@ export function AiChatDrawer({
                         <AssistantMarkdown
                           content={m.content}
                           onInsertSQL={onInsertSQL}
-                          insertLabel={t('query.ai.insertToEditor', '插入编辑器')}
+                          insertLabel={t('query.ai.previewChanges', '预览修改')}
                         />
                       )
                     ) : (
@@ -1029,7 +981,7 @@ export function AiChatDrawer({
                             key={tbl}
                             type="button"
                             onClick={() => addTableAndRetry(tbl, m.question)}
-                            className="inline-flex items-center gap-1 rounded-full border border-primary/50 bg-primary/10 px-2 py-0.5 text-[11px] text-primary hover:bg-primary/20"
+                            className="inline-flex items-center gap-1 rounded-full border border-border-strong bg-surface-elevated px-2 py-0.5 text-xs text-foreground hover:bg-primary/20"
                           >
                             <Plus className="h-3 w-3" />
                             {t('query.ai.scopeAddTable', '加入「{{name}}」并重问', { name: tbl })}
@@ -1041,7 +993,7 @@ export function AiChatDrawer({
                       <div className="my-1 rounded border border-border bg-background">
                         <div className="flex items-center gap-1.5 border-b border-border px-2 py-1 text-[10px] text-muted-foreground">
                           {sqlSources(m.sql).length > 1 && (
-                            <span className="inline-flex items-center gap-1 rounded-full border border-primary/45 bg-primary/10 px-1.5 py-0.5 text-primary">
+                            <span className="inline-flex items-center gap-1 rounded-full border border-border-strong bg-surface-elevated px-1.5 py-0.5 text-foreground">
                               {t('query.ai.crossSource', '跨源查询 · {{list}}', {
                                 list: sqlSources(m.sql).join(' × '),
                               })}
@@ -1059,9 +1011,9 @@ export function AiChatDrawer({
                             <button
                               type="button"
                               onClick={() => onInsertSQL(m.sql!)}
-                              className="text-xs text-primary hover:underline"
+                              className="text-xs text-primary-ink underline-offset-2 hover:underline"
                             >
-                              {t('query.ai.insertToEditor', '插入编辑器')}
+                              {t('query.ai.previewChanges', '预览修改')}
                             </button>
                           </div>
                         )}
@@ -1079,7 +1031,7 @@ export function AiChatDrawer({
                             >
                               <span
                                 className={`h-1.5 w-1.5 rounded-full ${
-                                  remote ? 'bg-info' : 'bg-primary'
+                                  remote ? 'bg-info' : 'bg-foreground'
                                 }`}
                               />
                               {id}
@@ -1096,18 +1048,17 @@ export function AiChatDrawer({
         })}
       </div>
 
-      {/* 输入区:高度恒定——快捷动作收进「＋」菜单,不再随编辑器有无 SQL 撑开/塌陷 */}
-      <div className="relative border-t border-border p-2">
+      {/* Composer keeps the existing send and mention paths inside one focused surface. */}
+      <div className="shrink-0 border-t border-border p-3">
+        <div className="relative rounded-md border border-border bg-background p-2 focus-within:border-border-strong focus-within:ring-2 focus-within:ring-ring focus-within:ring-offset-1 focus-within:ring-offset-surface">
         {actionsOpen && (
-          <div className="absolute bottom-[68px] left-2 z-30 min-w-[190px] overflow-hidden rounded-md border border-border bg-surface-elevated shadow-lg">
+          <div className="absolute bottom-full left-0 z-30 mb-2 min-w-[190px] overflow-hidden rounded-md border border-border bg-surface-elevated shadow-lg">
             <button
               type="button"
               disabled={!currentSql?.trim() || loading}
               onClick={() => {
                 setActionsOpen(false);
-                send(
-                  `${t('query.ai.qaExplainLead', '请解释这段 SQL 在做什么（用中文，分点说明）：')}\n\`\`\`sql\n${(currentSql || '').trim()}\n\`\`\``,
-                );
+                send(sqlActionPrompt('explain'));
               }}
               className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-accent disabled:opacity-40"
             >
@@ -1119,9 +1070,7 @@ export function AiChatDrawer({
               disabled={!currentSql?.trim() || loading}
               onClick={() => {
                 setActionsOpen(false);
-                send(
-                  `${t('query.ai.qaOptimizeLead', '请帮我优化这段 SQL，并说明优化点和原因：')}\n\`\`\`sql\n${(currentSql || '').trim()}\n\`\`\``,
-                );
+                send(sqlActionPrompt('optimize'));
               }}
               className="flex w-full items-center gap-2 px-3 py-2 text-left text-xs hover:bg-accent disabled:opacity-40"
             >
@@ -1143,7 +1092,7 @@ export function AiChatDrawer({
                   <div className="flex items-center gap-1.5 bg-surface-elevated px-2 py-1 text-[10px] text-muted-foreground">
                     <span
                       className={`h-1.5 w-1.5 rounded-full ${
-                        g.kind === 'local' ? 'bg-primary' : 'bg-info'
+                        g.kind === 'local' ? 'bg-foreground' : 'bg-info'
                       }`}
                     />
                     {g.label}
@@ -1158,8 +1107,8 @@ export function AiChatDrawer({
                         className="flex w-full items-center gap-2 px-2 py-1.5 text-left text-xs hover:bg-accent"
                       >
                         <span
-                          className={`grid h-3 w-3 shrink-0 place-items-center rounded-sm border text-[8px] text-primary-foreground ${
-                            on ? 'border-primary bg-primary' : 'border-border'
+                          className={`grid h-3 w-3 shrink-0 place-items-center rounded-sm border text-[8px] text-background ${
+                            on ? 'border-foreground bg-foreground' : 'border-border'
                           }`}
                           aria-hidden
                         >
@@ -1192,63 +1141,51 @@ export function AiChatDrawer({
               </div>
             </div>
           )}
-          <div className="flex items-center gap-2">
-            <button
-              type="button"
-              onClick={() => setActionsOpen((v) => !v)}
-              title={t('query.ai.moreActions', '更多动作')}
-              aria-label={t('query.ai.moreActions', '更多动作')}
-              className="grid h-8 w-8 shrink-0 place-items-center rounded-md text-muted-foreground hover:bg-accent hover:text-foreground"
-            >
+          <Textarea
+            ref={composerRef}
+            rows={2}
+            value={input}
+            onChange={(e) => setInput(e.target.value)}
+            onFocus={() => setActionsOpen(false)}
+            onCompositionStart={() => { composingRef.current = true; }}
+            onCompositionEnd={() => { composingRef.current = false; }}
+            onKeyDown={(e) => {
+              if (composingRef.current || e.nativeEvent.isComposing || e.nativeEvent.keyCode === 229) return;
+              if (e.key !== 'Enter' || e.shiftKey) return;
+              e.preventDefault();
+              if (mentionCandidates.length) pickMention(mentionCandidates[0]);
+              else void send();
+            }}
+            placeholder={t('query.ai.composerPlaceholder', '问数据智能体…')}
+            aria-label={t('query.ai.composerLabel', '向数据智能体提问')}
+            className="min-h-0 resize-none border-0 bg-transparent p-1 leading-5 caret-primary focus-visible:ring-0 focus-visible:ring-offset-0"
+            disabled={loading}
+          />
+          <div className="mt-2 flex items-center justify-between gap-2">
+            <Button type="button" variant="quiet" size="icon" onClick={() => setActionsOpen((v) => !v)} title={t('query.ai.moreActions', '更多动作')} aria-label={t('query.ai.moreActions', '更多动作')} aria-expanded={actionsOpen}>
               <Plus className="h-4 w-4" />
-            </button>
-            <Input
-              value={input}
-              onChange={(e) => setInput(e.target.value)}
-              onKeyDown={(e) => {
-                if (e.key === 'Enter' && !e.shiftKey && !mentionCandidates.length) {
-                  e.preventDefault();
-                  send();
-                }
-                if (e.key === 'Enter' && mentionCandidates.length) {
-                  e.preventDefault();
-                  pickMention(mentionCandidates[0]);
-                }
-              }}
-              placeholder={t(
-                'query.ai.agentPlaceholder',
-                '问数据智能体…输入 @ 可选表（Enter 发送）',
-              )}
-              disabled={loading}
-            />
+            </Button>
             {loading ? (
-              <Button
-                size="sm"
-                variant="outline"
-                onClick={() => abortRef.current?.abort()}
-                title={t('query.ai.stop', '停止')}
-              >
+              <Button type="button" size="icon" variant="subtle" onClick={() => abortRef.current?.abort()} title={t('query.ai.stop', '停止')} aria-label={t('query.ai.stop', '停止')}>
                 <Square className="h-4 w-4" />
               </Button>
             ) : (
-              <Button size="sm" disabled={loading || !input.trim()} onClick={() => send()}>
-                {loading ? (
-                  <Loader2 className="h-4 w-4 animate-spin" />
-                ) : (
-                  <Send className="h-4 w-4" />
-                )}
+              <Button type="button" size="icon" disabled={!input.trim()} onClick={() => void send()} title={t('query.ai.send', '发送')} aria-label={t('query.ai.send', '发送')}>
+                <Send className="h-4 w-4" />
               </Button>
             )}
           </div>
         </div>
-        <div className="mt-1 flex items-center gap-1 text-[10px] text-muted-foreground">
-          <CornerDownLeft className="h-3 w-3" />
-          {t(
-            'query.ai.agentHint',
-            '智能体会执行只读、限行、可取消的探查查询；最终 SQL 仍只插入编辑器',
-          )}
         </div>
+        <details className="mt-2 text-xs text-muted-foreground">
+          <summary className="w-fit cursor-pointer rounded-sm focus-visible:outline-hidden focus-visible:ring-2 focus-visible:ring-ring">{t('query.ai.usageHelp', '使用说明')}</summary>
+          <div className="mt-2 space-y-2 leading-relaxed">
+            <p>{t('query.ai.agentEmpty', '问我关于你数据的任何问题。我会查看表结构、验证真实取值、试跑只读查询后再回答;输入 @ 可指定表。')}</p>
+            <p>{t('query.ai.agentHint', '智能体会执行只读、限行、可取消的探查查询；最终 SQL 先预览差异，确认后写入编辑器')}</p>
+          </div>
+        </details>
       </div>
-    </div>
+    </section>
   );
+  return dock ? createPortal(panel, dock) : panel;
 }

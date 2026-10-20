@@ -120,6 +120,33 @@ def test_cleanup_old_files_keeps_persistent_async_result_tables(
         con.close()
 
 
+def test_cleanup_preserves_query_snapshots_but_removes_expired_downloads(monkeypatch, tmp_path):
+    """Task results must survive the transient export cleanup window."""
+    snapshot = tmp_path / "task-persistent-query-snapshot.json"
+    download = tmp_path / "task-download-result.json"
+    old = (datetime.now() - timedelta(days=2)).timestamp()
+    for path in (snapshot, download):
+        path.write_text('{"data": [[1]]}', encoding="utf-8")
+        os.utime(path, (old, old))
+    monkeypatch.setattr("routers.async_tasks.EXPORTS_DIR", str(tmp_path))
+    monkeypatch.setattr("routers.async_tasks.task_manager.cleanup_expired_exports", lambda _cutoff: 0)
+    assert cleanup_old_files() == 1
+    assert snapshot.exists()
+    assert not download.exists()
+
+
+def test_snapshot_availability_uses_actual_file_and_keeps_history(monkeypatch, tmp_path):
+    from routers.async_tasks import list_async_tasks
+
+    task = {"task_id": "snapshot-task", "result_info": {"result_kind": "snapshot"}}
+    monkeypatch.setattr("routers.async_tasks.EXPORTS_DIR", str(tmp_path))
+    monkeypatch.setattr("routers.async_tasks.task_manager.list_tasks", lambda *_args: ([task], 1))
+    assert list_async_tasks()["data"]["items"][0]["result_info"]["available"] is False
+    (tmp_path / "task-snapshot-task-snapshot.json").write_text("{}", encoding="utf-8")
+    assert list_async_tasks()["data"]["items"][0]["result_info"]["available"] is True
+    assert "available" not in task["result_info"]
+
+
 class TestAsyncQueryMemoryOptimization:
     """测试异步查询内存优化功能"""
 

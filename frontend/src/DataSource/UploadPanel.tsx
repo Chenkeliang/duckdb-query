@@ -25,6 +25,7 @@ export interface DataSourceSavedPayload {
 
 export interface UploadPanelProps {
   onDataSourceSaved?: (payload: DataSourceSavedPayload) => void;
+  method?: "local" | "url" | "server";
 }
 
 /**
@@ -37,7 +38,7 @@ export interface UploadPanelProps {
  * - Input for form fields
  * - Label for field labels
  */
-const UploadPanel = ({ onDataSourceSaved }: UploadPanelProps) => {
+const UploadPanel = ({ onDataSourceSaved, method }: UploadPanelProps) => {
   const { t } = useTranslation("common");
   const queryClient = useQueryClient();
   const {
@@ -49,7 +50,9 @@ const UploadPanel = ({ onDataSourceSaved }: UploadPanelProps) => {
 
   const [importMode, setImportMode] = useState<FileImportMode>("auto");
   /** 文件上传方式分段：本地 / 远程 URL / 服务器目录（一次展示一种） */
-  const [uploadMethod, setUploadMethod] = useState<"local" | "url" | "server">("local");
+  const [selectedMethod, setUploadMethod] = useState<"local" | "url" | "server">("local");
+
+  const uploadMethod = method ?? selectedMethod;
 
   const local = useLocalUpload({
     t,
@@ -84,7 +87,7 @@ const UploadPanel = ({ onDataSourceSaved }: UploadPanelProps) => {
   return (
     <>
       {/* 顶部一行：左=上传方式分段（桌面端只有 本地/URL；Web/Docker 三段），右=紧凑的数据类型设置 */}
-      <div className="mb-5 flex flex-wrap items-center gap-3">
+      {!method && <div className="mb-5 flex flex-wrap items-center gap-3">
         <div className="inline-flex rounded-lg bg-muted p-1 text-muted-foreground">
           {(
             [
@@ -112,7 +115,7 @@ const UploadPanel = ({ onDataSourceSaved }: UploadPanelProps) => {
         </div>
         <div className="flex-1" />
         <ImportModeSelect value={importMode} onChange={setImportMode} />
-      </div>
+      </div>}
 
       {uploadMethod === "local" && (
         desktop.isTauri ? (
@@ -180,6 +183,11 @@ const UploadPanel = ({ onDataSourceSaved }: UploadPanelProps) => {
           onImport={server.handleServerImport}
         />
       )}
+
+      {method && <details className="mt-5 border-t border-border pt-4">
+        <summary className="cursor-pointer text-sm text-muted-foreground">{t('page.datasource.importOptions')}</summary>
+        <div className="mt-3"><ImportModeSelect value={importMode} onChange={setImportMode} /></div>
+      </details>}
 
       {/* Excel 工作表选择器 (文件上传) */}
       {local.pendingExcel && (

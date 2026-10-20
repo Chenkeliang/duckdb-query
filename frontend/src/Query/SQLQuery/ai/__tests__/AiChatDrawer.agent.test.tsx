@@ -37,6 +37,7 @@ vi.mock('@/api/databaseSchemasApi', () => ({
 import { AiChatDrawer } from '../AiChatDrawer';
 
 beforeEach(() => {
+  vi.stubGlobal('ResizeObserver', class { observe() {} disconnect() {} });
   vi.clearAllMocks();
   // jsdom 未实现元素级 scrollTo(组件滚动到底部的效果依赖它)
   Element.prototype.scrollTo = vi.fn();
@@ -95,7 +96,7 @@ describe('AiChatDrawer agent mode', () => {
     expect(screen.getByText('returned 2 rows')).toBeTruthy();
     expect(screen.getByText('t1')).toBeTruthy(); // evidence 徽标
 
-    fireEvent.click(screen.getByText('插入编辑器'));
+    fireEvent.click(screen.getByText('预览修改'));
     expect(onInsert).toHaveBeenCalledWith(
       "SELECT count(*) FROM orders WHERE status='paid'",
     );
@@ -194,7 +195,7 @@ describe('AiChatDrawer agent mode', () => {
     // 作用域常驻条:本地 + 已挂载连接,末尾是「添加数据源」
     expect(screen.getByText(/本地 DuckDB/)).toBeTruthy();
     expect(screen.getByText(/mysql_sorder/)).toBeTruthy();
-    expect(screen.getByText('添加数据源')).toBeTruthy();
+    expect(screen.getByRole('button', { name: '添加数据源' })).toBeTruthy();
 
     fireEvent.change(screen.getByPlaceholderText(/问数据智能体/), { target: { value: '多少笔' } });
     fireEvent.keyDown(screen.getByPlaceholderText(/问数据智能体/), { key: 'Enter' });

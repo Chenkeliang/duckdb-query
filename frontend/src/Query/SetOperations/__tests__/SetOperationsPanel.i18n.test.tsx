@@ -106,10 +106,13 @@ describe('SetOperationsPanel locale copy', () => {
     const byName = screen.getByRole('checkbox', { name: '按列名对齐' });
     expect(
       screen.getByRole('button', {
-        name: '合并字段不同的数据：同名列自动对齐，缺失列补 NULL',
+        name: '列名对齐说明',
       })
     ).toBeInTheDocument();
 
+    fireEvent.click(screen.getByRole('button', { name: '列名对齐说明' }));
+    expect(await screen.findByText('合并字段不同的数据：同名列自动对齐，缺失列补 NULL')).toBeInTheDocument();
+    fireEvent.keyDown(document, { key: 'Escape' });
     fireEvent.click(byName);
     expect(await screen.findByText('合并去重 · 按列名对齐')).toBeInTheDocument();
     expect(
@@ -125,9 +128,11 @@ describe('SetOperationsPanel locale copy', () => {
     expect(screen.getByRole('checkbox', { name: 'Align by column name' })).toBeInTheDocument();
     expect(
       screen.getByRole('button', {
-        name: 'Combine data with different columns: align matching names and fill missing columns with NULL',
+        name: 'Column alignment help',
       })
     ).toBeInTheDocument();
+    fireEvent.click(screen.getByRole('button', { name: 'Column alignment help' }));
+    expect(await screen.findByText('Combine data with different columns: align matching names and fill missing columns with NULL')).toBeInTheDocument();
     expect(
       screen.getByText(
         'Double-click tables in the data source panel to begin. Add multiple tables to combine rows, find intersections, or calculate differences.'

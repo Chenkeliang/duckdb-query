@@ -27,6 +27,10 @@ vi.mock('react-i18next', () => ({
 }));
 
 vi.mock('@tauri-apps/plugin-dialog', () => ({ save: mocks.save }));
+vi.mock('@tauri-apps/api/path', () => ({
+  downloadDir: vi.fn(async () => '/Users/me/Downloads'),
+  join: vi.fn(async (directory: string, filename: string) => `${directory}/${filename}`),
+}));
 
 vi.mock('@/desktop/openExternal', () => ({
   isTauri: () => mocks.tauri,
@@ -78,7 +82,7 @@ describe('DownloadResultDialog 下载链路', () => {
       })
     );
     expect(mocks.save).toHaveBeenCalledWith(
-      expect.objectContaining({ defaultPath: 'big_test.csv' })
+      expect.objectContaining({ defaultPath: '/Users/me/Downloads/big_test.csv' })
     );
     expect(mocks.openExternal).not.toHaveBeenCalled();
     expect(onOpenChange).toHaveBeenCalledWith(false);
@@ -135,7 +139,7 @@ describe('DownloadResultDialog 下载链路', () => {
       })
     );
     expect(mocks.save).toHaveBeenCalledWith(
-      expect.objectContaining({ defaultPath: 'big_test.xlsx' })
+      expect.objectContaining({ defaultPath: '/Users/me/Downloads/big_test.xlsx' })
     );
   });
 

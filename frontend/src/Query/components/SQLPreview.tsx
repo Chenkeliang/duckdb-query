@@ -99,7 +99,8 @@ export const SQLPreview: React.FC<SQLPreviewProps> = ({
             <div className="flex items-center gap-2">
               {allowEdit && (
                 <Button
-                  variant={isEditing ? 'default' : 'outline'}
+                  variant="subtle"
+                  aria-pressed={isEditing}
                   size="sm"
                   onClick={toggleEdit}
                 >
@@ -111,7 +112,7 @@ export const SQLPreview: React.FC<SQLPreviewProps> = ({
               )}
             </div>
             <div className="flex items-center gap-2">
-              <Button variant="outline" size="sm" onClick={handleCopy}>
+              <Button variant="quiet" size="sm" onClick={handleCopy}>
                 {copied ? (
                   <>
                     <Check className="h-4 w-4 mr-1 text-success" />
@@ -127,6 +128,7 @@ export const SQLPreview: React.FC<SQLPreviewProps> = ({
               {onExecute && (
                 <Button
                   size="sm"
+                  variant="run"
                   onClick={handleExecute}
                   disabled={isExecuting || !(isEditing ? editedSQL : sql)}
                 >

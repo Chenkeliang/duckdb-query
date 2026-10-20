@@ -51,6 +51,8 @@
 
 | 资源 | 用途 |
 |------|------|
+| [`releases/v2.1.1.md`](releases/v2.1.1.md) · [`English`](releases/v2.1.1_en.md) | v2.1.1：透视表无分组统计 |
+| [`releases/v2.1.0.md`](releases/v2.1.0.md) · [`English`](releases/v2.1.0_en.md) | v2.1.0：工作台更新、执行中转后台、SQL 补全与智能体交互 |
 | [`releases/v2.0.0.md`](releases/v2.0.0.md) · [`English`](releases/v2.0.0_en.md) | v2.0.0：DuckDB 2.0 大版本、兼容性、迁移说明与验证范围 |
 | [`history/`](history/README.md) | 2026-05 至今的实施计划 / 设计 / 审计（时间线索引） |
 | [`launch/LAUNCH_KIT.md`](launch/LAUNCH_KIT.md) | 冷启动分发材料（HN / Reddit / PH 文案） |

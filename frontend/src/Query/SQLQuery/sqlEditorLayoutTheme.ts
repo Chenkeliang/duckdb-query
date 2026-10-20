@@ -17,7 +17,7 @@ export function createSqlEditorLayoutTheme(options: {
     minHeight,
     maxHeight,
     placeholderColor = 'hsl(var(--muted-foreground))',
-    fontSize = '14px',
+    fontSize = '13px',
     contentPadding = '8px 0',
     linePadding = '0 8px',
   } = options;
@@ -29,6 +29,7 @@ export function createSqlEditorLayoutTheme(options: {
       ...(maxHeight ? { maxHeight } : {}),
       fontSize,
       fontFamily: 'var(--font-mono)',
+      lineHeight: '22px',
     },
     '.cm-scroller': {
       overflow: 'auto',

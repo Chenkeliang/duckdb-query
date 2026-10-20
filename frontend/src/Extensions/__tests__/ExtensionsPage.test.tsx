@@ -137,17 +137,19 @@ describe('ExtensionsPage', () => {
     renderPage();
 
     expect(await screen.findByText('sqlite_scanner')).toBeInTheDocument();
-    expect(screen.queryByText('excel')).not.toBeInTheDocument();
+    expect(screen.getByText('excel')).toBeInTheDocument();
     expect(screen.getByText('sqlite_scanner')).toBeInTheDocument();
     expect(screen.getByText('vss')).toBeInTheDocument();
     expect(screen.getByText('数据源')).toBeInTheDocument();
     expect(screen.getByText('能力增强')).toBeInTheDocument();
   });
 
-  it('hides bundled capabilities from the optional extension catalog', async () => {
+  it('shows bundled capabilities without offering a redundant install (2026-10-10 redesign)', async () => {
     renderPage();
     await screen.findByText('sqlite_scanner');
-    expect(screen.queryByTestId('extension-card-excel')).not.toBeInTheDocument();
+    const bundled = screen.getByTestId('extension-card-excel');
+    expect(within(bundled).getByText('已预置')).toBeInTheDocument();
+    expect(within(bundled).queryByRole('button', { name: '安装' })).not.toBeInTheDocument();
   });
 
   it('shows an install button for non-bundled, non-installed extensions', async () => {

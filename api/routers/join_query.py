@@ -19,6 +19,7 @@ import duckdb
 from core.common.config_manager import config_manager
 from core.common.timezone_utils import get_current_time
 from core.common.exceptions import ValidationError as APIValidationError
+from core.services.query_lineage import with_column_lineage
 from core.common.utils import describe_query_column_types
 from core.common.validators import validate_table_name
 from core.data.file_datasource_manager import (
@@ -768,6 +769,7 @@ def perform_query(
                         {"name": name, "duckdb_type": dtype}
                         for name, dtype in cursor_types
                     ]
+            column_types = with_column_lineage(con, query, column_types)
             finalize_query_if_not_cancelled(query_id)
 
             return create_success_response(

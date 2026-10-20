@@ -1,8 +1,10 @@
+import { Popover, PopoverContent, PopoverTrigger } from '@/components/ui/popover';
+import { QueryExecutionButtons } from '@/Query/SQLQuery/SQLToolbar';
 import * as React from 'react';
 import { useQuery } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
 import { generateSetOperation, validateSetOperation, toAttachDatabasesPayload } from '@/api';
-import { Layers, Play, X, Database, Table, Trash2, AlertTriangle, Star, Timer, CircleHelp } from 'lucide-react';
+import { Layers, X, Database, Table, Trash2, AlertTriangle, Star, CircleHelp } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { EmptyState as UiEmptyState } from '@/components/EmptyState';
 import { Alert, AlertDescription } from '@/components/ui/alert';
@@ -27,12 +29,6 @@ import {
 import { SQLHighlight } from '@/components/SQLHighlight';
 import { SaveQueryDialog } from '../Bookmarks/SaveQueryDialog';
 import { AsyncTaskDialog } from '../AsyncTasks/AsyncTaskDialog';
-import {
-  Tooltip,
-  TooltipContent,
-  TooltipProvider,
-  TooltipTrigger,
-} from '@/components/ui/tooltip';
 import { useAiStatus } from '@/hooks/useAiStatus';
 import { ChatToggleButton } from '@/Query/SQLQuery/ai/AiChatDrawer';
 import { agentChatBus, useAgentChatBus } from '@/Query/SQLQuery/ai/agentChatBus';
@@ -604,63 +600,35 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
 
   return (
     <div className="flex flex-col h-full overflow-hidden bg-surface">
-      <div className="flex flex-wrap items-center gap-2 px-3 py-2 border-b border-border shrink-0 bg-muted/30">
-        <div className="flex flex-wrap items-center gap-2 shrink-0">
-            <Button
-              variant="default"
-              size="sm"
-              onClick={handleExecute}
-              disabled={!canExecute || isExecuting}
-              className="gap-1.5 shrink-0"
-            >
-              <Play className="w-3.5 h-3.5 fill-current" />
-              {t('query.execute', '执行')}
-            </Button>
-
-            <TooltipProvider>
-              <Tooltip>
-                <TooltipTrigger asChild>
-                  <Button
-                    variant="outline"
-                    size="sm"
-                    onClick={() => setAsyncDialogOpen(true)}
-                    disabled={!canExecute || isExecuting || !sql?.trim()}
-                    className="gap-1.5 shrink-0"
-                    aria-label={t('query.sql.asyncExecute', '异步执行')}
-                  >
-                    <Timer className="w-3.5 h-3.5" />
-                    <span className="hidden sm:inline">
-                      {t('query.sql.asyncExecute', '异步执行')}
-                    </span>
-                  </Button>
-                </TooltipTrigger>
-                <TooltipContent>
-                  <p>{t('query.sql.asyncExecuteHint', '按当前 SQL 异步写入 DuckDB 表')}</p>
-                </TooltipContent>
-              </Tooltip>
-            </TooltipProvider>
+      <div className="@container flex min-h-11 shrink-0 flex-wrap items-center gap-x-3 gap-y-1 border-b border-border px-3 py-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-1">
+            <QueryExecutionButtons onExecute={handleExecute} onSaveTable={() => setAsyncDialogOpen(true)}
+              disabled={!canExecute || !sqlForExecute || isGeneratingSql} isExecuting={isExecuting} />
 
             <Button
-              variant="ghost"
+              variant="quiet"
               size="sm"
+              aria-label={t('query.set.clear', '清空')}
+              title={t('query.set.clear', '清空')}
               onClick={handleClear}
               disabled={activeTables.length === 0}
               className="text-muted-foreground hover:text-foreground gap-1.5 shrink-0"
             >
               <Trash2 className="w-3.5 h-3.5" />
-              {t('query.set.clear', '清空')}
+              <span className="hidden @md:inline">{t('query.set.clear', '清空')}</span>
             </Button>
 
             <Button
-              variant="ghost"
+              variant="quiet"
               size="sm"
+              aria-label={t('query.bookmark.save', '收藏')}
               onClick={() => setIsSaveDialogOpen(true)}
               disabled={!sql}
-              className="text-muted-foreground hover:text-yellow-500 gap-1.5 shrink-0"
+              className="text-muted-foreground hover:text-foreground gap-1.5 shrink-0"
               title={t('query.bookmark.save', '收藏查询')}
             >
               <Star className="w-3.5 h-3.5" />
-              {t('query.bookmark.save', '收藏')}
+              <span className="hidden @md:inline">{t('query.bookmark.save', '收藏')}</span>
             </Button>
 
             {chatStatus.configured && (
@@ -668,9 +636,9 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
             )}
         </div>
 
-        <div className="flex shrink-0 items-center gap-2 border-l border-border pl-2">
+        <div className="flex min-w-0 flex-wrap items-center gap-2">
           <div
-            className="flex h-8 flex-wrap rounded-md bg-muted p-0.5 gap-0.5"
+            className="flex h-7 flex-wrap rounded-md bg-muted gap-0.5"
             role="tablist"
             aria-label={t('query.set.operationType', '集合运算类型')}
           >
@@ -682,7 +650,7 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
                 aria-selected={operationType === op.value}
                 onClick={() => setOperationType(op.value)}
                 title={t(op.tooltipKey, op.tooltipFallback)}
-                className={`shrink-0 whitespace-nowrap px-2.5 text-xs font-medium rounded transition-colors ${operationType === op.value
+                className={`min-h-7 shrink-0 whitespace-nowrap px-2.5 text-xs font-medium rounded transition-colors ${operationType === op.value
                   ? 'bg-surface text-foreground shadow-sm'
                   : 'text-muted-foreground hover:text-foreground'
                   }`}
@@ -706,22 +674,26 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
               {t('query.set.byNameLabel', '按列名对齐')}
             </span>
           </label>
-          <TooltipProvider>
-            <Tooltip>
-              <TooltipTrigger asChild>
-                <button
-                  type="button"
-                  className="inline-flex h-6 w-6 shrink-0 items-center justify-center text-muted-foreground hover:text-foreground"
-                  aria-label={t('query.set.byNameTooltip', '合并字段不同的数据：同名列自动对齐，缺失列补 NULL')}
-                >
-                  <CircleHelp className="h-3.5 w-3.5" />
-                </button>
-              </TooltipTrigger>
-              <TooltipContent>
-                <p>{t('query.set.byNameTooltip', '合并字段不同的数据：同名列自动对齐，缺失列补 NULL')}</p>
-              </TooltipContent>
-            </Tooltip>
-          </TooltipProvider>
+          <Popover>
+            <PopoverTrigger asChild>
+              <Button type="button" variant="quiet" size="icon" className="h-7 w-7 shrink-0"
+                aria-label={t('query.set.byNameHelp', '列名对齐说明')} title={t('query.set.byNameHelp', '列名对齐说明')}>
+                <CircleHelp className="size-3.5" />
+              </Button>
+            </PopoverTrigger>
+            <PopoverContent align="end" className="w-80 space-y-2 text-xs">
+              <p className="font-medium">{t('query.set.byNameLabel', '按列名对齐')}</p>
+              <p>{t('query.set.byNameTooltip', '同名列自动对齐，不存在的列填空值（NULL）。')}</p>
+              <div className="space-y-1 rounded-md bg-muted p-2">
+                <p>{t('query.set.byNameExampleLeft', '左表：商品id、商品名称')}</p>
+                <p>{t('query.set.byNameExampleRight', '右表：商品id、金额')}</p>
+                <p>{t('query.set.byNameExampleResult', '合并后：商品id、商品名称、金额')}</p>
+              </div>
+              <p>{t('query.set.byNameExact', '列名必须完全相同。「订单号」和「order_id」会分成两列。')}</p>
+              <p className="text-muted-foreground">{t('query.set.byNameScope', '仅合并支持此选项。交集和差集按列的位置比较，需选择相同数量的列。')}</p>
+            </PopoverContent>
+          </Popover>
+
         </div>
 
         <div className="flex shrink-0 items-center gap-2 ml-auto">
