@@ -210,6 +210,26 @@ def _generate_pivot_transformation_sql(
     casts_map: Optional[Dict[str, str]] = None,
     connection=None,
 ) -> Dict[str, Any]:
+    # 无行/列维度时直接对筛选后的 base 聚合,不进入 PIVOT 或追加重复的总计行。
+    if not pivot_config.rows and not pivot_config.columns:
+        metrics = []
+        for value in pivot_config.values:
+            column_expr = _quote_identifier(value.column)
+            if value.typeConversion and value.typeConversion != "auto":
+                column_expr = f"TRY_CAST({column_expr} AS {value.typeConversion})"
+            expression = _aggregation_sql_expr(value.aggregation, column_expr)
+            alias = _quote_identifier(f"{value.aggregation.value.lower()}_{value.column}")
+            metrics.append(f"{expression} AS {alias}")
+        return {
+            "final_sql": (
+                f"SELECT {', '.join(metrics)}\n"
+                f"FROM (\n{_strip_trailing_semicolon(base_sql)}\n) AS base;"
+            ),
+            "pivot_sql": None,
+            "warnings": [],
+            "metadata": {"strategy": "aggregate", "uses_pivot_extension": False},
+        }
+
     row_dimensions = [_quote_identifier(dim) for dim in pivot_config.rows]
     manual_values = list(
         getattr(pivot_config, "manual_column_values", []) or []

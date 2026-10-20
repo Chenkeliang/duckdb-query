@@ -168,9 +168,6 @@ class PivotConfig(BaseModel):
 
     @model_validator(mode="after")
     def validate_pivot_config(self):
-        if not self.rows and not self.columns:
-            raise ValueError("Pivot configuration requires at least one dimension")
-
         if not self.values:
             raise ValueError("Pivot configuration must include at least one value")
 

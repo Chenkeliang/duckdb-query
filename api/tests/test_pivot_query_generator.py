@@ -31,6 +31,85 @@ from models.pivot_query_models import (
 from core.database.table_metadata_cache import table_metadata_cache
 
 
+class TestUngroupedStatistics:
+    """Regression #46 (2026-10-20): aggregate metrics without any dimensions."""
+
+    @pytest.mark.parametrize("filtered, expected", [
+        (False, (3, 2, 60, 20, 10, 30)),
+        (True, (2, 1, 30, 15, 10, 20)),
+    ])
+    def test_generated_statistics_execute_on_duckdb(self, filtered, expected):
+        """Execute real SQL with duplicate serials, NULLs and pre-aggregate filters."""
+        import duckdb
+
+        pivot = PivotConfig(values=[
+            PivotValueConfig(column="产品序列号", aggregation=agg)
+            for agg in (AggregationFunction.COUNT, AggregationFunction.COUNT_DISTINCT)
+        ] + [
+            PivotValueConfig(column="amount", aggregation=agg)
+            for agg in (AggregationFunction.SUM, AggregationFunction.AVG,
+                        AggregationFunction.MIN, AggregationFunction.MAX)
+        ], include_subtotals=True, include_grand_totals=True)
+        config = PivotQueryConfig(table_name="sales", limit=1, filters=[
+            FilterConfig(column="region", operator=FilterOperator.EQUAL, value="北")
+        ] if filtered else [])
+        result = generate_pivot_query_sql(config, pivot, app_config=Mock(enable_pivot_tables=True))
+        with duckdb.connect(":memory:") as con:
+            con.execute('CREATE TABLE sales("产品序列号" VARCHAR, amount INTEGER, region VARCHAR)')
+            con.executemany("INSERT INTO sales VALUES (?, ?, ?)", [
+                ("A", 10, "北"), ("A", 20, "北"), ("B", 30, "南"), (None, None, "北"),
+            ])
+            assert con.execute(result.final_sql).fetchall() == [expected]
+        assert result.pivot_sql is None
+        assert result.metadata["strategy"] == "aggregate"
+        assert "GROUP BY" not in result.final_sql
+        assert "LIMIT" not in result.final_sql
+
+    @pytest.mark.parametrize("empty", [False, True])
+    def test_empty_and_null_only_statistics_execute(self, empty):
+        """Regression #46: no rows / all NULLs still yield one aggregate row."""
+        import duckdb
+
+        pivot = PivotConfig(values=[
+            PivotValueConfig(column="amount", aggregation=agg)
+            for agg in (AggregationFunction.COUNT, AggregationFunction.COUNT_DISTINCT,
+                        AggregationFunction.SUM, AggregationFunction.AVG,
+                        AggregationFunction.MIN, AggregationFunction.MAX)
+        ])
+        config = PivotQueryConfig(table_name="sales")
+        result = generate_pivot_query_sql(config, pivot, app_config=Mock(enable_pivot_tables=True))
+        with duckdb.connect(":memory:") as con:
+            con.execute("CREATE TABLE sales(amount INTEGER)")
+            if not empty:
+                con.execute("INSERT INTO sales VALUES (NULL), (NULL)")
+            assert con.execute(result.final_sql).fetchall() == [(0, 0, None, None, None, None)]
+
+    def test_cast_and_quoted_identifiers_execute(self):
+        """Regression #46: retain TRY_CAST and escaping in ungrouped statistics."""
+        import duckdb
+        from decimal import Decimal
+
+        pivot = PivotConfig(values=[PivotValueConfig(
+            column='价"格', aggregation=AggregationFunction.SUM, typeConversion="DECIMAL(38,2)"
+        )])
+        result = generate_pivot_query_sql(
+            PivotQueryConfig(table_name="sales"), pivot, app_config=Mock(enable_pivot_tables=True)
+        )
+        with duckdb.connect(":memory:") as con:
+            con.execute('CREATE TABLE sales("价""格" VARCHAR)')
+            con.execute("INSERT INTO sales VALUES ('1.25'), ('2.50'), ('invalid')")
+            cursor = con.execute(result.final_sql)
+            assert cursor.description[0][0] == 'sum_价"格'
+            assert cursor.fetchall() == [(Decimal("3.75"),)]
+
+    def test_empty_configuration_still_rejected(self):
+        """Regression #46: optional dimensions do not make empty metrics valid."""
+        from pydantic import ValidationError
+
+        with pytest.raises(ValidationError, match="at least one value"):
+            PivotConfig(rows=[], columns=[], values=[])
+
+
 class TestPivotQueryModeGeneration:
     """Tests for the higher level pivot query SQL dispatcher"""
 
