@@ -1,6 +1,6 @@
 # CSV / Excel 导入：精度问题与 UI 优化说明
 
-> 项目 DuckDB 版本：`api/requirements.txt` → `duckdb==1.6.0.dev379`（engine `v2.0.0-alpha39998`）；新建持久化库使用 `storage_compatibility_version=v2.0.0`（迁移见 `docs/CONFIGURATION_ZH.md` § JSON / VARIANT 入湖）
+> 项目 DuckDB 版本：`api/requirements.txt` → `duckdb==2.0.0`（engine `v2.0.0`）；新建持久化库使用 `storage_compatibility_version=v2.0.0`（迁移见 `docs/CONFIGURATION_ZH.md` § JSON / VARIANT 入湖）
 > 官方参考：[CSV 自动检测](https://duckdb.org/docs/current/data/csv/auto_detection.html)、[Excel 扩展](https://duckdb.org/docs/current/core_extensions/excel)、[Excel 导入指南](https://duckdb.org/docs/current/guides/file_formats/excel_import)
 
 ---

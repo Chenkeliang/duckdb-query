@@ -42,6 +42,7 @@ from models.query_models import DatabaseConnection, DataSourceType
 from core.data.file_datasource_manager import reload_all_file_datasources_to_duckdb
 from core.database.duckdb_engine import with_duckdb_connection
 from core.services.cleanup_scheduler import start_cleanup_scheduler, stop_cleanup_scheduler
+from core.services.task_manager import start_cancellation_watchdog, stop_cancellation_watchdog
 from core.common.timezone_utils import get_current_time_iso
 
 logger = logging.getLogger(__name__)
@@ -100,6 +101,7 @@ async def app_lifespan(app: FastAPI):
     _port = int(os.getenv("DUCKQUERY_PORT") or os.getenv("PORT") or 48001)
     write_runtime_file(_port)
 
+    start_cancellation_watchdog()
     try:
         yield
     finally:
@@ -113,6 +115,7 @@ async def app_lifespan(app: FastAPI):
         try:
             from core.database.duckdb_pool import shutdown_all_duckdb_connections
 
+            stop_cancellation_watchdog()
             shutdown_all_duckdb_connections()
             logger.info("DuckDB connections closed (WAL checkpointed)")
         except Exception as e:

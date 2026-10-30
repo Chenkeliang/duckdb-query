@@ -46,12 +46,14 @@ def test_desktop_release_version_is_consistent_everywhere():
 
 
 def test_release_docs_and_default_duckdb_engine_pin_are_consistent():
+    """Regression 2026-10-30: source installs must use the verified GA engine."""
     requirements = (ROOT / "api/requirements.txt").read_text(encoding="utf-8")
-    assert re.search(r"^duckdb==1\.6\.0\.dev379$", requirements, re.MULTILINE)
+    assert re.search(r"^duckdb==2\.0\.0$", requirements, re.MULTILINE)
     for readme in ("README.md", "README_en.md"):
         text = (ROOT / readme).read_text(encoding="utf-8")
         assert "v2.1.1" in text
         assert "v2.0.0-alpha39998" in text
+        assert "`duckdb==2.0.0`" in text
 
     release_notes = ROOT / "docs/releases/v2.1.1.md"
     english_release_notes = ROOT / "docs/releases/v2.1.1_en.md"

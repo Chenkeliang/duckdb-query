@@ -1,13 +1,19 @@
 # DuckQuery 2.0 / DuckDB 2.0 全面升级技术方案
 
-> 状态：DuckQuery v2.0.0 全面启用 DuckDB 2.0 Preview 与 v2 storage；GA wheel 发布后复验  
-> 日期：2026-09-04  
+> 状态：当前源码使用 DuckDB 2.0 正式版；桌面发布版 v2.1.1 仍使用原 alpha 引擎
+>
+> 更新日期：2026-10-30
+>
 > 范围：Python 后端、React 前端、MCP、Docker、桌面 sidecar、浏览器 Demo  
-> 基线：默认依赖 `duckdb 1.6.0.dev379` / engine `v2.0.0-alpha39998` / storage `v2.0.0`
+> 当前基线：`duckdb 2.0.0` / engine `v2.0.0` / storage `v2.0.0`
 
 发布策略：DuckQuery 自身升级为 2.0.0；新库只输出 v2.0.0 storage。旧库作为兼容输入由
 DuckDB 2.0 原样读取，不在启动时静默改写。显式迁移后不支持直接降级到 DuckDB 1.5，
-降级路径是恢复备份或导出/导入。GA wheel 发布后更新默认 pin并重跑三平台冻结包矩阵。
+降级路径是恢复备份或导出/导入。当前源码已更新 GA pin；三平台冻结包矩阵仍是下一次桌面发布的验收条件。
+
+2026-10-30 正式版适配：能力契约只认可已验证的 `v2.0.0`，未验证的后续构建不自动放行；Agent 的新语法限制、远端原生下推限制和 SQL 写入门控保持原有边界。取消任务监控由应用生命周期启动，在关闭数据库前唤醒并等待退出，避免导入模块就创建常驻线程及 nanobind 退出引用告警。下文 §3 的 alpha 验证记录为历史基线，不代表正式版三平台验收结果。
+
+本机 GA 验证（macOS ARM64 / Python 3.13）：后端 `1456 passed, 136 skipped`；前端 `1372 passed, 1 skipped`，lint / typecheck / build 通过；MCP `77 passed, 1 skipped`；Pylint `10/10`。真实 Web 已验证粘贴导入、无分组去重与求和、CSV 与服务端 Parquet 导出、VARIANT / lambda 查询和错误后的连接复用。本机 PyInstaller 产物通过保真与退出检查，无 nanobind 引用告警。三平台扩展文件下载可用，本机四种扩展可在禁止自动安装时加载；这不替代 Windows / Intel 冻结包与真实远端数据库语义矩阵验收。
 
 ## 1. 目标
 

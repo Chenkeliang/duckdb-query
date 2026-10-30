@@ -152,6 +152,8 @@ claude mcp add duckquery -- uvx duckquery-mcp
 
 应用版本与 DuckDB **引擎版本**分别维护。v2.1.1 发布版固定引擎 `v2.0.0-alpha39998`，Python 包为 `1.6.0.dev379`；新数据库使用 `v2.0.0` 存储格式。DuckDB 引擎仍为预发布版本，应用更新不代表已切换到正式引擎。
 
+当前源码已切换到 **DuckDB 2.0 正式版**（`duckdb==2.0.0`，engine `v2.0.0`）。此变更尚未发布为桌面更新，已发布的 v2.1.1 二进制不受影响。新库继续使用 `v2.0.0` 存储格式；旧库不会自动迁移，扩展须使用正式版对应的二进制。
+
 从 DuckQuery 2.0.x 升级不新增存储迁移。从 1.x 升级前，请备份 `main.db`、`system.db` 及对应 `.wal`，再阅读 [2.0 大版本说明](docs/releases/v2.0.0.md)。旧库不会在启动时静默迁移；显式迁移到新存储格式后，应通过升级前备份恢复旧版本。
 
 历史发布说明：[v2.1.0](docs/releases/v2.1.0.md) · [v2.0.1](docs/releases/v2.0.1.md) · [v2.0.0](docs/releases/v2.0.0.md)。

@@ -154,6 +154,20 @@ def main() -> None:
         print(f"backend on port {port}")
         _wait_health(port)
 
+        # 2026-10-30: frozen artifacts must use GA and advertise verified support.
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/api/capabilities", timeout=10
+        ) as response:
+            capabilities = json.loads(response.read())["data"]
+        _check("DuckDB engine", capabilities["engine"]["version"], "v2.0.0")
+        _check("DuckDB Python", capabilities["engine"]["python_version"], "2.0.0")
+        _check("DuckDB release stage", capabilities["engine"]["release_stage"], "stable")
+        variant = next(
+            feature for feature in capabilities["features"]
+            if feature["id"] == "variant_and_json_mutation"
+        )
+        _check("VARIANT Agent capability", variant["agent"]["status"], "supported")
+
         rows = _execute(
             port,
             "SELECT -0.30::DECIMAL(38,2) AS amt, "
@@ -239,7 +253,6 @@ def main() -> None:
             )
         print("  ok excel/.xls stack importable (calamine reachable)")
 
-        print("frozen bundle smoke: ALL PASS")
     except SystemExit:
         if stderr_path.exists():
             tail = stderr_path.read_text(encoding="utf-8", errors="replace").splitlines()[-30:]
@@ -253,6 +266,12 @@ def main() -> None:
             proc.wait(timeout=15)
         except subprocess.TimeoutExpired:
             proc.kill()
+            proc.wait()
+        # A sleeping cancellation daemon used to retain nanobind references.
+        if "nanobind: leaked" in stderr_path.read_text(encoding="utf-8", errors="replace"):
+            raise SystemExit(f"FAIL: DuckDB reference leak at shutdown; see {stderr_path}")
+
+    print("frozen bundle smoke: ALL PASS")
 
 
 if __name__ == "__main__":

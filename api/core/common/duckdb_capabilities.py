@@ -10,8 +10,8 @@ import sqlglot
 
 
 CONTRACT_VERSION = 2
-AGENT_PROFILE_REVISION = "duckdb-2-preview-v1"
-VERIFIED_ENGINE_VERSION = "v2.0.0-alpha39998"
+AGENT_PROFILE_REVISION = "duckdb-2-stable-v1"
+VERIFIED_ENGINE_VERSION = "v2.0.0"
 VERIFIED_REMOTE_PUSHDOWN_BUILDS: frozenset[tuple[str, str, str]] = frozenset()
 
 _AGENT_BLOCKED_SQL = (

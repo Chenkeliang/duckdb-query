@@ -66,33 +66,47 @@ def retry_on_write_conflict(
 # ============================================
 
 # Module-level singleton control to prevent multiple thread initialization
-_watchdog_started = False
 _watchdog_lock = threading.Lock()
+_watchdog_stop = threading.Event()
+_watchdog_thread: Optional[threading.Thread] = None
 
 
 def start_cancellation_watchdog(interval_seconds: int = 60):
     """Start cancellation monitoring daemon thread (singleton)"""
-    global _watchdog_started
+    global _watchdog_thread
 
     with _watchdog_lock:
-        if _watchdog_started:
+        if _watchdog_thread is not None and _watchdog_thread.is_alive():
             logger.debug("Cancel monitoring daemon thread is already running, skipping duplicate start")
             return
 
-        _watchdog_started = True
+        _watchdog_stop.clear()
 
-    def watchdog_loop():
-        while True:
-            try:
-                time.sleep(interval_seconds)
-                cleanup_cancelling_timeout()
-                cleanup_stale_registry()
-            except Exception as e:
-                logger.error(f"Cancel monitoring exception: {e}")
+        def watchdog_loop():
+            while not _watchdog_stop.wait(interval_seconds):
+                try:
+                    cleanup_cancelling_timeout()
+                    cleanup_stale_registry()
+                except Exception as e:
+                    logger.error(f"Cancel monitoring exception: {e}")
 
-    thread = threading.Thread(target=watchdog_loop, daemon=True)
-    thread.start()
+        _watchdog_thread = threading.Thread(
+            target=watchdog_loop, name="task-cancellation-watchdog", daemon=True
+        )
+        _watchdog_thread.start()
     logger.info("Cancellation monitoring daemon started")
+
+
+def stop_cancellation_watchdog() -> None:
+    """Wake and join monitoring before closing the databases it can access."""
+    global _watchdog_thread
+    with _watchdog_lock:
+        if _watchdog_thread is None:
+            return
+        _watchdog_stop.set()
+        _watchdog_thread.join()
+        _watchdog_thread = None
+    logger.info("Cancellation monitoring daemon stopped")
 
 
 def cleanup_cancelling_timeout(timeout_seconds: int = 60):
@@ -195,7 +209,6 @@ class TaskManager:
     def __init__(self):
         self._lock = Lock()
         self._ensure_tables()
-        start_cancellation_watchdog()  # Singleton control, multiple calls will not start repeatedly
         logger.info("Async task manager initialization completed (persistent storage)")
 
     # --------------------------------------------------------------------- #
