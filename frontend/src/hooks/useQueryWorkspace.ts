@@ -6,6 +6,7 @@ import {
   cancelSyncQuery,
   moveQueryToBackground,
   type ColumnInfo,
+  type PushdownInfo,
 } from "@/api";
 import { showSuccessToast, showErrorToast } from "@/utils/toastHelpers";
 import { toast } from "sonner";
@@ -85,6 +86,7 @@ export interface UseQueryWorkspaceReturn {
   toggleResultTabPinById: (id: string) => void;
   displayQueryPreview: (
     response: {
+      pushdown?: PushdownInfo | null;
       data?: unknown[];
       columns?: string[] | ColumnInfo[] | Array<{ name: string }>;
       column_types?: Array<{ name: string; duckdb_type: string }>;
@@ -146,6 +148,7 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
     join: [],
     set: [],
     pivot: [],
+    explore: [],
   });
 
   const [currentTab, setCurrentTab] = useState<string>("sql");
@@ -178,6 +181,7 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
 
   const buildQueryResult = useCallback((
     response: {
+      pushdown?: PushdownInfo | null;
       data?: unknown[];
       columns?: string[] | ColumnInfo[] | Array<{ name: string }>;
       column_types?: Array<{ name: string; duckdb_type: string }>;
@@ -209,6 +213,7 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
 
     return {
       data: objectData,
+      pushdown: response.pushdown,
       columns,
       duckdbColumnTypes: response.column_types,
       loading: false,
@@ -228,6 +233,7 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
       requestId: string,
       signal?: AbortSignal
     ): Promise<{
+      pushdown?: PushdownInfo | null;
       data?: unknown[];
       columns?: string[] | ColumnInfo[];
       column_types?: Array<{ name: string; duckdb_type: string }>;
@@ -262,6 +268,7 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
         const execTime = Date.now() - startTime;
         return {
           data: result.data || [],
+          pushdown: result.pushdown,
           columns: result.columns || [],
           column_types: result.column_types,
           execTime,
@@ -635,7 +642,7 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
       setSelectedTables((prev) => {
         const currentTables = prev[currentTab] || [];
 
-        if (currentTab === "sql" || currentTab === "pivot") {
+        if (currentTab === "sql" || currentTab === "pivot" || currentTab === "explore") {
           return {
             ...prev,
             [currentTab]: [normalized],
@@ -751,6 +758,7 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
   const displayQueryPreview = useCallback(
     (
       response: {
+        pushdown?: PushdownInfo | null;
         data?: unknown[];
         columns?: string[] | ColumnInfo[] | Array<{ name: string }>;
         column_types?: Array<{ name: string; duckdb_type: string }>;

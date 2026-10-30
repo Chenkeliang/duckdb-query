@@ -11,6 +11,7 @@ import {
   saveQueryExportToPath,
   toAttachDatabasesPayload,
   runAgent,
+  type PushdownInfo,
 } from '@/api';
 import {
   showErrorToast,
@@ -50,8 +51,12 @@ import { ChartView } from '@/Query/Charts/ChartView';
 import { useKeyboardShortcuts } from '@/Settings/shortcuts/useKeyboardShortcuts';
 import { EmptyState } from '@/components/EmptyState';
 import { Skeleton } from '@/components/ui/skeleton';
+import { MetricCards } from './MetricCards';
+import { PushdownStatus } from '@/Query/components/PushdownStatus';
 
 export interface ResultPanelProps {
+  pushdown?: PushdownInfo | null;
+  viewRequest?: { view: 'metrics' | 'table'; key: number };
   data: Record<string, unknown>[] | null;
   columns?: string[] | null;
   duckdbColumnTypes?: DuckdbColumnType[];
@@ -102,6 +107,8 @@ const emptyStats = {
 };
 
 export const ResultPanel: React.FC<ResultPanelProps> = ({
+  pushdown,
+  viewRequest,
   data,
   columns,
   duckdbColumnTypes,
@@ -149,7 +156,7 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
   const dataGridRef = useRef<DataGridApi>(null);
   const gridApisRef = useRef<Map<string, DataGridApi>>(new Map());
 
-  const [resultView, setResultView] = useState<'table' | 'chart'>('table');
+  const [resultView, setResultView] = useState<'table' | 'chart' | 'metrics'>('table');
 
   const activeTab = React.useMemo(
     () => resultTabs.find((tab) => tab.id === activeResultTabId) ?? null,
@@ -223,6 +230,11 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
   React.useEffect(() => {
     setResultView('table');
   }, [latestResultRows]);
+  React.useEffect(() => {
+    if (viewRequest) setResultView(viewRequest.view);
+  }, [viewRequest]);
+  const showMetrics = chartRows.length === 1 && chartColumns.length > 0
+    && chartColumns.every((column) => !/JSON|VARIANT|STRUCT|MAP|UNION|\[/.test(column.type.toUpperCase()));
   const chartPreviewLimit = useMultiTabGrids
     ? activeTab?.result.previewLimitApplied
     : previewLimitApplied;
@@ -243,6 +255,9 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
   );
 
   const showImportButton = !!effectiveSQL;
+  const alternateView = resultView === 'metrics' && showMetrics
+    ? <MetricCards row={chartRows[0]} columns={chartColumns.map((column) => column.name)} sql={effectiveSQL} />
+    : chartViewEl;
 
   const { columns: gridColumnDefs } = useDataGridColumns({
     data,
@@ -345,6 +360,7 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
   useKeyboardShortcuts({ rerunQuery: handleRefreshActiveTab });
 
   const toolbarProps = {
+    showMetrics,
     stats: toolbarStats,
     gridColumns,
     onToggleColumn: (field: string) => getActiveGridApi()?.toggleColumnVisibility(field),
@@ -400,6 +416,7 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
           )}
         </div>
         {/* 自愈横幅挂在头部栏下方:与结果视图分支无关,多 Tab 模式失败(无错误视图)也可见 */}
+        <PushdownStatus report={useMultiTabGrids ? activeTab?.result.pushdown : pushdown} />
         {selfHealErrorMessage && onSelfHealRerun && (
           <EngineCompatSelfHealBanner
             errorMessage={selfHealErrorMessage}
@@ -430,8 +447,8 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
           ) : null
         )}
         <div className="relative flex-1 min-h-0">
-          {resultView === 'table'
-            ? resultTabs.map((tab) => (
+          <div className={resultView === 'table' ? 'h-full' : 'hidden'}>
+            {resultTabs.map((tab) => (
                 <ResultTabGridPane
                   key={tab.id}
                   tab={tab}
@@ -441,8 +458,9 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
                   onColumnVisibilityChange={handleColumnVisibilityChange}
                   emptyMessage={emptyMessage}
                 />
-              ))
-            : chartViewEl}
+              ))}
+          </div>
+          {resultView !== 'table' && alternateView}
         </div>
         {activeSaveSql && (
           <AsyncTaskDialog
@@ -591,8 +609,7 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
         ) : null
       )}
       <div className="relative flex-1 min-h-0">
-        {resultView === 'table' ? (
-          <>
+        <div className={resultView === 'table' ? 'h-full' : 'hidden'}>
             {loading && data && data.length > 0 && (
               <div className="absolute inset-0 z-10 flex items-center justify-center bg-background/60">
                 <div className="flex flex-col items-center gap-2 text-muted-foreground">
@@ -615,8 +632,8 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
               onStatsChange={setDataGridStats}
               onColumnVisibilityChange={handleColumnVisibilityChange}
             />
-          </>
-        ) : chartViewEl}
+        </div>
+        {resultView !== 'table' && alternateView}
       </div>
 
       {/* 保存到 DuckDB 用基础 SQL(无系统预览 LIMIT),与服务端导出同一口径(复审 P1) */}

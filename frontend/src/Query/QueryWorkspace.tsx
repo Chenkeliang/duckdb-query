@@ -51,6 +51,7 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL, prev
   const { t } = useTranslation("common");
   const queryClient = useQueryClient();
   const [autoOpenImportDialog, setAutoOpenImportDialog] = React.useState(false);
+  const [resultViewRequest, setResultViewRequest] = React.useState<{ view: 'metrics' | 'table'; key: number }>();
 
   const {
     activeExecution,
@@ -355,6 +356,7 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL, prev
             {/* 查询区域 */}
             <Panel defaultSize={45} minSize={20}>
               <QueryTabs
+                onResultViewRequest={(view) => setResultViewRequest((previous) => ({ view, key: (previous?.key ?? 0) + 1 }))}
                 taskActions={taskActions}
                 isWorkspaceActive={isActive}
                 ref={queryTabsRef}
@@ -410,6 +412,8 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL, prev
                 <div className="h-full bg-card" />
               ) : (
                 <ResultPanel
+                  pushdown={queryResults?.pushdown}
+                  viewRequest={resultViewRequest}
                   data={queryResults?.data ?? null}
                   columns={queryResults?.columns ?? null}
                   duckdbColumnTypes={queryResults?.duckdbColumnTypes}

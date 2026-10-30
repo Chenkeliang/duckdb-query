@@ -95,7 +95,15 @@ export interface DuckdbColumnType {
   duckdb_type: string;
 }
 
+export interface PushdownInfo {
+  key_strategy?: 'range';
+  mode: 'remote-count' | 'candidate' | 'local' | 'explicit-remote';
+  sources: number;
+  pushed_sources: number;
+}
+
 export interface QueryResponse {
+  pushdown?: PushdownInfo | null;
   success: boolean;
   data?: Record<string, unknown>[];
   columns?: ColumnInfo[];

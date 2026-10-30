@@ -1,7 +1,7 @@
 import * as React from "react";
 import { useTranslation } from "react-i18next";
 import { toast } from "sonner";
-import { Code, GitMerge, Layers, Table2, Plus, X } from "lucide-react";
+import { Code, GitMerge, Layers, Table2, Plus, X, ScanSearch } from "lucide-react";
 import {
   DropdownMenu,
   DropdownMenuContent,
@@ -14,6 +14,7 @@ import { SQLQueryPanel } from "../SQLQuery";
 import { JoinQueryPanel } from "../JoinQuery";
 import { SetOperationsPanel } from "../SetOperations";
 import { PivotPanel } from "../PivotTable/PivotPanel";
+import { InsightsPanel } from '../Insights/InsightsPanel';
 import { useGlobalHistory } from "../hooks/useGlobalHistory";
 import type { SelectedTable } from "@/types/SelectedTable";
 import type {
@@ -33,6 +34,7 @@ import { useAiStatus } from "@/hooks/useAiStatus";
 import { useFederatedQueryDetection } from "@/hooks/useFederatedQueryDetection";
 import { getTableName } from "@/utils/tableUtils";
 import { registerWorkbenchCommand, queueWorkbenchCommand } from "../workbenchCommands";
+import { IS_DEMO } from '@/demo/isDemo';
 
 /**
  * 查询标签组件（graphite redesign）
@@ -57,6 +59,7 @@ const KIND_META: Record<QueryTabKind, { labelKey: string; icon: React.ComponentT
   join: { labelKey: "query.tabs.join", icon: GitMerge },
   set: { labelKey: "query.tabs.set", icon: Layers },
   pivot: { labelKey: "query.tabs.pivot", icon: Table2 },
+  explore: { labelKey: "insights.title", icon: ScanSearch },
 };
 
 const DEFAULT_TABS: WorkbenchTab[] = [
@@ -64,9 +67,11 @@ const DEFAULT_TABS: WorkbenchTab[] = [
   { id: "join", kind: "join" },
   { id: "set", kind: "set" },
   { id: "pivot", kind: "pivot" },
+  ...(!IS_DEMO ? [{ id: 'explore', kind: 'explore' as const }] : []),
 ];
 
 interface QueryTabsProps {
+  onResultViewRequest?: (view: 'metrics' | 'table') => void;
   taskActions?: React.ReactNode;
   isWorkspaceActive?: boolean;
   onRestoreSqlTables?: (tables: SelectedTable[]) => void;
@@ -104,6 +109,7 @@ export interface QueryTabsHandle {
 }
 
 export const QueryTabs = React.forwardRef<QueryTabsHandle, QueryTabsProps>(({
+  onResultViewRequest,
   taskActions,
   isWorkspaceActive = true,
   onRestoreSqlTables,
@@ -380,7 +386,7 @@ export const QueryTabs = React.forwardRef<QueryTabsHandle, QueryTabsProps>(({
 
   // 创建包装后的执行函数，自动记录到全局历史
   const createWrappedExecute = React.useCallback(
-    (type: 'join' | 'set' | 'pivot') =>
+    (type: 'join' | 'set' | 'pivot' | 'sql') =>
       async (sql: string, source?: TableSource, options?: { baseSql?: string }) => {
         if (!onExecute) return;
         const startTime = Date.now();
@@ -435,6 +441,7 @@ export const QueryTabs = React.forwardRef<QueryTabsHandle, QueryTabsProps>(({
     () => createWrappedExecute('pivot'),
     [createWrappedExecute]
   );
+  const handleInsightsExecute = React.useMemo(() => createWrappedExecute('sql'), [createWrappedExecute]);
 
   const tabLabel = (tab: WorkbenchTab) =>
     tab.kind === 'sql' ? `SQL ${tab.seq ?? ''}`.trim() : t(KIND_META[tab.kind].labelKey);
@@ -442,6 +449,8 @@ export const QueryTabs = React.forwardRef<QueryTabsHandle, QueryTabsProps>(({
   const renderPanel = (tab: WorkbenchTab) => {
     const isActive = tab.id === activeTabObj?.id;
     switch (tab.kind) {
+      case 'explore':
+        return <InsightsPanel selectedTables={selectedTablesByTab.explore || []} onExecute={handleInsightsExecute} onResultViewRequest={onResultViewRequest} onCancel={onCancel} isCancelling={isCancelling} />;
       case 'sql':
         return (
           <SQLQueryPanel
@@ -587,7 +596,7 @@ export const QueryTabs = React.forwardRef<QueryTabsHandle, QueryTabsProps>(({
               </button>
             </DropdownMenuTrigger>
             <DropdownMenuContent align="start" className="w-48">
-              {(Object.keys(KIND_META) as QueryTabKind[]).map((kind) => {
+              {(Object.keys(KIND_META) as QueryTabKind[]).filter((kind) => !IS_DEMO || kind !== 'explore').map((kind) => {
                 const Icon = KIND_META[kind].icon;
                 return (
                   <DropdownMenuItem key={kind} onSelect={() => openTab(kind)} className="gap-2">

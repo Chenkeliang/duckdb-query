@@ -5,7 +5,7 @@
  */
 
 import { apiClient, getFederatedQueryTimeout, handleApiError, normalizeResponse } from './client';
-import type { DuckdbColumnType } from './types';
+import type { DuckdbColumnType, PushdownInfo } from './types';
 
 export interface JoinQueryDataSource {
     id: string;
@@ -51,6 +51,7 @@ export interface JoinQueryPerformRequest {
 }
 
 export interface JoinQueryPerformResult {
+    pushdown?: PushdownInfo | null;
     data: Record<string, unknown>[];
     columns: string[];
     column_types?: DuckdbColumnType[];

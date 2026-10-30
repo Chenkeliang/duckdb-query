@@ -780,6 +780,7 @@ def perform_query(
                     "index": list(range(len(data_records))),
                     "sql": query,
                     "row_count": len(data_records),
+                    "pushdown": execution.pushdown,
                 },
                 message_code=MessageCode.QUERY_SUCCESS,
             )

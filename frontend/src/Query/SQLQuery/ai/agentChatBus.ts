@@ -8,7 +8,7 @@
  */
 import { useSyncExternalStore } from 'react';
 
-export type WorkbenchTabId = 'sql' | 'join' | 'set' | 'pivot';
+export type WorkbenchTabId = 'sql' | 'join' | 'set' | 'pivot' | 'explore';
 
 interface AgentChatBusState {
   open: boolean;

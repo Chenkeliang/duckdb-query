@@ -222,7 +222,7 @@ Environment variable: `DUCKDB_AUTO_EXPLAIN_THRESHOLD_MS`.
 Older databases are typically on `v1.0.0+` / `v1.4.x` storage and **cannot** write `VARIANT` tables directly — a one-time migration is required:
 
 1. **Stop** the API (`uvicorn` / container) so the `.db` file isn't locked.
-2. Confirm the Python package is **`duckdb==1.6.0.dev379`** and the reported engine is `v2.0.0-alpha39998` (`cd api && pip install -r requirements.txt`).
+2. Confirm the Python package is **`duckdb==2.0.0`** and the reported engine is `v2.0.0` (`cd api && ../.venv/bin/python -m pip install -r requirements.txt`).
 3. Preview:
    ```bash
    cd api
@@ -250,6 +250,6 @@ Migration logic: check free space → attach the old database read-only → crea
 | `DUCKDB_REMOTE_SETTINGS` | JSON string merged into `duckdb_remote_settings` (S3/OSS credentials — do not bake into the image) |
 | `duckdb_extensions` | Defaults include `httpfs`; the Docker image pre-installs `mysql`, `postgres`, `httpfs`, `spatial`, etc. |
 
-**Note**: whether DuckDB's **httpfs** extension honors the system proxy depends on the current DuckDB 2.0 Preview runtime — test it against `s3://` or HTTPS URLs in the target environment. The application layer only guarantees proxy support on the Python `requests` fallback path.
+**Note**: whether DuckDB's **httpfs** extension honors the system proxy depends on the DuckDB runtime — test it against `s3://` or HTTPS URLs in the target environment. The application layer only guarantees proxy support on the Python `requests` fallback path.
 
 S3 data paths go over the network via `duckdb_remote_settings` and do **not** depend on `server_data_mounts` host directory mounts.

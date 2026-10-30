@@ -60,6 +60,8 @@ def mysql_fixture(request):
 def environment(mysql_fixture):
     config, table, rows = mysql_fixture
     with duckdb.connect(":memory:") as connection:
+        if os.getenv("DUCKDB_EXTENSION_DIRECTORY"):
+            connection.execute("SET extension_directory=?", [os.environ["DUCKDB_EXTENSION_DIRECTORY"]])
         connection.execute("LOAD mysql")
         connection.execute("SET disabled_optimizers='remote_pushdown'")
         connection.execute("SET threads=4")
@@ -75,6 +77,7 @@ def environment(mysql_fixture):
     "code IN ('ORD',TRY_CAST(NULL AS VARCHAR))", "code IN (NULL::VARCHAR)",
     "code=CAST(NULL AS VARCHAR)", "CAST(NULL AS VARCHAR)=code",
     "code IN (NULL)", "code=''", "code='ORD '", "code IN ('a\\b','a''b')", "code='😀'",
+    "code>'ORD'", "code='ORD' OR id=9", "code!='ORD'", "code LIKE '_%'", "code IS NOT NULL",
 ])
 def test_candidate_values_types_and_cleanup(environment, predicate):
     """2026-09-08: candidate reads retain exact strings, decimals and types."""
@@ -89,7 +92,7 @@ def test_candidate_values_types_and_cleanup(environment, predicate):
     assert not connection.execute("SELECT table_name FROM duckdb_tables() WHERE table_name LIKE '__mysql_candidate_%'").fetchall()
 
 
-@pytest.mark.parametrize("predicate", ["code NOT IN ('ORD')", "code>'ORD'", "code='ORD' OR id=9"])
+@pytest.mark.parametrize("predicate", ["code NOT IN ('ORD')", "reverse(code)='DRO'", "code='ORD' OR length(code)>3"])
 def test_unsupported_predicates_remain_exact_local_filters(environment, predicate):
     """2026-09-08: declining optimization must not retain unsafe native filters."""
     connection, configs, table = environment

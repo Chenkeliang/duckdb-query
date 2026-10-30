@@ -1,4 +1,65 @@
 {
+  "pushdown": {
+    "keyRange": "关联键超过阈值，使用保守范围减少读取；最终仍按精确键关联，范围较宽时收益可能有限。",
+    "planned": "预计执行：",
+    "executed": "本次实际执行：",
+    "modes": {
+      "remote-count": "MySQL 完成计数，仅返回统计结果；精度与筛选语义已校验。",
+      "candidate": "MySQL 先筛选候选数据，DuckDB 完成最终过滤、统计和关联（下推 {{count}} / {{total}} 个源）。",
+      "local": "当前条件或类型未能安全下推，将在本地计算；远端大表可能读取大量明细。",
+      "explicit-remote": "使用显式远端 SQL，由源库执行。"
+    }
+  },
+  "insights": {
+    "operations": {
+      "COUNT_ROWS": "行数",
+      "COUNT": "非空计数",
+      "COUNT_DISTINCT": "去重计数",
+      "SUM": "合计",
+      "AVG": "均值",
+      "MIN": "最小 / 最早",
+      "MAX": "最大 / 最晚"
+    },
+    "types": {
+      "VARCHAR": "文本（保留精度）",
+      "BIGINT": "整数 BIGINT",
+      "DOUBLE": "浮点数 DOUBLE",
+      "BOOLEAN": "布尔值",
+      "DATE": "日期",
+      "TIMESTAMP": "日期时间",
+      "JSON": "JSON"
+    },
+    "title": "数据探索",
+    "metrics": "统计指标",
+    "json": "JSON 字段提取",
+    "selectTable": "请从左侧选择一张表，按实际结构配置统计或提取 JSON 字段。",
+    "metricsHint": "按字段类型推荐可用计算方式；字段的业务含义由你确认。统计基于完整筛选范围，不受样本或预览行数限制。",
+    "jsonHint": "选择字段后发现样本中的 JSON 路径。文本列也可探测；数组路径使用从 0 开始的固定下标。",
+    "execute": "执行查询",
+    "running": "执行中…",
+    "loading": "加载中…",
+    "metricColumn": "指标 {{index}} 的字段",
+    "metricOperation": "指标 {{index}} 的计算方式",
+    "outputName": "指标 {{index}} 的名称",
+    "removeMetric": "删除指标 {{index}}",
+    "rowCount": "整表行数",
+    "addMetric": "添加推荐指标",
+    "jsonColumn": "选择 JSON 或文本字段",
+    "discover": "发现字段",
+    "sample": "已采样 {{sampled}} 行，其中 {{valid}} 行有效、{{skipped}} 行跳过；路径可能不完整。",
+    "pathsTruncated": "路径数量或深度已截断。",
+    "noPaths": "样本中没有可用 JSON；请更换字段或确认数据格式。",
+    "selectPath": "提取路径 {{path}}",
+    "pathAlias": "路径 {{path}} 的列名",
+    "pathType": "路径 {{path}} 的输出类型",
+    "keepOriginal": "保留原始字段",
+    "conversionHint": "默认文本保留数值精度；缺失路径或转换失败返回 NULL。DOUBLE 为近似浮点数。",
+    "preparing": "正在生成 SQL…",
+    "sqlPreview": "SQL 预览（确认后执行）",
+    "cards": "指标卡片",
+    "cardHint": "结果来自已执行的 SQL；修改上方配置后需重新执行，卡片数值才会更新。",
+    "executedSql": "查看已执行 SQL"
+  },
   "download": {
     "browserStarted": "已在系统浏览器开始下载{{name}}，完成后可在系统「下载」文件夹中找到"
   },

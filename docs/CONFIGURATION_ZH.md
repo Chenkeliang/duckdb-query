@@ -224,7 +224,7 @@ JOIN / 集合运算的预览、LIMIT、BY NAME 语义见 [QUERY_BEHAVIOR_ZH.md](
 旧库多为 `v1.0.0+` / `v1.4.x` 存储，**不能**直接写入 `VARIANT` 表，需一次性迁移：
 
 1. **停止** API（`uvicorn` / 容器），避免 `.db` 被占用。
-2. 确认 Python 包为 **`duckdb==1.6.0.dev379`**、实际 engine 为 `v2.0.0-alpha39998`（`cd api && pip install -r requirements.txt`）。
+2. 确认 Python 包为 **`duckdb==2.0.0`**、实际 engine 为 `v2.0.0`（`cd api && ../.venv/bin/python -m pip install -r requirements.txt`）。
 3. 预览：
    ```bash
    cd api
@@ -252,6 +252,6 @@ JOIN / 集合运算的预览、LIMIT、BY NAME 语义见 [QUERY_BEHAVIOR_ZH.md](
 | `DUCKDB_REMOTE_SETTINGS` | JSON 字符串，合并进 `duckdb_remote_settings`（S3/OSS 密钥，勿写入镜像） |
 | `duckdb_extensions` | 默认含 `httpfs`；镜像构建预装 `mysql`、`postgres`、`httpfs`、`spatial` 等 |
 
-**说明**：DuckDB **httpfs** 是否走系统代理取决于当前 DuckDB 2.0 Preview 运行时行为，须在目标环境用 `s3://` 或 HTTPS URL 实测。应用层仅保证 Python `requests` 回退路径读代理。
+**说明**：DuckDB **httpfs** 是否走系统代理取决于 DuckDB 运行时行为，须在目标环境用 `s3://` 或 HTTPS URL 实测。应用层仅保证 Python `requests` 回退路径读代理。
 
 S3 数据路径走网络与 `duckdb_remote_settings`，**不**依赖 `server_data_mounts` 宿主机目录挂载。

@@ -211,6 +211,7 @@ export {
     type InferCastReason,
     type InferColumnCastPayload,
 } from './columnAnalysisApi';
+export * from './columnInsightsApi';
 
 // ==================== AI API ====================
 export {

@@ -1,4 +1,65 @@
 {
+  "pushdown": {
+    "keyRange": "The key set exceeds the threshold; a conservative range reduces reads before the exact join. Wide ranges may offer limited benefit.",
+    "planned": "Planned execution:",
+    "executed": "Actual execution:",
+    "modes": {
+      "remote-count": "MySQL computes counts and returns only aggregates, with validated types and filter semantics.",
+      "candidate": "MySQL filters candidates; DuckDB performs exact filtering, aggregation and joins ({{count}} / {{total}} sources pushed).",
+      "local": "These predicates or types cannot be safely pushed. Local execution may read many remote rows.",
+      "explicit-remote": "Explicit remote SQL executes on the source database."
+    }
+  },
+  "insights": {
+    "operations": {
+      "COUNT_ROWS": "Row count",
+      "COUNT": "Non-null count",
+      "COUNT_DISTINCT": "Distinct count",
+      "SUM": "Sum",
+      "AVG": "Average",
+      "MIN": "Minimum / earliest",
+      "MAX": "Maximum / latest"
+    },
+    "types": {
+      "VARCHAR": "Text (lossless)",
+      "BIGINT": "Integer BIGINT",
+      "DOUBLE": "Float DOUBLE",
+      "BOOLEAN": "Boolean",
+      "DATE": "Date",
+      "TIMESTAMP": "Timestamp",
+      "JSON": "JSON"
+    },
+    "title": "Data exploration",
+    "metrics": "Metrics",
+    "json": "JSON extraction",
+    "selectTable": "Select a table on the left to configure metrics or extract JSON fields from its actual structure.",
+    "metricsHint": "Available calculations follow column types; confirm their business meaning. Metrics use all filtered rows, regardless of sampling or preview limits.",
+    "jsonHint": "Choose a column to discover JSON paths in a sample. Text columns can also be inspected; array paths use fixed zero-based indexes.",
+    "execute": "Run query",
+    "running": "Running…",
+    "loading": "Loading…",
+    "metricColumn": "Metric {{index}} column",
+    "metricOperation": "Metric {{index}} calculation",
+    "outputName": "Metric {{index}} name",
+    "removeMetric": "Remove metric {{index}}",
+    "rowCount": "All rows",
+    "addMetric": "Add suggested metric",
+    "jsonColumn": "Choose JSON or text column",
+    "discover": "Discover fields",
+    "sample": "Sampled {{sampled}} rows: {{valid}} valid, {{skipped}} skipped. Paths may be incomplete.",
+    "pathsTruncated": "Path count or depth was truncated.",
+    "noPaths": "No valid JSON found in the sample. Choose another column or check its format.",
+    "selectPath": "Extract path {{path}}",
+    "pathAlias": "Output name for {{path}}",
+    "pathType": "Output type for {{path}}",
+    "keepOriginal": "Keep original columns",
+    "conversionHint": "Text preserves numeric precision. Missing paths or failed casts return NULL. DOUBLE is approximate floating point.",
+    "preparing": "Preparing SQL…",
+    "sqlPreview": "SQL preview (review before running)",
+    "cards": "Metric cards",
+    "cardHint": "Values come from executed SQL. Run again after changing the configuration to update these cards.",
+    "executedSql": "View executed SQL"
+  },
   "download": {
     "browserStarted": "Download started in your browser{{name}} — find it in your system Downloads folder when it finishes"
   },

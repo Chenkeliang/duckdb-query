@@ -23,12 +23,15 @@ def _features(contract):
 
 
 def test_contract_is_explicit_per_surface_and_matches_runtime():
+    """Regression 2026-10-30: GA must retain verified SQL and Agent support."""
     contract = current_capability_contract()
     features = _features(contract)
     assert contract["contract_version"] == 2
     assert contract["product_version"] == "2.1.1"
-    assert contract["engine"]["version"].startswith("v2.0.0-alpha")
-    assert contract["engine"]["release_stage"] == "preview"
+    assert contract["engine"]["python_version"] == "2.0.0"
+    assert contract["engine"]["version"] == "v2.0.0"
+    assert contract["engine"]["release_stage"] == "stable"
+    assert contract["agent"]["profile_revision"] == "duckdb-2-stable-v1"
     assert contract["engine"]["platform"]
     assert "core_functions" in contract["engine"]["extensions"]
     assert contract["optimizer_policy"]["remote_pushdown"] == {
@@ -56,7 +59,7 @@ def test_contract_reads_extension_identity_from_configured_runtime(monkeypatch):
     connection = MagicMock()
     connection.execute.side_effect = lambda sql: MagicMock(
         fetchone=lambda: (
-            "v2.0.0-alpha39998" if "version" in sql else "osx_arm64"
+            "v2.0.0" if "version" in sql else "osx_arm64"
         ),
         fetchall=lambda: [("postgres_scanner", True, True, "c91ea57793")],
     )
@@ -83,6 +86,20 @@ def test_contract_does_not_claim_v2_engine_features_on_an_old_runtime():
         python_version="1.5.3", engine_version="v1.5.3", storage_version="v1.5.0"
     )
     assert all(feature["engine"]["status"] == "blocked" for feature in contract["features"])
+
+
+def test_contract_keeps_unverified_v2_builds_blocked():
+    """Regression 2026-10-30: GA verification must not approve every 2.x build."""
+    for version in ("v2.0.0-alpha39998", "v2.0.1", "v2.1.0"):
+        contract = build_capability_contract(
+            python_version=version.removeprefix("v"),
+            engine_version=version,
+            storage_version="v2.0.0",
+        )
+        features = _features(contract)
+        assert all(feature["engine"]["status"] == "blocked" for feature in contract["features"])
+        assert features["variant_and_json_mutation"]["agent"]["status"] == "blocked"
+        assert contract["optimizer_policy"]["remote_pushdown"]["status"] == "blocked"
 
 
 def test_agent_prompt_guidance_is_derived_from_contract():

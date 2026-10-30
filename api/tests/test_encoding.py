@@ -130,14 +130,19 @@ class TestEncodingDetection:
         assert result["engine"] == "transcode"
         assert [r[0] for r in rows] == ["鳳舞", "龍騰"]
 
-    def test_unknown_spelling_encoding_falls_back_to_transcode(self):
-        """DuckDB 不认的编码拼写（如 EUC-TW 类）经兜底转码后内容仍正确"""
-        path = os.path.join(self.test_dir, "sjis.csv")
-        with open(path, "wb") as f:
-            f.write("名前,数\nテスト,1\nデータ,2\n".encode("shift_jis"))
+    def test_unknown_spelling_encoding_falls_back_to_transcode(self, monkeypatch):
+        """Regression 2026-10-30: GA supports Johab; force native rejection
+        while still decoding a real file through Python and DuckDB."""
+        from core.data import file_utils
 
-        # SHIFT_JIS DuckDB 原生认识——用一个原生拒绝的拼写走兜底:
-        # johab(韩文,Python 认识、DuckDB 不认)
+        build_reader = file_utils._build_reader_invocation
+
+        def reject_native_encoding(function_name, options):
+            if options.get("encoding") == "johab":
+                options = {**options, "encoding": "duckquery_unsupported_encoding"}
+            return build_reader(function_name, options)
+
+        monkeypatch.setattr(file_utils, "_build_reader_invocation", reject_native_encoding)
         path2 = os.path.join(self.test_dir, "johab.csv")
         with open(path2, "wb") as f:
             f.write("이름,값\n하나,1\n둘,2\n".encode("johab"))

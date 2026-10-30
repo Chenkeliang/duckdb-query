@@ -1,4 +1,5 @@
 import type { DatabaseType } from '@/types/SelectedTable';
+import type { PushdownInfo } from '@/api';
 
 export interface AttachDatabase {
   connectionId: string;
@@ -34,6 +35,7 @@ export interface DuckdbColumnType {
 }
 
 export interface QueryResult {
+  pushdown?: PushdownInfo | null;
   data: Record<string, unknown>[] | null;
   columns: string[] | null;
   duckdbColumnTypes?: DuckdbColumnType[];

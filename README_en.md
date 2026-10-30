@@ -152,6 +152,12 @@ The **latest released app version is v2.1.1**. It adds pivot statistics without 
 
 The app and DuckDB **engine versions** are maintained separately. Release v2.1.1 pins `v2.0.0-alpha39998`, Python package `1.6.0.dev379`, and `v2.0.0` storage for new databases. The engine remains a preview; updating the app does not switch it to a stable DuckDB engine.
 
+The current source now uses **DuckDB 2.0 stable** (`duckdb==2.0.0`, engine `v2.0.0`). This change has not been released as a desktop update; published v2.1.1 binaries are unaffected. New databases still use `v2.0.0` storage, existing files are not automatically migrated, and extensions must match the stable engine build.
+
+The current source also adds Data exploration: select a table to configure statistics suggested by actual column types, review the SQL, and display metric cards. You can also discover nested paths in JSON/VARIANT/text columns and extract them into typed columns. Path discovery samples at most 100 rows and is not a complete schema; statistics use all filtered rows. Default text extraction preserves large integers; missing paths or failed casts return NULL. This entry is available in desktop and server editions, but not in the browser-only Wasm demo.
+
+MySQL queries support safe temporal/numeric predicates and join-key candidate filtering. Equivalent single-table COUNT queries run at the source; SUM/AVG remain in DuckDB to retain precision. The UI shows planned and actual strategies. JSON discovery applies the current filters before sampling; changing filters requires discovery again. Sampling limits never restrict aggregate inputs.
+
 Upgrading from DuckQuery 2.0.x introduces no new storage migration. Before upgrading from 1.x, back up `main.db`, `system.db`, and their `.wal` files, then read the [2.0 major-version notes](docs/releases/v2.0.0_en.md). Existing databases are not silently migrated at startup. After an explicit migration to the new storage format, restore a pre-upgrade backup to return to an older version.
 
 Earlier release notes: [v2.1.0](docs/releases/v2.1.0_en.md) · [v2.0.1](docs/releases/v2.0.1_en.md) · [v2.0.0](docs/releases/v2.0.0_en.md).

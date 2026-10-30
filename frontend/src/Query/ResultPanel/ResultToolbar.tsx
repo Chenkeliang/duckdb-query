@@ -15,6 +15,7 @@ import {
   EyeOff,
   Table2,
   BarChart3,
+  PanelsTopLeft,
 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { Separator } from '@/components/ui/separator';
@@ -53,8 +54,9 @@ export interface ResultToolbarProps {
   onImportToDuckDB?: () => void;
   showImportButton?: boolean;
   /** 当前结果视图（表格/图表）；提供 onResultViewChange 时在右侧显示切换 */
-  resultView?: 'table' | 'chart';
-  onResultViewChange?: (view: 'table' | 'chart') => void;
+  resultView?: 'table' | 'chart' | 'metrics';
+  onResultViewChange?: (view: 'table' | 'chart' | 'metrics') => void;
+  showMetrics?: boolean;
 }
 
 export const ResultToolbar: React.FC<ResultToolbarProps> = ({
@@ -76,6 +78,7 @@ export const ResultToolbar: React.FC<ResultToolbarProps> = ({
   showImportButton = false,
   resultView = 'table',
   onResultViewChange,
+  showMetrics = false,
 }) => {
   const { t } = useTranslation('common');
   const [columnMenuOpen, setColumnMenuOpen] = useState(false);
@@ -108,6 +111,9 @@ export const ResultToolbar: React.FC<ResultToolbarProps> = ({
               <BarChart3 className="h-4 w-4 mr-1" />
               <span className="hidden sm:inline">{t('query.chart.chart', '图表')}</span>
             </Button>
+            {showMetrics && <Button variant="quiet" size="sm" className="h-7 px-2" aria-pressed={resultView === 'metrics'} aria-label={t('insights.cards')} onClick={() => onResultViewChange('metrics')}>
+              <PanelsTopLeft className="mr-1 size-4" /><span className="hidden sm:inline">{t('insights.cards')}</span>
+            </Button>}
             <Separator orientation="vertical" className="h-4 mx-0.5" />
           </>
         )}
