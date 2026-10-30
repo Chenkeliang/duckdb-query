@@ -15,8 +15,8 @@
 
 ## 关键事实(实现前必读)
 
-- 前端命令在 `frontend/` 下:单测 `npx vitest run <file>`;类型 `npx tsc --noEmit`;构建 `npm run build`。提交从**仓库根目录**执行(`cd /Users/keliang/mypy/duckdb-query`),否则 `git add frontend/...` 路径会错。
-- 后端:`cd /Users/keliang/mypy/duckdb-query/api && /Users/keliang/mypy/duckdb-query/.venv/bin/python -m pytest <file> -q`。
+- 前端命令在 `frontend/` 下:单测 `npx vitest run <file>`;类型 `npx tsc --noEmit`;构建 `npm run build`。提交从**仓库根目录**执行(`cd .`),否则 `git add frontend/...` 路径会错。
+- 后端:`cd ./api && ./.venv/bin/python -m pytest <file> -q`。
 - 提交署名=用户本人,**禁止** `Co-Authored-By: Claude` / `Generated with Claude Code` trailer。
 - `recharts ^3`、`react-markdown` 已装。`recharts` 用 `ResponsiveContainer` + `BarChart/LineChart/AreaChart/PieChart`。
 - 执行 API(`src/api/queryApi.ts`):`executeDuckDBSQL(sql)` 和 `executeFederatedQuery({ sql, attachDatabases, isPreview })`,都返回 `QueryResponse`(含 `rows`/`columns`)。图表重跑必须按"本地用前者、联邦用后者+attach"。
@@ -88,7 +88,7 @@ describe('classifyColumns', () => {
 });
 ```
 
-- [ ] **Step 2: 跑测试确认失败** — `cd /Users/keliang/mypy/duckdb-query/frontend && npx vitest run src/Query/Charts/__tests__/chartSpec.test.ts` → FAIL(模块不存在)。
+- [ ] **Step 2: 跑测试确认失败** — `cd ./frontend && npx vitest run src/Query/Charts/__tests__/chartSpec.test.ts` → FAIL(模块不存在)。
 
 - [ ] **Step 3: 写实现** — 创建 `frontend/src/Query/Charts/chartSpec.ts`:
 
@@ -151,7 +151,7 @@ export function classifyColumns(columns: ColumnInfo[]): {
 - [ ] **Step 5: 提交**
 
 ```bash
-cd /Users/keliang/mypy/duckdb-query && git add frontend/src/Query/Charts/chartSpec.ts frontend/src/Query/Charts/__tests__/chartSpec.test.ts && git commit -m "feat(charts): column classification (numeric/date/dim) pure fns"
+cd . && git add frontend/src/Query/Charts/chartSpec.ts frontend/src/Query/Charts/__tests__/chartSpec.test.ts && git commit -m "feat(charts): column classification (numeric/date/dim) pure fns"
 ```
 
 ---
@@ -257,7 +257,7 @@ export function validateSpec(spec: ChartSpec, columns: ColumnInfo[]): ChartSpec 
 - [ ] **Step 5: 提交**
 
 ```bash
-cd /Users/keliang/mypy/duckdb-query && git add frontend/src/Query/Charts/chartSpec.ts frontend/src/Query/Charts/__tests__/chartSpec.test.ts && git commit -m "feat(charts): defaultSpec + validateSpec (anti-hallucination fallback)"
+cd . && git add frontend/src/Query/Charts/chartSpec.ts frontend/src/Query/Charts/__tests__/chartSpec.test.ts && git commit -m "feat(charts): defaultSpec + validateSpec (anti-hallucination fallback)"
 ```
 
 ---
@@ -349,7 +349,7 @@ export function buildChartSql(userSql: string, spec: ChartSpec): string {
 - [ ] **Step 5: 提交**
 
 ```bash
-cd /Users/keliang/mypy/duckdb-query && git add frontend/src/Query/Charts/chartSpec.ts frontend/src/Query/Charts/__tests__/chartSpec.test.ts && git commit -m "feat(charts): buildChartSql wraps user SQL into full-data GROUP BY aggregation"
+cd . && git add frontend/src/Query/Charts/chartSpec.ts frontend/src/Query/Charts/__tests__/chartSpec.test.ts && git commit -m "feat(charts): buildChartSql wraps user SQL into full-data GROUP BY aggregation"
 ```
 
 ---
@@ -477,7 +477,7 @@ export function aggregateRows(rows: Array<Record<string, unknown>>, spec: ChartS
 - [ ] **Step 5: 提交**
 
 ```bash
-cd /Users/keliang/mypy/duckdb-query && git add frontend/src/Query/Charts/chartSpec.ts frontend/src/Query/Charts/__tests__/chartSpec.test.ts && git commit -m "feat(charts): client-side aggregateRows (group/agg/bin/Top-N + KPI)"
+cd . && git add frontend/src/Query/Charts/chartSpec.ts frontend/src/Query/Charts/__tests__/chartSpec.test.ts && git commit -m "feat(charts): client-side aggregateRows (group/agg/bin/Top-N + KPI)"
 ```
 
 ---
@@ -526,7 +526,7 @@ def test_suggest_chart_disabled_has_stable_code(tmp_path, monkeypatch):
     assert resp.json()["error"]["code"] == "ai_disabled"
 ```
 
-- [ ] **Step 2: 跑测试确认失败** — `cd /Users/keliang/mypy/duckdb-query/api && /Users/keliang/mypy/duckdb-query/.venv/bin/python -m pytest tests/test_ai_router.py -q` → FAIL(端点 404)。
+- [ ] **Step 2: 跑测试确认失败** — `cd ./api && ./.venv/bin/python -m pytest tests/test_ai_router.py -q` → FAIL(端点 404)。
 
 - [ ] **Step 3: 写服务** — 创建 `api/core/services/ai_suggest_chart.py`:
 
@@ -615,12 +615,12 @@ def suggest_chart_route(payload: SuggestChartPayload):
 
 (`ai_suggest_chart` 需出现在那个 `from core.services import (...)` 多行 import 中。)
 
-- [ ] **Step 5: 跑测试确认通过** — `cd /Users/keliang/mypy/duckdb-query/api && /Users/keliang/mypy/duckdb-query/.venv/bin/python -m pytest tests/test_ai_router.py -q` → 全绿(含 2 个新用例)。
+- [ ] **Step 5: 跑测试确认通过** — `cd ./api && ./.venv/bin/python -m pytest tests/test_ai_router.py -q` → 全绿(含 2 个新用例)。
 
 - [ ] **Step 6: 提交**
 
 ```bash
-cd /Users/keliang/mypy/duckdb-query && git add api/core/services/ai_suggest_chart.py api/routers/ai.py api/tests/test_ai_router.py && git commit -m "feat(charts): POST /api/ai/suggest-chart -> structured ChartSpec"
+cd . && git add api/core/services/ai_suggest_chart.py api/routers/ai.py api/tests/test_ai_router.py && git commit -m "feat(charts): POST /api/ai/suggest-chart -> structured ChartSpec"
 ```
 
 ---
@@ -660,11 +660,11 @@ export async function suggestChart(
 }
 ```
 
-- [ ] **Step 2: tsc** — `cd /Users/keliang/mypy/duckdb-query/frontend && npx tsc --noEmit` → 0。
+- [ ] **Step 2: tsc** — `cd ./frontend && npx tsc --noEmit` → 0。
 - [ ] **Step 3: 提交**
 
 ```bash
-cd /Users/keliang/mypy/duckdb-query && git add frontend/src/api/aiApi.ts && git commit -m "feat(charts): suggestChart api client"
+cd . && git add frontend/src/api/aiApi.ts && git commit -m "feat(charts): suggestChart api client"
 ```
 
 ---
@@ -835,7 +835,7 @@ export function ChartCanvas({ spec, data, metricKeys, kpi }: ChartCanvasProps) {
 - [ ] **Step 5: 提交**
 
 ```bash
-cd /Users/keliang/mypy/duckdb-query && git add frontend/src/Query/Charts/ChartCanvas.tsx frontend/src/Query/Charts/__tests__/ChartCanvas.test.tsx && git commit -m "feat(charts): ChartCanvas pure renderer (bar/line/area/pie/donut/kpi)"
+cd . && git add frontend/src/Query/Charts/ChartCanvas.tsx frontend/src/Query/Charts/__tests__/ChartCanvas.test.tsx && git commit -m "feat(charts): ChartCanvas pure renderer (bar/line/area/pie/donut/kpi)"
 ```
 
 ---
@@ -848,7 +848,7 @@ cd /Users/keliang/mypy/duckdb-query && git add frontend/src/Query/Charts/ChartCa
 - [ ] **Step 1: 加键** — 用脚本安全合并(避免破坏大 JSON):
 
 ```bash
-cd /Users/keliang/mypy/duckdb-query/frontend && node -e '
+cd ./frontend && node -e '
 const fs=require("fs");
 const add={zh:{table:"表格",chart:"图表",type:"类型",dimension:"维度(X)",metric:"指标(Y)",agg:"聚合",bin:"日期分桶",suggest:"AI 推荐",fullscreen:"全屏",basisFull:"全量(聚合)",basisPivot:"全量(透视)",basisRows:"基于前 {{n}} 行(可能不全)",empty:"无可视化数据",bar:"柱状",line:"折线",area:"面积",pie:"饼图",donut:"环形",kpi:"大数字",day:"按天",month:"按月"},
 en:{table:"Table",chart:"Chart",type:"Type",dimension:"Dimension (X)",metric:"Metric (Y)",agg:"Aggregate",bin:"Date bin",suggest:"AI suggest",fullscreen:"Fullscreen",basisFull:"Full data (aggregated)",basisPivot:"Full data (pivot)",basisRows:"Based on first {{n}} rows (may be partial)",empty:"No chartable data",bar:"Bar",line:"Line",area:"Area",pie:"Pie",donut:"Donut",kpi:"Big number",day:"By day",month:"By month"}};
@@ -856,12 +856,12 @@ for(const lc of ["zh","en"]){const p=`./src/i18n/locales/${lc}/common.json`;cons
 console.log("done");'
 ```
 
-- [ ] **Step 2: 校验** — `cd /Users/keliang/mypy/duckdb-query/frontend && node -e "require('./src/i18n/locales/zh/common.json').query.chart.bar; require('./src/i18n/locales/en/common.json').query.chart.bar; console.log('ok')"` → `ok`。
+- [ ] **Step 2: 校验** — `cd ./frontend && node -e "require('./src/i18n/locales/zh/common.json').query.chart.bar; require('./src/i18n/locales/en/common.json').query.chart.bar; console.log('ok')"` → `ok`。
 
 - [ ] **Step 3: 提交**
 
 ```bash
-cd /Users/keliang/mypy/duckdb-query && git add frontend/src/i18n/locales/zh/common.json frontend/src/i18n/locales/en/common.json && git commit -m "feat(charts): query.chart.* i18n (zh/en)"
+cd . && git add frontend/src/i18n/locales/zh/common.json frontend/src/i18n/locales/en/common.json && git commit -m "feat(charts): query.chart.* i18n (zh/en)"
 ```
 
 ---
@@ -1051,12 +1051,12 @@ export function ChartView({ columns, rows, truncated, source, aiEnabled, locale 
 }
 ```
 
-- [ ] **Step 2: tsc** — `cd /Users/keliang/mypy/duckdb-query/frontend && npx tsc --noEmit`。若 `@/components/ui/dialog` 的导出名不符(应为 `Dialog`/`DialogContent`),或 `executeFederatedQuery` 的入参类型不符,按实际签名修正(读对应文件)。Expected: 0。
+- [ ] **Step 2: tsc** — `cd ./frontend && npx tsc --noEmit`。若 `@/components/ui/dialog` 的导出名不符(应为 `Dialog`/`DialogContent`),或 `executeFederatedQuery` 的入参类型不符,按实际签名修正(读对应文件)。Expected: 0。
 
 - [ ] **Step 3: 提交**
 
 ```bash
-cd /Users/keliang/mypy/duckdb-query && git add frontend/src/Query/Charts/ChartView.tsx && git commit -m "feat(charts): ChartView container (axis pickers + hybrid fetch + AI suggest + fullscreen + basis badge)"
+cd . && git add frontend/src/Query/Charts/ChartView.tsx && git commit -m "feat(charts): ChartView container (axis pickers + hybrid fetch + AI suggest + fullscreen + basis badge)"
 ```
 
 ---
@@ -1068,7 +1068,7 @@ cd /Users/keliang/mypy/duckdb-query && git add frontend/src/Query/Charts/ChartVi
 
 - [ ] **Step 1: 定位结果渲染 + 数据来源**
 
-Run: `cd /Users/keliang/mypy/duckdb-query/frontend && grep -rn "rows=\|columns=\|<DataGrid\|结果\|truncat\|maxQueryRows\|queryResult" src/Query/SQLQuery/SQLQueryPanel.tsx | head -30`
+Run: `cd ./frontend && grep -rn "rows=\|columns=\|<DataGrid\|结果\|truncat\|maxQueryRows\|queryResult" src/Query/SQLQuery/SQLQueryPanel.tsx | head -30`
 确认:结果的 `rows`/`columns` 在哪个 state、是否有"截断"信息(若无,用 `rows.length >= maxQueryRows` 推断 `truncated`)、`sql`(执行用的 displaySql 去 LIMIT 前的原 SQL)、`attachDatabases`、`requiresFederatedQuery`。
 
 - [ ] **Step 2: 在结果区加 表格|图表 切换**
@@ -1094,13 +1094,13 @@ Run: `cd /Users/keliang/mypy/duckdb-query/frontend && grep -rn "rows=\|columns=\
 
 - [ ] **Step 3: tsc + build**
 
-Run: `cd /Users/keliang/mypy/duckdb-query/frontend && npx tsc --noEmit && npm run build`
+Run: `cd ./frontend && npx tsc --noEmit && npm run build`
 Expected: tsc 0;build 成功。
 
 - [ ] **Step 4: 提交**
 
 ```bash
-cd /Users/keliang/mypy/duckdb-query && git add frontend/src/Query/SQLQuery && git commit -m "feat(charts): wire table|chart toggle + source into SQL result panel"
+cd . && git add frontend/src/Query/SQLQuery && git commit -m "feat(charts): wire table|chart toggle + source into SQL result panel"
 ```
 
 - [ ] **Step 5(可选,后续):JOIN / 集合 / 透视 Tab**
@@ -1113,17 +1113,17 @@ cd /Users/keliang/mypy/duckdb-query && git add frontend/src/Query/SQLQuery && gi
 
 - [ ] **Step 1: 后端 AI 测试**
 
-Run: `cd /Users/keliang/mypy/duckdb-query/api && /Users/keliang/mypy/duckdb-query/.venv/bin/python -m pytest tests/test_ai_router.py -q`
+Run: `cd ./api && ./.venv/bin/python -m pytest tests/test_ai_router.py -q`
 Expected: 全绿。
 
 - [ ] **Step 2: 前端类型 + 单测 + 构建**
 
-Run: `cd /Users/keliang/mypy/duckdb-query/frontend && npx tsc --noEmit && npx vitest run src/Query/Charts && npm run build`
+Run: `cd ./frontend && npx tsc --noEmit && npx vitest run src/Query/Charts && npm run build`
 Expected: tsc 0;Charts 测试全绿;build 成功。
 
 - [ ] **Step 3: 后端重启(加载 /api/ai/suggest-chart)+ 前端重建**
 
-Run: `cd /Users/keliang/mypy/duckdb-query && docker restart dataquery-backend && docker compose up -d --build frontend`
+Run: `cd . && docker restart dataquery-backend && docker compose up -d --build frontend`
 Expected: backend healthy;frontend started。
 
 - [ ] **Step 4: 手动核验清单**

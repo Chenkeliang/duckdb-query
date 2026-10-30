@@ -77,6 +77,12 @@ def _extension(
 
 CATALOG: Dict[str, ExtensionSpec] = {
     # ---- 数据源 ----
+    "avro": _extension("avro",
+        CATEGORY_DATASOURCE,
+        "通过 SQL 读取 Apache Avro 文件",
+        "Read Apache Avro files through SQL",
+        "SELECT * FROM read_avro('path/to/file.avro')",
+    ),
     "sqlite_scanner": _extension("sqlite_scanner",
         CATEGORY_DATASOURCE,
         "读写本地 SQLite 数据库文件",

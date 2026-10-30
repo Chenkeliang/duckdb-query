@@ -73,7 +73,7 @@ def test_save_then_load_round_trips_with_encrypted_key(tmp_path, monkeypatch):
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /Users/keliang/mypy/duckdb-query && PYTHONPATH=api .venv/bin/python -m pytest api/tests/test_ai_config_persistence.py -q`
+Run: `cd . && PYTHONPATH=api .venv/bin/python -m pytest api/tests/test_ai_config_persistence.py -q`
 Expected: FAIL (`load_ai_settings` / `save_ai_settings` not defined).
 
 - [ ] **Step 3: Add the persistence functions**
@@ -115,7 +115,7 @@ def save_ai_settings(incoming: Dict[str, Any], path: Optional[Path] = None) -> N
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd /Users/keliang/mypy/duckdb-query && PYTHONPATH=api .venv/bin/python -m pytest api/tests/test_ai_config_persistence.py -q`
+Run: `cd . && PYTHONPATH=api .venv/bin/python -m pytest api/tests/test_ai_config_persistence.py -q`
 Expected: PASS (2 tests).
 
 - [ ] **Step 5: Commit**
@@ -206,7 +206,7 @@ def test_provider_test_unknown_id_returns_error(tmp_path, monkeypatch):
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /Users/keliang/mypy/duckdb-query && PYTHONPATH=api .venv/bin/python -m pytest api/tests/test_ai_router.py -q`
+Run: `cd . && PYTHONPATH=api .venv/bin/python -m pytest api/tests/test_ai_router.py -q`
 Expected: FAIL (`routers.ai` does not exist).
 
 - [ ] **Step 3: Create the router**
@@ -301,12 +301,12 @@ app.include_router(ai_router.router)
 
 - [ ] **Step 5: Run test to verify it passes**
 
-Run: `cd /Users/keliang/mypy/duckdb-query && PYTHONPATH=api .venv/bin/python -m pytest api/tests/test_ai_router.py -q`
+Run: `cd . && PYTHONPATH=api .venv/bin/python -m pytest api/tests/test_ai_router.py -q`
 Expected: PASS (3 tests).
 
 - [ ] **Step 6: Run the full backend suite (no regressions)**
 
-Run: `cd /Users/keliang/mypy/duckdb-query && PYTHONPATH=api .venv/bin/python -m pytest api/tests/ -q`
+Run: `cd . && PYTHONPATH=api .venv/bin/python -m pytest api/tests/ -q`
 Expected: all pass (341 + 5 new = 346), 3 skipped.
 
 - [ ] **Step 7: Commit**

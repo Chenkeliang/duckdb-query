@@ -11,12 +11,12 @@
 **前置约束（继承自 spec）:**
 - 后端桌面进程**只绑 `127.0.0.1`**,绝不 `0.0.0.0`。
 - 对现有 Docker 行为零回归:所有改动以 env 为第一优先级,只改"没有 env 时的 fallback"。
-- 所有命令在仓库根 `/Users/keliang/mypy/duckdb-query` 下、`api/` 子目录里运行;测试用 venv:`.venv/bin/python -m pytest`(DuckDB 1.5.3)。
+- 所有命令在仓库根 `.` 下、`api/` 子目录里运行;测试用 venv:`.venv/bin/python -m pytest`(DuckDB 1.5.3)。
 - 提交署名为当前 git user(`Chen`),**不加任何 AI / Co-Authored-By trailer**。
 
 **基线（开工前确认）:**
 ```bash
-cd /Users/keliang/mypy/duckdb-query/api && ../.venv/bin/python -m pytest -q
+cd ./api && ../.venv/bin/python -m pytest -q
 # 期望: 全绿(与会话基线 939 passed | 1 skipped 一致或更多)
 ```
 

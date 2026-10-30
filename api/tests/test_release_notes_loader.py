@@ -25,10 +25,10 @@ def test_tag_version_resolves_to_matching_release_notes():
 
 def test_workflow_dispatch_uses_package_version():
     version = MODULE.resolve_release_version(ROOT, "branch", "main")
-    assert version == "2.1.1"
+    assert version == "2.1.2"
     notes = MODULE.load_release_notes(ROOT, version)
-    assert "# DuckQuery v2.1.1 发布说明" in notes
-    assert "\n\n---\n\n# DuckQuery v2.1.1 Release Notes" in notes
+    assert "# DuckQuery v2.1.2 发布说明" in notes
+    assert "\n\n---\n\n# DuckQuery v2.1.2 Release Notes" in notes
 
 
 def test_missing_release_notes_fail_before_creating_a_release():

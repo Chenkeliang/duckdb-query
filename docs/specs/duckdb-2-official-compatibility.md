@@ -4,7 +4,7 @@
 >
 > 当前源码版本：Python `2.0.0`，engine `v2.0.0`
 >
-> DuckDB 2.0.0 LTS 已于 2026-10-21 发布；已发布的 DuckQuery v2.1.1 二进制仍固定原 alpha 引擎。
+> DuckDB 2.0.0 LTS 已于 2026-10-21 发布；DuckQuery v2.1.2 使用正式引擎；v2.1.1 固定原 alpha 引擎。
 
 ## 结论表
 
@@ -30,7 +30,7 @@
 - [Extension Distribution](https://duckdb.org/docs/current/extensions/extension_distribution)：扩展二进制绑定 DuckDB version 和 platform。
 - [ICU Extension](https://duckdb.org/docs/current/core_extensions/icu)：时区与地区 collation 的扩展边界。
 
-## 下一次桌面发布的阻断条件
+## v2.1.2 桌面发布的验收条件
 
 以下任一条件未满足，不应将源码适配结果作为三平台桌面正式发布的验收结论：
 

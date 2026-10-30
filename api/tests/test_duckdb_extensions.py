@@ -637,3 +637,16 @@ class TestInstallProgressStateMachine:
             with open(destination, "rb") as existing:
                 assert existing.read() == b"known-good"
             assert not os.path.exists(destination + ".rollback")
+
+
+def test_avro_catalog_uses_official_core_artifact():
+    """2026-10-30: Avro is a curated SQL reader, not a new file-import format."""
+    response = client.get('/api/duckdb/extensions')
+    assert response.status_code == 200
+    item = next(item for item in response.json()['data']['items'] if item['name'] == 'avro')
+    assert item['source'] == 'official'
+    assert item['load_name'] == item['artifact_name'] == 'avro'
+    assert item['category'] == 'datasource'
+    assert item['installable'] is True
+    assert item['bundled'] is False
+    assert item['usage'] == "SELECT * FROM read_avro('path/to/file.avro')"

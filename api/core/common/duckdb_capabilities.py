@@ -248,7 +248,7 @@ def build_capability_contract(
     ]
     return {
         "contract_version": CONTRACT_VERSION,
-        "product_version": "2.1.1",
+        "product_version": "2.1.2",
         "engine": {
             "python_version": python_version,
             "version": engine_version,

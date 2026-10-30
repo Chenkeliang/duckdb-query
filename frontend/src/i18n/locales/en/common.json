@@ -1544,7 +1544,18 @@
     "loadFailed": "Failed to load extensions",
     "usage": "Usage",
     "copy": "Copy",
-    "copied": "Copied"
+    "copied": "Copied",
+    "all": "All",
+    "available": "Available",
+    "notInstalled": "Not installed",
+    "search": "Search extensions by name or purpose",
+    "filter": "Filter by installation status",
+    "catalogCount": "{{count}} extensions",
+    "showUsage": "Show {{name}} usage",
+    "hideUsage": "Hide {{name}} usage",
+    "installProgress": "{{name}} installation progress",
+    "noMatches": "No matching extensions",
+    "clearFilters": "Clear filters"
   },
   "shortcuts": {
     "title": "Keyboard Shortcuts",

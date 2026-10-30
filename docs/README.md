@@ -51,6 +51,7 @@
 
 | 资源 | 用途 |
 |------|------|
+| [`releases/v2.1.2.md`](releases/v2.1.2.md) · [`English`](releases/v2.1.2_en.md) | v2.1.2：正式引擎、数据探索、MySQL 下推与扩展管理 |
 | [`releases/v2.1.1.md`](releases/v2.1.1.md) · [`English`](releases/v2.1.1_en.md) | v2.1.1：透视表无分组统计 |
 | [`releases/v2.1.0.md`](releases/v2.1.0.md) · [`English`](releases/v2.1.0_en.md) | v2.1.0：工作台更新、执行中转后台、SQL 补全与智能体交互 |
 | [`releases/v2.0.0.md`](releases/v2.0.0.md) · [`English`](releases/v2.0.0_en.md) | v2.0.0：DuckDB 2.0 大版本、兼容性、迁移说明与验证范围 |

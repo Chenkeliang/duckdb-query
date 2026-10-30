@@ -1544,7 +1544,18 @@
     "loadFailed": "获取扩展列表失败",
     "usage": "用法",
     "copy": "复制",
-    "copied": "已复制"
+    "copied": "已复制",
+    "all": "全部",
+    "available": "可安装",
+    "notInstalled": "未安装",
+    "search": "搜索扩展名称或用途",
+    "filter": "按安装状态筛选",
+    "catalogCount": "{{count}} 个扩展",
+    "showUsage": "查看 {{name}} 用法",
+    "hideUsage": "收起 {{name}} 用法",
+    "installProgress": "{{name}} 安装进度",
+    "noMatches": "没有符合条件的扩展",
+    "clearFilters": "清除筛选"
   },
   "shortcuts": {
     "title": "键盘快捷键",

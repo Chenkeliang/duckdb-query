@@ -62,9 +62,9 @@ describe("parseConnectionString", () => {
   });
 
   it("recognizes a bare SQLite file path", () => {
-    expect(parseConnectionString("/Users/keliang/data/local.db")).toEqual({
+    expect(parseConnectionString("/tmp/duckquery-test/local.db")).toEqual({
       type: "sqlite",
-      database: "/Users/keliang/data/local.db",
+      database: "/tmp/duckquery-test/local.db",
     });
   });
 

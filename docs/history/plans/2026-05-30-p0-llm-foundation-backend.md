@@ -41,7 +41,7 @@ Append to `api/requirements.txt` (keep alphabetical-ish, just add the line):
 cryptography
 ```
 
-Then install: `cd /Users/keliang/mypy/duckdb-query && .venv/bin/pip install cryptography`
+Then install: `cd . && .venv/bin/pip install cryptography`
 
 - [ ] **Step 2: Write the failing test**
 
@@ -75,7 +75,7 @@ def test_decrypt_empty_returns_empty(monkeypatch):
 
 - [ ] **Step 3: Run test to verify it fails**
 
-Run: `cd /Users/keliang/mypy/duckdb-query && PYTHONPATH=api .venv/bin/python -m pytest api/tests/test_crypto.py -q`
+Run: `cd . && PYTHONPATH=api .venv/bin/python -m pytest api/tests/test_crypto.py -q`
 Expected: FAIL (module `core.common.crypto` does not exist).
 
 - [ ] **Step 4: Write the implementation**
@@ -125,7 +125,7 @@ def mask_secret(value: str | None) -> str:
 
 - [ ] **Step 5: Run test to verify it passes**
 
-Run: `cd /Users/keliang/mypy/duckdb-query && PYTHONPATH=api .venv/bin/python -m pytest api/tests/test_crypto.py -q`
+Run: `cd . && PYTHONPATH=api .venv/bin/python -m pytest api/tests/test_crypto.py -q`
 Expected: PASS (3 tests).
 
 - [ ] **Step 6: Commit**
@@ -199,7 +199,7 @@ def test_resolve_feature_falls_back_to_default():
 
 - [ ] **Step 2: Run test to verify it fails**
 
-Run: `cd /Users/keliang/mypy/duckdb-query && PYTHONPATH=api .venv/bin/python -m pytest api/tests/test_ai_config.py -q`
+Run: `cd . && PYTHONPATH=api .venv/bin/python -m pytest api/tests/test_ai_config.py -q`
 Expected: FAIL (module `core.services.ai_config` does not exist).
 
 - [ ] **Step 3: Write the implementation**
@@ -273,7 +273,7 @@ def resolve_feature(cfg: Dict[str, Any], feature: str) -> Dict[str, Any]:
 
 - [ ] **Step 4: Run test to verify it passes**
 
-Run: `cd /Users/keliang/mypy/duckdb-query && PYTHONPATH=api .venv/bin/python -m pytest api/tests/test_ai_config.py -q`
+Run: `cd . && PYTHONPATH=api .venv/bin/python -m pytest api/tests/test_ai_config.py -q`
 Expected: PASS (3 tests).
 
 - [ ] **Step 5: Commit**
@@ -300,7 +300,7 @@ Append to `api/requirements.txt`:
 litellm
 ```
 
-Install: `cd /Users/keliang/mypy/duckdb-query && .venv/bin/pip install litellm`
+Install: `cd . && .venv/bin/pip install litellm`
 
 - [ ] **Step 2: Write the failing test**
 
@@ -372,7 +372,7 @@ def test_complete_raises_when_feature_has_no_provider(monkeypatch):
 
 - [ ] **Step 3: Run test to verify it fails**
 
-Run: `cd /Users/keliang/mypy/duckdb-query && PYTHONPATH=api .venv/bin/python -m pytest api/tests/test_llm_service.py -q`
+Run: `cd . && PYTHONPATH=api .venv/bin/python -m pytest api/tests/test_llm_service.py -q`
 Expected: FAIL (module `core.services.llm_service` does not exist).
 
 - [ ] **Step 4: Write the implementation**
@@ -442,12 +442,12 @@ class LLMService:
 
 - [ ] **Step 5: Run test to verify it passes**
 
-Run: `cd /Users/keliang/mypy/duckdb-query && PYTHONPATH=api .venv/bin/python -m pytest api/tests/test_llm_service.py -q`
+Run: `cd . && PYTHONPATH=api .venv/bin/python -m pytest api/tests/test_llm_service.py -q`
 Expected: PASS (3 tests).
 
 - [ ] **Step 6: Run the full backend suite (no regressions)**
 
-Run: `cd /Users/keliang/mypy/duckdb-query && PYTHONPATH=api .venv/bin/python -m pytest api/tests/ -q`
+Run: `cd . && PYTHONPATH=api .venv/bin/python -m pytest api/tests/ -q`
 Expected: all pass (332 + 9 new), 3 skipped.
 
 - [ ] **Step 7: Commit**
