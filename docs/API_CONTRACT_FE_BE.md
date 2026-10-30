@@ -8,6 +8,9 @@
 | GET | `/api/storage-upgrade/backup` | `available, directory, files[], error?` | 最近迁移备份成套文件只读可打开性检查，不恢复 |
 | POST | `/api/storage-upgrade/open-backup` | `opened` | 仅桌面，无路径参数；打开核验后的最近备份目录 |
 | GET | `/api/capabilities` | `contract_version, product_version, engine, optimizer_policy, agent, mcp, features[]` | DuckDB 引擎能力与应用各执行面的唯一能力契约；当前验证构建为 `v2.0.0`（Python `2.0.0`，`release_stage=stable`，Agent profile `duckdb-2-stable-v1`）；未验证构建仍阻止版本相关能力。`engine` 含实际 `platform` 与已安装/加载扩展版本，`optimizer_policy` 区分引擎具备能力和 DuckQuery 是否通过语义矩阵启用；状态为 `supported\|blocked\|not-applicable`，调用方不得只按版本号猜测 |
+| POST | `/api/columns/insights` | `columns[]` | 数据探索：`table_name, attach_databases?`；返回实际列 `name,type,aggregations[],json_candidate`，仅按类型推荐，不推断业务含义 |
+| POST | `/api/columns/json-paths` | `paths[],sampled_rows,valid_rows,skipped_rows,sample_limit,truncated` | 同上加 `column,filters?`；先应用同一组筛选条件，再最多采样 100 行，每值最多 100KB，最多 200 个 JSON Pointer 路径、深度 16；路径含 `pointer,types[],occurrences`。样本不是完整结构；无效/过大/NULL 跳过，路径计数按样本行去重 |
+| POST | `/api/columns/insight-query` | `sql,kind,columns[],pushdown?` | 同上加 `metrics[]` 或 `extractions[]`（互斥）、`filters?`、`keep_original?`。指标 `column?,aggregation,alias` 支持 COUNT_ROWS/COUNT/COUNT_DISTINCT/SUM/AVG/MIN/MAX；提取 `column,pointer,target_type,alias` 支持 VARCHAR/BIGINT/DOUBLE/BOOLEAN/DATE/TIMESTAMP/JSON。校验真实结构、类型、筛选列与重复别名；仅生成只读 SQL，不执行统计；转换失败/缺失路径返回 NULL，默认文本保留数值精度。MySQL 预览返回 `pushdown={mode,sources,pushed_sources,key_strategy?}`：`remote-count` 为精确计数在源库完成，`candidate` 为源库先筛候选、DuckDB 最终计算，`local` 为未能安全下推；预览只读元数据。统计在完整筛选范围执行；提取行数由标准执行端点限制。业务校验错误 400 `VALIDATION_ERROR`，请求模型校验错误 422（标准错误体） |
 | POST | `/api/sql/classify` | `classification, read_only, requires_confirmation` | 单条 SQL 的服务端安全分类；`mutation-or-unknown` 采用失败关闭，供 MCP 与其他调用方统一确认门控 |
 
 > 2026-09-07 读取边界：URL 导入与 `/api/url_info` 共用逐跳 HTTP(S) 地址校验；禁止 loopback、link-local、保留地址和 URL 凭据。URL 导入先流式暂存并按实际字节限制，再交给本地解析器，`prefer_native` 保留为兼容字段。普通上传同样按流式累计字节限制，超限返回 413 `FILE_TOO_LARGE`，失败清理候选文件。
@@ -52,7 +55,7 @@
 
 桌面连接检测识别 `mysql_query('连接别名', ...)` 的字面量首参数，并与表前缀统一构建 `attach_databases`，不将函数视为物理表。同一连接的不同 SQL 别名均保留绑定；合并按别名去重。正向等值/IN 中的 NULL 允许括号及外层为 VARCHAR 的 CAST/TRY_CAST 包装；只识别 NULL 常量，不折叠其他表达式，原始 DuckDB 谓词仍保留。
 
-同步联邦查询、JOIN/透视、集合操作、异步保存、独立保存、导出及 AI 执行复用公共执行上下文。对能够证明为必要条件的字符串等值/IN，MySQL 按字段原排序规则筛选候选；列类型恢复、原始精确过滤、JOIN、排序及 LIMIT 留在 DuckDB。候选使用连接级临时表，成功、失败和取消均清理。不能安全提取或恢复类型的来源保留原 SQL，并关闭该次执行的原生过滤下推，避免已知的 NULL/反斜杠/尾随空格语义偏差；不会把否定、范围或 OR 的单个分支当成宽松候选条件。
+同步联邦查询、JOIN/透视、集合操作、异步保存、独立保存、导出及 AI 执行复用公共执行上下文。MySQL 候选支持可证明安全的字符串、整数、DECIMAL 和日期/时间比较、IN、BETWEEN、完整 OR 及受支持的 LIKE/NULL 条件；原始精确过滤与 JOIN 留在 DuckDB。整数及同精度 DECIMAL 关联键支持 INNER 双向、LEFT 右侧和 RIGHT 左侧缩减；键数超过阈值时使用最小/最大值范围筛选候选，再本地精确关联（`key_strategy=range`）。FULL/SEMI/ANTI 等不安全方向保留本地执行。仅当全部条件及计数表达式可等价转换时，单表 COUNT 在远端完成，计数经文本恢复为 BIGINT；字符串 DISTINCT 使用二进制语义，SUM/AVG 仍在 DuckDB 计算。DECIMAL 经文本恢复，保持精度。JSON 路径发现先应用筛选，再取最多 100 行；仅对完整等价条件下推采样 LIMIT，聚合输入不受该 LIMIT 限制。候选临时表在成功、失败和取消时清理。不能安全转换的来源保留原 SQL，并关闭原生 remote_pushdown；不将 OR 的单个分支误作必要条件。
 
 `/api/duckdb/federated-query` 的 `optimized_sql` 是可供用户查看的逻辑 SQL；候选阶段采用内部临时表时仍返回原逻辑 SQL，不回显已释放的临时表名。`warnings` 可说明候选执行或本地过滤回退。`details.sql_identity` 始终绑定提交的原 SQL；内部改写不能准确映射时省略 `sql_location`。`EXPLAIN` 不读取/物化候选，计划显示保守的本地过滤路径并附说明。手写 `mysql_query` 读取为记录时在当前上下文物化一次再获取类型，保持一次远端执行及纳秒值；保存/导出由 CTAS/COPY 直接消费，避免额外物化或改变导出列名。非默认 DuckDB collation、带 collation 的本地关联键及不能证明绑定关系的别名形式不做候选缩减；不改变显式 MySQL SQL 的比较语义。
 
@@ -100,7 +103,7 @@
 
 | 方法 | 路径 | 成功体 | `data` 要点 | 前端入口 |
 |------|------|--------|-------------|----------|
-| POST | `/api/duckdb/execute` | 对象 | `executeDuckDBSQL`；`data`: `columns`, `column_types[]`（`{name, duckdb_type, lineage?}`；来自 `DESCRIBE (<sql>)`，PRAGMA/EXPLAIN/多语句等不可 DESCRIBE 时由同一次执行的游标 description 类型兜底）, `data`, `row_count`, `preview_limit_applied?`；解析/绑定错误的标准错误 `details.sql_location?={line,column,end_column}`，并带 `details.sql_identity={query_id?,sha256}` 绑定本次原 SQL；499 / 500 |
+| POST | `/api/duckdb/execute` | 对象 | `executeDuckDBSQL`；`data`: `columns`, `column_types[]`（`{name, duckdb_type, lineage?}`；来自 `DESCRIBE (<sql>)`，PRAGMA/EXPLAIN/多语句等不可 DESCRIBE 时由同一次执行的游标 description 类型兜底）, `data`, `row_count`, `preview_limit_applied?`；联邦执行另含实际 `pushdown?={mode,sources,pushed_sources,key_strategy?}`；解析/绑定错误的标准错误 `details.sql_location?={line,column,end_column}`，并带 `details.sql_identity={query_id?,sha256}` 绑定本次原 SQL；499 / 500 |
 | POST | `/api/duckdb/federated-query` | 对象 | `executeFederatedQuery`；同上含 `column_types`、`details.sql_location?` 与 `details.sql_identity`；额外 `optimized_sql`（半连接下推改写后 SQL）、`suggestions[]`（审计列时间界建议，**不自动改结果**）、`saved_table`（仅在 `save_as_table` 已通过本地 staging 原子发布时有值）、`save_error`（兼容字段；新路径保存失败整体失败，不把失败降级为查询成功）；联邦内联保存只物化用户查询一次，预览从同一 staging 读取，系统预览 LIMIT 不写入结果表；所有共享 ATTACH 入口为 PostgreSQL 新连接注入剩余执行预算对应的服务端 `statement_timeout`，避免本地中断后远端继续运行；404 `connection_id`；503 ATTACH；499 / 500 / **504 超时** |
 | POST | `/api/query/cancel/{request_id}` | 对象 | `cancelSyncQuery`；取消在查询连接注册前到达时也作为幂等请求接受并在注册时生效；200 表示请求已受理，不承诺远端已停止 |
 | POST | `/api/save_query_to_duckdb` | 对象 | 保存结果表元数据（依请求）；`apply_row_limit`（默认 `false`，兼容 `applyRowLimit`）为保存对话框的最终选择：`false`＝移除查询页面最外层 `LIMIT` 后全量保存（子查询 `LIMIT` 保留），`true`＝保留页面最外层 `LIMIT`，页面无最外层 `LIMIT` 时补默认 `max_query_rows` | `saveQueryToDuckDB` |
@@ -262,7 +265,7 @@ BY NAME、LIMIT、预览 vs 执行语义见 [QUERY_BEHAVIOR_ZH.md](QUERY_BEHAVIO
 
 | 方法 | 路径 | 成功体 | 前端入口 |
 |------|------|--------|----------|
-| POST | `/api/query` | 对象 | `performJoinQuery`；`data`: `data`, `columns`, `column_types[]`, `sql`, `row_count`；联邦执行使用剩余服务端预算和远端取消；499 / 504 |
+| POST | `/api/query` | 对象 | `performJoinQuery`；`data`: `data`, `columns`, `column_types[]`, `sql`, `row_count`, `pushdown?`（同联邦查询的实际执行方式）；联邦执行使用剩余服务端预算和远端取消；499 / 504 |
 | POST | `/api/save_query_to_duckdb` | 对象 | 见 §2 `saveQueryToDuckDB` |
 
 ## 9.3 AI（统一 Agent Engine；`agentApi.ts`/`aiApi.ts`，后端 `routers/ai.py`，OpenAPI tag `AI`）

@@ -11,12 +11,13 @@ import sys
 import threading
 import uuid
 from contextlib import contextmanager
-from dataclasses import dataclass, field
+from dataclasses import dataclass, field, replace
 from typing import Any, Iterator, Optional
 
 import duckdb
 import sqlglot
 from sqlglot import exp
+from sqlglot.optimizer.scope import Scope
 
 from core.common.config_manager import config_manager
 from core.common.sql_error_location import structured_duckdb_errors
@@ -31,10 +32,12 @@ from core.database.mysql_predicate_candidates import (
     MySQLSource,
     _and_terms,
     build_candidate_select,
+    build_remote_count_query,
     find_mysql_sources,
     fold_identifier,
     patch_sources,
     read_source_columns,
+    _INTEGER_TYPES,
 )
 
 logger = logging.getLogger(__name__)
@@ -50,6 +53,7 @@ class PreparedFederatedQuery:
     suggestions: list[dict] = field(default_factory=list)
     warnings: list[str] = field(default_factory=list)
     opaque: bool = field(default=False, repr=False)
+    pushdown: Optional[dict] = None
 
 
 def _raise_if_cancelled(query_id: Optional[str]) -> None:
@@ -72,23 +76,67 @@ def _temporary_table(connection, query: str, names: list[str]) -> str:
     return name
 
 
-def _materialize_source(connection, source: MySQLSource, names: list[str]) -> bool:
-    source.columns = read_source_columns(connection, source)
-    candidate_sql = build_candidate_select(source)
+def _materialize_source(connection, source: MySQLSource, names: list[str], *, stream: bool = False) -> bool:
+    if not source.columns:
+        source.columns = read_source_columns(connection, source)
+    limit = source.scope.expression.args.get('limit') if stream else None
+    row_limit = int(limit.expression.this) if limit is not None and isinstance(limit.expression, exp.Literal) and limit.expression.is_int else None
+    candidate_sql = build_candidate_select(source, connection, row_limit=row_limit)
     if candidate_sql is None:
         return False
+    if stream:
+        source.replacement_sql = candidate_sql
+        return True
     source.temporary_name = _temporary_table(connection, candidate_sql, names)
     return True
 
 
+def _projection_input(scope: Scope):
+    """Expose only unchanged columns; never cross a relational/volatile boundary."""
+    tree = scope.expression
+    wrapper = tree.parent
+    wrapper_alias = wrapper.args.get('alias') if isinstance(wrapper, exp.Subquery) else None
+    if wrapper_alias is not None and wrapper_alias.args.get('columns'):
+        return None
+    if scope.is_cte or not isinstance(tree, exp.Select) or len(scope.selected_sources) != 1:
+        return None
+    if any(tree.args.get(key) for key in ('joins', 'group', 'having', 'qualify', 'distinct', 'limit', 'offset', 'order', 'sample')):
+        return None
+    if not all(isinstance(item, (exp.Column, exp.Star)) for item in tree.expressions):
+        return None
+    if any(any(star.args.values()) for item in tree.expressions for star in item.find_all(exp.Star)):
+        return None
+    return next(iter(scope.selected_sources.values()))[1]
+
+
+def _join_binding(source: MySQLSource):
+    scope, alias = source.scope, source.alias
+    while scope.parent and _projection_input(scope) is not None:
+        matches = [name for name, (_, selected) in scope.parent.selected_sources.items() if selected is scope]
+        if len(matches) != 1:
+            break
+        alias, scope = matches[0], scope.parent
+    return scope, alias
+
+
 def _local_key_source(connection, target: MySQLSource, alias: str, sources: list[MySQLSource], attachments: set[str]) -> Optional[str]:
+    selected = target.scope.selected_sources.get(alias)
+    if selected is None:
+        return None
+    selected_source = selected[1]
+    while isinstance(selected_source, Scope):
+        selected_source = _projection_input(selected_source)
+        if selected_source is None:
+            return None
+        for source in sources:
+            if isinstance(selected_source, exp.Table) and source.node is selected_source:
+                return quote_identifier(source.temporary_name) if source.temporary_name else None
     for source in sources:
         if source.scope is target.scope and fold_identifier(source.alias) == fold_identifier(alias):
             return quote_identifier(source.temporary_name) if source.temporary_name else None
-    selected = target.scope.selected_sources.get(alias)
-    if selected is None or not isinstance(selected[1], exp.Table):
+    if not isinstance(selected_source, exp.Table):
         return None
-    table = selected[1]
+    table = selected_source
     table_alias = table.args.get("alias")
     if table_alias is not None and table_alias.args.get("columns"):
         return None
@@ -114,32 +162,55 @@ def _local_key_source(connection, target: MySQLSource, alias: str, sources: list
 
 
 def _semijoin_keys(connection, target: MySQLSource, sources: list[MySQLSource], attachments: set[str], key_limit: int) -> bool:
-    for join in target.scope.expression.args.get("joins", []):
-        if fold_identifier(join.this.alias_or_name) != fold_identifier(target.alias):
+    if key_limit <= 0:
+        return False
+    scope, alias = _join_binding(target)
+    for join in scope.expression.args.get("joins", []):
+        side = (join.side or "").upper()
+        target_is_right = fold_identifier(join.this.alias_or_name) == fold_identifier(alias)
+        if side == 'FULL' or (side == 'LEFT' and not target_is_right) or (side == 'RIGHT' and target_is_right):
             continue
-        if (join.side or "").upper() not in {"", "LEFT"} or (join.kind or "").upper() in {"CROSS", "ANTI", "SEMI"}:
+        if (join.kind or "").upper() in {"CROSS", "ANTI", "SEMI"}:
             continue
         for term in _and_terms(join.args.get("on")):
             if not isinstance(term, exp.EQ) or not isinstance(term.left, exp.Column) or not isinstance(term.right, exp.Column):
                 continue
             remote_column, local_column = term.left, term.right
-            if fold_identifier(remote_column.table) != fold_identifier(target.alias):
+            if fold_identifier(remote_column.table) != fold_identifier(alias):
                 remote_column, local_column = local_column, remote_column
-            if fold_identifier(remote_column.table) != fold_identifier(target.alias) or not local_column.table:
+            if fold_identifier(remote_column.table) != fold_identifier(alias) or not local_column.table:
                 continue
-            local_ref = _local_key_source(connection, target, local_column.table, sources, attachments)
+            local_ref = _local_key_source(connection, replace(target, scope=scope), local_column.table, sources, attachments)
             if local_ref is None:
                 continue
             column = quote_identifier(local_column.name)
             description = connection.execute(f"DESCRIBE SELECT {column} FROM {local_ref}").fetchall()
-            if not description or str(description[0][1]) != "VARCHAR":
+            if not description:
+                continue
+            dtype = str(description[0][1])
+            if not target.columns:
+                target.columns = read_source_columns(connection, target)
+            remote = next((c for c in target.columns if fold_identifier(c.name) == fold_identifier(remote_column.name)), None)
+            if remote is None:
+                continue
+            textual = dtype == 'VARCHAR' and remote.duckdb_type == 'VARCHAR'
+            numeric = ((dtype in _INTEGER_TYPES and remote.duckdb_type in _INTEGER_TYPES)
+                       or (dtype.startswith('DECIMAL(') and dtype == remote.duckdb_type))
+            if not textual and not numeric:
                 continue
             keys = connection.execute(
                 f"SELECT DISTINCT {column} FROM {local_ref} WHERE {column} IS NOT NULL LIMIT {key_limit + 1}"
             ).fetchall()
-            if len(keys) > key_limit or any(not isinstance(row[0], str) for row in keys):
+            if textual and any(not isinstance(row[0], str) for row in keys):
                 continue
-            target.predicates.append((remote_column.name, [row[0] for row in keys]))
+            if len(keys) > key_limit:
+                lower, upper = connection.execute(f"SELECT min({column}),max({column}) FROM {local_ref}").fetchone()
+                target.key_ranges.append((remote_column.name, lower, upper))
+                return True
+            if textual:
+                target.predicates.append((remote_column.name, [row[0] for row in keys]))
+            else:
+                target.numeric_keys.append((remote_column.name, [row[0] for row in keys]))
             return True
     return False
 
@@ -166,6 +237,7 @@ def _prepare_mysql_sources(
     connection, prepared: PreparedFederatedQuery, sql: str,
     attach_configs: list[tuple[str, dict[str, Any]]], mysql_aliases: set[str],
     query_id: Optional[str], names: list[str], materialize_result: bool,
+    *, stream_candidates: bool = False, plan_only: bool = False,
 ) -> None:
     """Materialize eligible sources while leaving relational semantics local."""
     key_limit = max(0, int(getattr(config_manager.get_app_config(), "federated_semijoin_threshold", 10000)))
@@ -191,17 +263,41 @@ def _prepare_mysql_sources(
                 source for source in sources
                 if source.node.catalog or fold_identifier(source.node.db) not in local_schemas
             ]
+            if len(sources) == 1 and isinstance(tree, exp.Select):
+                source = sources[0]
+                source.columns = read_source_columns(connection, source)
+                remote_count = build_remote_count_query(connection, sql, source, tree)
+                if remote_count:
+                    # mysql_query executes while binding. Materialize its one
+                    # result once so later DESCRIBE/type inspection cannot run
+                    # the remote aggregate a second time.
+                    prepared.sql = (remote_count if plan_only else
+                                    'SELECT * FROM ' + quote_identifier(_temporary_table(connection, remote_count, names)))
+                    prepared.pushdown = {'mode': 'remote-count', 'sources': 1, 'pushed_sources': 1}
+                    return
             for source in sources:
                 _raise_if_cancelled(query_id)
-                if source.predicates:
-                    _materialize_source(connection, source, names)
+                if not source.predicates and not source.conditions:
+                    continue
+                if not plan_only:
+                    can_stream = (stream_candidates and len(sources) == 1 and source.scope.expression is tree
+                                  and not any(tree.args.get(key) for key in ('joins', 'group', 'having', 'qualify', 'distinct', 'order', 'offset'))
+                                  and not any(tree.find_all(exp.AggFunc)) and not any(tree.find_all(exp.Window)))
+                    _materialize_source(connection, source, names,
+                                        stream=can_stream)
+                    continue
+                if not source.columns:
+                    source.columns = read_source_columns(connection, source)
+                if build_candidate_select(source, connection):
+                    prepared.candidate_count += 1
             attachments = {fold_identifier(alias) for alias, _ in attach_configs}
-            for source in sources:
-                if source.temporary_name is None and _semijoin_keys(connection, source, sources, attachments, key_limit):
+            for source in ([] if plan_only else sources):
+                if source.temporary_name is None and source.replacement_sql is None and _semijoin_keys(connection, source, sources, attachments, key_limit):
                     _raise_if_cancelled(query_id)
                     _materialize_source(connection, source, names)
         prepared.sql = patch_sources(sql, sources)
-        prepared.candidate_count = sum(source.temporary_name is not None for source in sources)
+        if not plan_only:
+            prepared.candidate_count = sum(source.temporary_name is not None or source.replacement_sql is not None for source in sources)
         if prepared.candidate_count:
             prepared.warnings.append(
                 f"MySQL candidate filtering applied to {prepared.candidate_count} source(s); exact filtering remains in DuckDB."
@@ -220,6 +316,20 @@ def _prepare_mysql_sources(
     )
     if native_references > prepared.candidate_count or tree is None:
         prepared.warnings.append("Unsupported MySQL candidate predicates or types are evaluated locally.")
+    prepared.pushdown = {'mode': 'candidate' if prepared.candidate_count else 'explicit-remote' if prepared.opaque else 'local',
+                         'sources': native_references, 'pushed_sources': prepared.candidate_count}
+    if prepared.candidate_count and isinstance(tree, exp.Query) and any(source.key_ranges for source in sources):
+        prepared.pushdown['key_strategy'] = 'range'
+
+
+def inspect_federated_pushdown(connection, sql: str, attach_configs: list[tuple[str, dict]]) -> Optional[dict]:
+    """Metadata-only preview of the same planner; never read keys or materialize rows."""
+    aliases = {alias for alias, config in attach_configs if config.get('type') == 'mysql'}
+    if not aliases:
+        return None
+    prepared = PreparedFederatedQuery(sql, sql)
+    _prepare_mysql_sources(connection, prepared, sql, attach_configs, aliases, None, [], False, plan_only=True)
+    return prepared.pushdown
 
 
 @contextmanager
@@ -231,6 +341,7 @@ def federated_execution_scope(
     *,
     include_suggestions: bool = False,
     materialize_result: bool = True,
+    stream_candidates: bool = False,
 ) -> Iterator[PreparedFederatedQuery]:
     """Prepare, execute and clean a query under one remote cancellation lease.
 
@@ -292,6 +403,7 @@ def federated_execution_scope(
                             _prepare_mysql_sources(
                                 connection, prepared, sql, attach_configs, mysql_aliases,
                                 effective_id, names, materialize_result,
+                                stream_candidates=stream_candidates,
                             )
                         _raise_if_cancelled(effective_id)
                         yielded = True

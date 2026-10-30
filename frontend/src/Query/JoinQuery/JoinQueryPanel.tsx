@@ -1811,6 +1811,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
           data: result.data,
           columns: result.columns,
           column_types: result.column_types,
+          pushdown: result.pushdown,
           row_count: result.row_count,
           execTime: Date.now() - startTime,
           preview_limit_applied: isPreview ? maxQueryRows : null,

@@ -75,6 +75,15 @@ const mockData = [
 ];
 
 describe('ResultPanel', () => {
+  it('shows requested metric cards and returns to the grid for the next result', () => {
+    const rows = [{ total: '0.1234567890123456789' }];
+    const view = render(<TestWrapper><ResultPanel data={rows} columns={['total']} viewRequest={{ view: 'metrics', key: 1 }} /></TestWrapper>);
+    expect(screen.getByText('insights.cardHint')).toBeInTheDocument();
+    expect(screen.getByTitle('0.1234567890123456789')).toHaveTextContent('0.1234567890123456789');
+    view.rerender(<TestWrapper><ResultPanel data={[{ total: '2' }]} columns={['total']} /></TestWrapper>);
+    expect(screen.getByTestId('data-grid-mock')).toBeInTheDocument();
+    expect(screen.queryByText('insights.cardHint')).not.toBeInTheDocument();
+  });
   beforeEach(() => {
     vi.clearAllMocks();
   });

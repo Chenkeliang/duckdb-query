@@ -955,6 +955,7 @@ def execute_federated_query(
                     ) as execution:
                         _opt["sql"] = execution.display_sql
                         _opt["suggestions"] = execution.suggestions or None
+                        _opt["pushdown"] = execution.pushdown
                         warnings.extend(execution.warnings)
                         if table_name:
                             # Materialize the unbounded user query once.  The
@@ -1062,6 +1063,7 @@ def execute_federated_query(
             "optimized_sql": _opt["sql"],
             "suggestions": _opt["suggestions"],
             "warnings": warnings if warnings else None,
+            "pushdown": _opt.get("pushdown"),
             "preview_limit_applied": limit,
             "saved_table": saved_table,
             "save_error": None,

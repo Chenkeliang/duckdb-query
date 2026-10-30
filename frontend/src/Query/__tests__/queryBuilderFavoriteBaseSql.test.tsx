@@ -132,6 +132,7 @@ describe('query builder favorite SQL', () => {
       column_types: [],
       row_count: 1,
       sql: previewSql,
+      pushdown: { mode: 'candidate', sources: 1, pushed_sources: 1 },
     });
     const onDisplayPreview = vi.fn();
 
@@ -142,6 +143,8 @@ describe('query builder favorite SQL', () => {
     fireEvent.click(await screen.findByRole('button', { name: '执行' }));
 
     await waitFor(() => expect(onDisplayPreview).toHaveBeenCalledTimes(1));
+    // 2026-10-30: JOIN results must retain their actual execution strategy.
+    expect(onDisplayPreview.mock.calls[0][0].pushdown).toEqual({ mode: 'candidate', sources: 1, pushed_sources: 1 });
     expect(onDisplayPreview.mock.calls[0][1]).toBe(previewSql);
     expect(onDisplayPreview.mock.calls[0][3].baseSql).toContain(
       'LEFT JOIN customers AS t2'
