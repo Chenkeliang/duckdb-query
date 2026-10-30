@@ -32,7 +32,7 @@ DuckQuery is an independently developed, local-first data workbench powered by D
 
 ### Desktop (Recommended)
 
-The latest release is **[v2.1.1](https://github.com/Chenkeliang/duckdb-query/releases/tag/v2.1.1)**. Features below describe this release; its source is available at the [v2.1.1 tag](https://github.com/Chenkeliang/duckdb-query/tree/v2.1.1).
+The latest release is **[v2.1.2](https://github.com/Chenkeliang/duckdb-query/releases/tag/v2.1.2)**. Features below describe this release; its source is available at the [v2.1.2 tag](https://github.com/Chenkeliang/duckdb-query/tree/v2.1.2).
 
 Choose the installer for your machine from [GitHub Releases](https://github.com/Chenkeliang/duckdb-query/releases/latest):
 
@@ -51,7 +51,7 @@ Use the standard build when online; some external database connections download 
 Install Docker and Docker Compose, then run:
 
 ```bash
-git clone --branch v2.1.1 --depth 1 https://github.com/Chenkeliang/duckdb-query.git
+git clone --branch v2.1.2 --depth 1 https://github.com/Chenkeliang/duckdb-query.git
 cd duckdb-query
 ./quick-start.sh
 ```
@@ -148,19 +148,19 @@ See the [MCP documentation](mcp/README.md) for client configuration, backend dis
 
 ## Engine and Upgrade Notes
 
-The **latest released app version is v2.1.1**. It adds pivot statistics without grouping fields and retains the v2.1.0 workbench layout, active-query backgrounding, SQL completion, and AI SQL diff previews. See the [v2.1.1 release notes](https://github.com/Chenkeliang/duckdb-query/blob/v2.1.1/docs/releases/v2.1.1_en.md).
+The **latest released app version is v2.1.2**, adding data exploration, JSON extraction, safe MySQL candidate filtering and compact extension management. See the [v2.1.2 release notes](https://github.com/Chenkeliang/duckdb-query/blob/v2.1.2/docs/releases/v2.1.2_en.md).
 
-The app and DuckDB **engine versions** are maintained separately. Release v2.1.1 pins `v2.0.0-alpha39998`, Python package `1.6.0.dev379`, and `v2.0.0` storage for new databases. The engine remains a preview; updating the app does not switch it to a stable DuckDB engine.
+The app and DuckDB **engine versions** are maintained separately. v2.1.2 uses **stable DuckDB 2.0** (`duckdb==2.0.0`, engine `v2.0.0`); v2.1.1 used `1.6.0.dev379` / `v2.0.0-alpha39998`. New databases still use `v2.0.0` storage, existing files are not automatically migrated, and extensions must match the stable engine and platform.
 
-The current source now uses **DuckDB 2.0 stable** (`duckdb==2.0.0`, engine `v2.0.0`). This change has not been released as a desktop update; published v2.1.1 binaries are unaffected. New databases still use `v2.0.0` storage, existing files are not automatically migrated, and extensions must match the stable engine build.
+Data exploration suggests operations by actual column types, previews SQL and displays metric cards. It can also discover paths in JSON/VARIANT/text and extract typed columns. Discovery applies current filters before sampling at most 100 rows; sampled paths are not a complete schema. Statistics cover all filtered input. Text extraction preserves large integers by default; missing paths and failed casts return NULL. Desktop and server editions provide this entry; the browser-only Wasm demo does not.
 
-The current source also adds Data exploration: select a table to configure statistics suggested by actual column types, review the SQL, and display metric cards. You can also discover nested paths in JSON/VARIANT/text columns and extract them into typed columns. Path discovery samples at most 100 rows and is not a complete schema; statistics use all filtered rows. Default text extraction preserves large integers; missing paths or failed casts return NULL. This entry is available in desktop and server editions, but not in the browser-only Wasm demo.
+MySQL queries support safe temporal/numeric predicates and join-key candidate filtering. Equivalent single-table COUNT queries run at the source; SUM/AVG stay in DuckDB to retain precision. Planned and actual strategies are shown. Unsupported expressions remain local, and native remote_pushdown is not globally enabled.
 
-MySQL queries support safe temporal/numeric predicates and join-key candidate filtering. Equivalent single-table COUNT queries run at the source; SUM/AVG remain in DuckDB to retain precision. The UI shows planned and actual strategies. JSON discovery applies the current filters before sampling; changing filters requires discovery again. Sampling limits never restrict aggregate inputs.
+Extension management supports name/purpose search, installation-state filters and expandable SQL examples. Avro is newly included in the official curated installation catalog for SQL queries; the file-import picker has not gained Avro support.
 
 Upgrading from DuckQuery 2.0.x introduces no new storage migration. Before upgrading from 1.x, back up `main.db`, `system.db`, and their `.wal` files, then read the [2.0 major-version notes](docs/releases/v2.0.0_en.md). Existing databases are not silently migrated at startup. After an explicit migration to the new storage format, restore a pre-upgrade backup to return to an older version.
 
-Earlier release notes: [v2.1.0](docs/releases/v2.1.0_en.md) · [v2.0.1](docs/releases/v2.0.1_en.md) · [v2.0.0](docs/releases/v2.0.0_en.md).
+Earlier release notes: [v2.1.1](docs/releases/v2.1.1_en.md) · [v2.1.0](docs/releases/v2.1.0_en.md) · [v2.0.1](docs/releases/v2.0.1_en.md) · [v2.0.0](docs/releases/v2.0.0_en.md).
 
 Settings → DuckDB database storage shows resource budgets, backup checks, and recovery guidance. Extensions are isolated by engine version; see the [engine upgrade specification](docs/specs/duckdb-2-compatibility-and-capabilities.md) for compatibility details.
 

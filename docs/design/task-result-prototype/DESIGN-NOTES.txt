@@ -1,7 +1,7 @@
 DuckQuery：任务与结果交互原型
 
 打开：http://127.0.0.1:48030/
-本地启动：python3 -m http.server 48030 --bind 127.0.0.1 --directory /Users/keliang/mypy/duckdb-query/docs/design/task-result-prototype
+本地启动：python3 -m http.server 48030 --bind 127.0.0.1 --directory ./docs/design/task-result-prototype
 
 本次范围
 只演示工作台中的执行入口、保存为表、后台任务和结果查看。没有连接数据库，没有修改本次范围之外的正式 React 页面或后端。刷新重置演示数据。

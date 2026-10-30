@@ -8,7 +8,7 @@
 
 **Tech Stack:** Python 3.13、FastAPI、DuckDB(mysql/postgres/sqlite scanner)、**sqlglot 30.11.0**(DuckDB 方言 AST)、pytest。
 
-**约定(所有 commit)**:署名 `Chen <keliang_chen@luojilab.com>`,**禁止任何 AI 相关标记 / Co-Authored-By**。分支 `feat_federated_pushdown`(已从 origin/main 切出)。测试从 `api/` 目录跑:`../.venv/bin/python -m pytest <path> -v`。
+**约定(所有 commit)**:署名 `项目维护者（GitHub 隐私邮箱）`,**禁止任何 AI 相关标记 / Co-Authored-By**。分支 `feat_federated_pushdown`(已从 origin/main 切出)。测试从 `api/` 目录跑:`../.venv/bin/python -m pytest <path> -v`。
 
 **关键已验证事实(spike 结论,实现时直接用)**:
 - sqlglot:`t.name / t.db / t.catalog / t.alias`;2 段式 `alias.table` → `db=alias`;最左限定符 = `t.catalog or t.db or None`。
@@ -40,7 +40,7 @@ sqlglot>=30.11,<31
 
 Run:
 ```bash
-cd /Users/keliang/mypy/duckdb-query
+cd .
 .venv/bin/pip install 'sqlglot>=30.11,<31' --quiet
 .venv/bin/python -c "import sqlglot; from sqlglot import exp; print(sqlglot.__version__)"
 ```
@@ -1051,7 +1051,7 @@ git commit -m "feat(federated): wire optimizer + timeout watchdog + connection_i
 
 Run:
 ```bash
-cd /Users/keliang/mypy/duckdb-query
+cd .
 rg -n "hiddenimports|collect_submodules" api/duckquery.spec | head
 ```
 若 spec 用显式 `hiddenimports` 且未含 sqlglot,则在 `hiddenimports` 加 `'sqlglot'`;若用 `collect_all`/自动分析则通常无需改(sqlglot 是纯 import,PyInstaller 能静态发现)。

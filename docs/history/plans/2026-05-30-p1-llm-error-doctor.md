@@ -110,7 +110,7 @@ def test_explain_and_fix_handles_unparseable_reply():
     assert isinstance(out["explanation"], str)
 ```
 
-- [ ] **Step 2: run → fail** `cd /Users/keliang/mypy/duckdb-query && PYTHONPATH=api .venv/bin/python -m pytest api/tests/test_ai_error_doctor.py -q`
+- [ ] **Step 2: run → fail** `cd . && PYTHONPATH=api .venv/bin/python -m pytest api/tests/test_ai_error_doctor.py -q`
 
 - [ ] **Step 3: implement** `api/core/services/ai_error_doctor.py`:
 

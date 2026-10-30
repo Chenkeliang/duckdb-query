@@ -9,7 +9,10 @@
 import * as React from 'react';
 import { useMutation, useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
 import { useTranslation } from 'react-i18next';
-import { Database, Sparkles } from 'lucide-react';
+import { Database, Search, Sparkles } from 'lucide-react';
+import { Button } from '@/components/ui/button';
+import { Input } from '@/components/ui/input';
+import { Tabs, TabsList, TabsTrigger } from '@/components/ui/tabs';
 
 import { showSuccessToast, showErrorToast } from '@/utils/toastHelpers';
 import {
@@ -31,6 +34,8 @@ export function ExtensionsPage() {
   const queryClient = useQueryClient();
   const [installingNames, setInstallingNames] = React.useState<string[]>([]);
   const settledNames = React.useRef(new Set<string>());
+  const [search, setSearch] = React.useState('');
+  const [filter, setFilter] = React.useState('all');
   const extensionsQuery = useQuery({
     queryKey: ['duckdb-extensions'],
     queryFn: listDuckDBExtensions,
@@ -119,12 +124,17 @@ export function ExtensionsPage() {
     }
   };
 
+  const items = extensionsQuery.data ?? [];
+  const matchingItems = items.filter((item) => {
+    const matchesState = filter === 'installed' ? item.installed : filter === 'available' ? !item.installed && item.installable : true;
+    return matchesState && `${item.name} ${item.description} ${item.description_en}`.toLocaleLowerCase().includes(search.trim().toLocaleLowerCase());
+  });
   const renderGroup = (
     category: ExtensionCategory,
     icon: React.ElementType,
     title: string
   ) => {
-    const groupItems = (extensionsQuery.data ?? []).filter(
+    const groupItems = matchingItems.filter(
       (item) => item.category === category
     );
     if (groupItems.length === 0) return null;
@@ -132,7 +142,7 @@ export function ExtensionsPage() {
     const Icon = icon;
     return (
       <section>
-        <h2 className="mb-4 flex items-center gap-2 text-base font-semibold"><Icon className="size-4 text-muted-foreground" />{title}<span className="ml-1 font-mono text-xs font-normal text-muted-foreground">{groupItems.length}</span></h2>
+        <h2 className="mb-2 flex items-center gap-2 text-sm font-medium"><Icon className="size-4 text-muted-foreground" />{title}<span className="ml-1 font-mono text-xs font-normal text-muted-foreground">{groupItems.length}</span></h2>
         <div role="list" className="divide-y divide-border overflow-hidden rounded-lg border border-border bg-surface">
           {groupItems.map((item) => <ExtensionCard key={item.name} item={item} progress={progressByName[item.name]} isZh={isZh} onInstall={() => handleInstall(item)} t={t} />)}
         </div>
@@ -141,21 +151,26 @@ export function ExtensionsPage() {
   };
 
   return (
-    <div className="space-y-8">
+    <div className="space-y-5">
       <div>
         <div className="flex items-center gap-2">
           <h1 className="text-xl font-semibold tracking-tight text-foreground">
             {t('extensions.title', '扩展')}
           </h1>
+          <span className="text-xs tabular-nums text-muted-foreground">{t('extensions.catalogCount', { count: items.length })}</span>
         </div>
         <p className="mt-2 text-sm text-muted-foreground">
           {t('extensions.subtitle', '扩展来自 DuckDB 官方仓库，安装后离线可用。')}
         </p>
       </div>
 
+      <div className="flex flex-wrap items-center justify-between gap-3">
+        <div className="relative w-full sm:w-72"><Search className="pointer-events-none absolute left-2.5 top-2 size-4 text-muted-foreground" /><Input className="pl-8" value={search} onChange={(event) => setSearch(event.target.value)} placeholder={t('extensions.search')} aria-label={t('extensions.search')} /></div>
+        <Tabs value={filter} onValueChange={setFilter}><TabsList aria-label={t('extensions.filter')}><TabsTrigger value="all">{t('extensions.all')}</TabsTrigger><TabsTrigger value="installed">{t('extensions.installed')}</TabsTrigger><TabsTrigger value="available">{t('extensions.available')}</TabsTrigger></TabsList></Tabs>
+      </div>
       {extensionsQuery.isPending ? (
-        <div className="text-sm text-muted-foreground">{t('actions.loading')}</div>
-      ) : (
+        <div role="status" className="text-sm text-muted-foreground">{t('actions.loading')}</div>
+      ) : extensionsQuery.error ? <div role="alert" className="flex flex-wrap items-center gap-3 text-sm"><span>{t('extensions.loadFailed')}</span><Button variant="outline" size="sm" onClick={() => void extensionsQuery.refetch()}>{t('extensions.retry')}</Button></div> : matchingItems.length === 0 ? <div className="space-y-3 py-8 text-center text-sm text-muted-foreground"><p>{t('extensions.noMatches')}</p><Button variant="outline" size="sm" onClick={() => { setSearch(''); setFilter('all'); }}>{t('extensions.clearFilters')}</Button></div> : (
         <>
           {renderGroup('datasource', Database, t('extensions.groupDatasource', '数据源'))}
           {renderGroup('capability', Sparkles, t('extensions.groupCapability', '能力增强'))}

@@ -15,7 +15,7 @@
 
 ## 关键事实（实现前必读）
 
-- 所有前端命令在 `frontend/` 下运行。每条命令已带 `cd /Users/keliang/mypy/duckdb-query/frontend &&`。
+- 所有前端命令在 `frontend/` 下运行。每条命令已带 `cd ./frontend &&`。
 - 单测：`npx vitest run <file>`；类型检查：`npx tsc --noEmit`；构建：`npm run build`。
 - 提交署名必须是用户本人，**禁止** `Co-Authored-By: Claude` / `Generated with Claude Code` 等 trailer。提交前会自动跑代码规范检查。
 - 复用的导出（全部来自 `src/Query/JoinQuery/FilterBar` 的 index）：`createCondition(table, column, operator, value, value2?, placement?)`、`getOnConditionsTreeForTable(tree, tableName)`、`generateFilterSQLForSubquery(tree)`、类型 `FilterCondition` / `FilterGroup`。
@@ -108,7 +108,7 @@ describe('detectTimeBoundCandidates', () => {
 
 - [ ] **Step 2: 跑测试确认失败**
 
-Run: `cd /Users/keliang/mypy/duckdb-query/frontend && npx vitest run src/Query/JoinQuery/__tests__/timeBound.test.ts`
+Run: `cd ./frontend && npx vitest run src/Query/JoinQuery/__tests__/timeBound.test.ts`
 Expected: FAIL（`Failed to resolve import "../timeBound"` 或函数未定义）。
 
 - [ ] **Step 3: 写最小实现**
@@ -163,13 +163,13 @@ export function detectTimeBoundCandidates(columns: TableColumn[]): string[] {
 
 - [ ] **Step 4: 跑测试确认通过**
 
-Run: `cd /Users/keliang/mypy/duckdb-query/frontend && npx vitest run src/Query/JoinQuery/__tests__/timeBound.test.ts`
+Run: `cd ./frontend && npx vitest run src/Query/JoinQuery/__tests__/timeBound.test.ts`
 Expected: PASS（3 个 describe 全绿）。
 
 - [ ] **Step 5: 提交**
 
 ```bash
-cd /Users/keliang/mypy/duckdb-query && git add frontend/src/Query/JoinQuery/timeBound.ts frontend/src/Query/JoinQuery/__tests__/timeBound.test.ts && git commit -m "feat(join): time-type detection + audit-column classification for time-bound recommendation"
+cd . && git add frontend/src/Query/JoinQuery/timeBound.ts frontend/src/Query/JoinQuery/__tests__/timeBound.test.ts && git commit -m "feat(join): time-type detection + audit-column classification for time-bound recommendation"
 ```
 
 ---
@@ -211,7 +211,7 @@ describe('buildTimeBoundCondition', () => {
 
 - [ ] **Step 2: 跑测试确认失败**
 
-Run: `cd /Users/keliang/mypy/duckdb-query/frontend && npx vitest run src/Query/JoinQuery/__tests__/timeBound.test.ts`
+Run: `cd ./frontend && npx vitest run src/Query/JoinQuery/__tests__/timeBound.test.ts`
 Expected: FAIL（`defaultTimeBoundValue` / `buildTimeBoundCondition` 未导出）。
 
 - [ ] **Step 3: 追加实现**
@@ -238,13 +238,13 @@ export function buildTimeBoundCondition(
 
 - [ ] **Step 4: 跑测试确认通过**
 
-Run: `cd /Users/keliang/mypy/duckdb-query/frontend && npx vitest run src/Query/JoinQuery/__tests__/timeBound.test.ts`
+Run: `cd ./frontend && npx vitest run src/Query/JoinQuery/__tests__/timeBound.test.ts`
 Expected: PASS（全部 describe 绿）。
 
 - [ ] **Step 5: 提交**
 
 ```bash
-cd /Users/keliang/mypy/duckdb-query && git add frontend/src/Query/JoinQuery/timeBound.ts frontend/src/Query/JoinQuery/__tests__/timeBound.test.ts && git commit -m "feat(join): default 30-day value + time-bound condition factory (placement=on)"
+cd . && git add frontend/src/Query/JoinQuery/timeBound.ts frontend/src/Query/JoinQuery/__tests__/timeBound.test.ts && git commit -m "feat(join): default 30-day value + time-bound condition factory (placement=on)"
 ```
 
 ---
@@ -356,7 +356,7 @@ describe('buildTimeBoundSuggestions', () => {
 
 - [ ] **Step 2: 跑测试确认失败**
 
-Run: `cd /Users/keliang/mypy/duckdb-query/frontend && npx vitest run src/Query/JoinQuery/__tests__/timeBound.test.ts`
+Run: `cd ./frontend && npx vitest run src/Query/JoinQuery/__tests__/timeBound.test.ts`
 Expected: FAIL（`buildTimeBoundSuggestions` 未导出）。
 
 - [ ] **Step 3: 追加实现**
@@ -456,18 +456,18 @@ export function buildTimeBoundSuggestions(ctx: TimeBoundContext): TimeBoundSugge
 
 - [ ] **Step 4: 跑测试确认通过**
 
-Run: `cd /Users/keliang/mypy/duckdb-query/frontend && npx vitest run src/Query/JoinQuery/__tests__/timeBound.test.ts`
+Run: `cd ./frontend && npx vitest run src/Query/JoinQuery/__tests__/timeBound.test.ts`
 Expected: PASS。
 
 - [ ] **Step 5: 类型检查**
 
-Run: `cd /Users/keliang/mypy/duckdb-query/frontend && npx tsc --noEmit`
+Run: `cd ./frontend && npx tsc --noEmit`
 Expected: 退出码 0（无错误）。
 
 - [ ] **Step 6: 提交**
 
 ```bash
-cd /Users/keliang/mypy/duckdb-query && git add frontend/src/Query/JoinQuery/timeBound.ts frontend/src/Query/JoinQuery/__tests__/timeBound.test.ts && git commit -m "feat(join): build time-bound suggestions with suppression + self-join/local skip"
+cd . && git add frontend/src/Query/JoinQuery/timeBound.ts frontend/src/Query/JoinQuery/__tests__/timeBound.test.ts && git commit -m "feat(join): build time-bound suggestions with suppression + self-join/local skip"
 ```
 
 ---
@@ -510,7 +510,7 @@ describe('time-bound condition flows into the per-table ON subquery pushdown', (
 
 - [ ] **Step 2: 跑测试**
 
-Run: `cd /Users/keliang/mypy/duckdb-query/frontend && npx vitest run src/Query/JoinQuery/__tests__/timeBound.test.ts`
+Run: `cd ./frontend && npx vitest run src/Query/JoinQuery/__tests__/timeBound.test.ts`
 Expected: 若 `getOnConditionsTreeForTable` 的 ON 树 SQL 渲染需要别名前缀等细节导致断言不符，按**实际输出**微调断言（仅放宽到 `toContain('create_time')` 与包含 `2026-05-01`），但**必须保留** "条件进入了 `orders` 的 ON 树、且不泄漏到 `refunds`" 这两条核心断言。最终 Expected: PASS。
 
 > 实现者注：本 Task 不改任何源码，纯测试。若第一次运行即通过，跳过调整直接提交。
@@ -518,7 +518,7 @@ Expected: 若 `getOnConditionsTreeForTable` 的 ON 树 SQL 渲染需要别名前
 - [ ] **Step 3: 提交**
 
 ```bash
-cd /Users/keliang/mypy/duckdb-query && git add frontend/src/Query/JoinQuery/__tests__/timeBound.test.ts && git commit -m "test(join): assert time-bound condition routes into per-table ON subquery pushdown"
+cd . && git add frontend/src/Query/JoinQuery/__tests__/timeBound.test.ts && git commit -m "test(join): assert time-bound condition routes into per-table ON subquery pushdown"
 ```
 
 ---
@@ -531,7 +531,7 @@ cd /Users/keliang/mypy/duckdb-query && git add frontend/src/Query/JoinQuery/__te
 
 - [ ] **Step 1: 找到 `query.join` 节点（若无则在 `query` 下新增）**
 
-Run: `cd /Users/keliang/mypy/duckdb-query/frontend && npx --yes node -e "const z=require('./src/i18n/locales/zh/common.json'); console.log('query keys:', Object.keys(z.query||{}).join(','));"`
+Run: `cd ./frontend && npx --yes node -e "const z=require('./src/i18n/locales/zh/common.json'); console.log('query keys:', Object.keys(z.query||{}).join(','));"`
 Expected: 打印 `query` 下的现有子键（用于确认 `join` 是否已存在、缩进风格）。
 
 - [ ] **Step 2: 在 zh/common.json 的 `query` 对象内加入 `join.timeBound`**
@@ -564,13 +564,13 @@ Expected: 打印 `query` 下的现有子键（用于确认 `join` 是否已存�
 
 - [ ] **Step 4: 校验 JSON 合法**
 
-Run: `cd /Users/keliang/mypy/duckdb-query/frontend && npx --yes node -e "require('./src/i18n/locales/zh/common.json'); require('./src/i18n/locales/en/common.json'); console.log('json ok');"`
+Run: `cd ./frontend && npx --yes node -e "require('./src/i18n/locales/zh/common.json'); require('./src/i18n/locales/en/common.json'); console.log('json ok');"`
 Expected: 打印 `json ok`（无解析异常）。
 
 - [ ] **Step 5: 提交**
 
 ```bash
-cd /Users/keliang/mypy/duckdb-query && git add frontend/src/i18n/locales/zh/common.json frontend/src/i18n/locales/en/common.json && git commit -m "feat(join): i18n strings for time-bound recommendation (zh/en)"
+cd . && git add frontend/src/i18n/locales/zh/common.json frontend/src/i18n/locales/en/common.json && git commit -m "feat(join): i18n strings for time-bound recommendation (zh/en)"
 ```
 
 ---
@@ -635,7 +635,7 @@ describe('TimeBoundChip', () => {
 
 - [ ] **Step 2: 跑测试确认失败**
 
-Run: `cd /Users/keliang/mypy/duckdb-query/frontend && npx vitest run src/Query/JoinQuery/__tests__/TimeBoundChip.test.tsx`
+Run: `cd ./frontend && npx vitest run src/Query/JoinQuery/__tests__/TimeBoundChip.test.tsx`
 Expected: FAIL（无法解析 `../TimeBoundChip`）。
 
 - [ ] **Step 3: 写实现**
@@ -721,13 +721,13 @@ export const TimeBoundChip: React.FC<TimeBoundChipProps> = ({
 
 - [ ] **Step 4: 跑测试确认通过**
 
-Run: `cd /Users/keliang/mypy/duckdb-query/frontend && npx vitest run src/Query/JoinQuery/__tests__/TimeBoundChip.test.tsx`
+Run: `cd ./frontend && npx vitest run src/Query/JoinQuery/__tests__/TimeBoundChip.test.tsx`
 Expected: PASS（3 个用例绿）。
 
 - [ ] **Step 5: 提交**
 
 ```bash
-cd /Users/keliang/mypy/duckdb-query && git add frontend/src/Query/JoinQuery/TimeBoundChip.tsx frontend/src/Query/JoinQuery/__tests__/TimeBoundChip.test.tsx && git commit -m "feat(join): TimeBoundChip presentational component (single + multi-candidate)"
+cd . && git add frontend/src/Query/JoinQuery/TimeBoundChip.tsx frontend/src/Query/JoinQuery/__tests__/TimeBoundChip.test.tsx && git commit -m "feat(join): TimeBoundChip presentational component (single + multi-candidate)"
 ```
 
 ---
@@ -823,18 +823,18 @@ const handleAddAllTimeBounds = React.useCallback(() => {
 
 - [ ] **Step 5: 类型检查**
 
-Run: `cd /Users/keliang/mypy/duckdb-query/frontend && npx tsc --noEmit`
+Run: `cd ./frontend && npx tsc --noEmit`
 Expected: 退出码 0。若报 `t` 未定义，确认组件内已有 `const { t } = useTranslation('common')`（既有代码已在用 `t`，见 `:852` 等同名用法的同一组件）——本组件顶层应已有 `t`；若没有则复用现有的 `useTranslation` 实例，勿重复声明。
 
 - [ ] **Step 6: 跑相关单测 + 构建**
 
-Run: `cd /Users/keliang/mypy/duckdb-query/frontend && npx vitest run src/Query/JoinQuery/__tests__/ && npm run build`
+Run: `cd ./frontend && npx vitest run src/Query/JoinQuery/__tests__/ && npm run build`
 Expected: 测试全绿；`npm run build` 成功（退出码 0）。
 
 - [ ] **Step 7: 提交**
 
 ```bash
-cd /Users/keliang/mypy/duckdb-query && git add frontend/src/Query/JoinQuery/JoinQueryPanel.tsx && git commit -m "feat(join): wire time-bound chips + add-all into JoinQueryPanel"
+cd . && git add frontend/src/Query/JoinQuery/JoinQueryPanel.tsx && git commit -m "feat(join): wire time-bound chips + add-all into JoinQueryPanel"
 ```
 
 ---
@@ -845,7 +845,7 @@ cd /Users/keliang/mypy/duckdb-query && git add frontend/src/Query/JoinQuery/Join
 
 - [ ] **Step 1: 前端类型 + 全量单测 + 构建**
 
-Run: `cd /Users/keliang/mypy/duckdb-query/frontend && npx tsc --noEmit && npx vitest run && npm run build`
+Run: `cd ./frontend && npx tsc --noEmit && npx vitest run && npm run build`
 Expected: tsc 退出码 0；vitest 全绿（注意：`federatedJoin.test.ts` 历史上有偶发属性测试 flake，与本特性无关——若仅它失败，单独重跑确认）；build 成功。
 
 - [ ] **Step 2: 手动核验清单（需起前端，人工点）**

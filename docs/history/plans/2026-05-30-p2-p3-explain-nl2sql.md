@@ -15,7 +15,7 @@
 - **提交署名必须是用户账号,严禁任何 agent trailer**(不要 `Co-Authored-By: Claude` / `Generated with Claude Code`)。普通 conventional-commit 信息即可。
 - **当前分支 `feat_ai_assistant`**(已确认,非禁止分支)。继续在此分支提交,每个 Task 末尾提交一次。
 - **后端测试必须用根虚拟环境**(含 duckdb 1.5.3 + litellm):
-  `PYTEST := /Users/keliang/mypy/duckdb-query/.venv/bin/python -m pytest`
+  `PYTEST := ./.venv/bin/python -m pytest`
   在 `api/` 目录下运行(例 `cd api && $PYTEST tests/test_retriever.py -q`)。
   ⚠️ 不要用 `api/.venv`(它是 duckdb 1.4.2 且无 litellm,会让 mock litellm 的测试失败)。
 - **前端命令**在 `frontend/` 目录:类型检查 `npx tsc --noEmit`;测试 `npx vitest run <path>`。
@@ -101,7 +101,7 @@ def test_explain_not_configured_has_stable_code(tmp_path, monkeypatch):
 
 - [ ] **Step 2: 跑测试确认失败**
 
-Run: `cd api && /Users/keliang/mypy/duckdb-query/.venv/bin/python -m pytest tests/test_ai_router.py::test_error_fix_disabled_has_stable_code tests/test_ai_router.py::test_explain_not_configured_has_stable_code -q`
+Run: `cd api && ./.venv/bin/python -m pytest tests/test_ai_router.py::test_error_fix_disabled_has_stable_code tests/test_ai_router.py::test_explain_not_configured_has_stable_code -q`
 Expected: FAIL —— 第一个断言 `error.code` 现为 `VALIDATION_ERROR`;第二个因 `/api/ai/explain-sql` 路由尚不存在而 404/405。
 
 - [ ] **Step 3: 实现 —— `api/routers/ai.py` 加错误码映射并回填 error-fix**
@@ -139,7 +139,7 @@ def _ai_error_response(exc: Exception):
 
 - [ ] **Step 4: 跑 error-fix 用例确认转绿**
 
-Run: `cd api && /Users/keliang/mypy/duckdb-query/.venv/bin/python -m pytest tests/test_ai_router.py::test_error_fix_disabled_has_stable_code -q`
+Run: `cd api && ./.venv/bin/python -m pytest tests/test_ai_router.py::test_error_fix_disabled_has_stable_code -q`
 Expected: PASS
 
 - [ ] **Step 5: 提交**
@@ -202,7 +202,7 @@ def test_result_is_capped():
 
 - [ ] **Step 2: 跑测试确认失败**
 
-Run: `cd api && /Users/keliang/mypy/duckdb-query/.venv/bin/python -m pytest tests/test_retriever.py -q`
+Run: `cd api && ./.venv/bin/python -m pytest tests/test_retriever.py -q`
 Expected: FAIL with `ModuleNotFoundError: No module named 'core.services.retriever'`
 
 - [ ] **Step 3: 实现 `api/core/services/retriever.py`**
@@ -259,7 +259,7 @@ class KeywordRetriever:
 
 - [ ] **Step 4: 跑测试确认转绿**
 
-Run: `cd api && /Users/keliang/mypy/duckdb-query/.venv/bin/python -m pytest tests/test_retriever.py -q`
+Run: `cd api && ./.venv/bin/python -m pytest tests/test_retriever.py -q`
 Expected: PASS (3 passed)
 
 - [ ] **Step 5: 提交**
@@ -351,7 +351,7 @@ def test_context_survives_when_schema_empty():
 
 - [ ] **Step 3: 跑测试确认失败**
 
-Run: `cd api && /Users/keliang/mypy/duckdb-query/.venv/bin/python -m pytest tests/test_llm_context.py -q`
+Run: `cd api && ./.venv/bin/python -m pytest tests/test_llm_context.py -q`
 Expected: FAIL with `ModuleNotFoundError: No module named 'core.services.llm_context'`
 
 - [ ] **Step 4: 实现 `api/core/services/llm_context.py`**
@@ -410,7 +410,7 @@ def build_nl2sql_context(
 
 - [ ] **Step 5: 跑测试确认转绿**
 
-Run: `cd api && /Users/keliang/mypy/duckdb-query/.venv/bin/python -m pytest tests/test_llm_context.py -q`
+Run: `cd api && ./.venv/bin/python -m pytest tests/test_llm_context.py -q`
 Expected: PASS (2 passed)
 
 - [ ] **Step 6: 提交**
@@ -452,7 +452,7 @@ def test_explain_sql_calls_llm_and_returns_explanation():
 
 - [ ] **Step 2: 跑测试确认失败**
 
-Run: `cd api && /Users/keliang/mypy/duckdb-query/.venv/bin/python -m pytest tests/test_ai_explain.py -q`
+Run: `cd api && ./.venv/bin/python -m pytest tests/test_ai_explain.py -q`
 Expected: FAIL with `ModuleNotFoundError: No module named 'core.services.ai_explain'`
 
 - [ ] **Step 3: 实现 `api/core/services/ai_explain.py`**
@@ -485,7 +485,7 @@ def explain_sql(llm, sql: str, schema_text: str = "", locale: str = "zh") -> Dic
 
 - [ ] **Step 4: 跑测试确认转绿**
 
-Run: `cd api && /Users/keliang/mypy/duckdb-query/.venv/bin/python -m pytest tests/test_ai_explain.py -q`
+Run: `cd api && ./.venv/bin/python -m pytest tests/test_ai_explain.py -q`
 Expected: PASS
 
 - [ ] **Step 5: 写路由失败测试**
@@ -512,7 +512,7 @@ def test_explain_sql_route_returns_explanation(tmp_path, monkeypatch):
 
 - [ ] **Step 6: 跑路由测试确认失败**
 
-Run: `cd api && /Users/keliang/mypy/duckdb-query/.venv/bin/python -m pytest tests/test_ai_router.py::test_explain_sql_route_returns_explanation -q`
+Run: `cd api && ./.venv/bin/python -m pytest tests/test_ai_router.py::test_explain_sql_route_returns_explanation -q`
 Expected: FAIL —— 路由不存在 (404/405)。
 
 - [ ] **Step 7: 实现路由 —— 修改 `api/routers/ai.py`**
@@ -547,7 +547,7 @@ def explain_sql_route(payload: ExplainSqlPayload):
 
 - [ ] **Step 8: 跑路由 + 上一 Task 遗留的 not_configured 用例确认转绿**
 
-Run: `cd api && /Users/keliang/mypy/duckdb-query/.venv/bin/python -m pytest tests/test_ai_router.py::test_explain_sql_route_returns_explanation tests/test_ai_router.py::test_explain_not_configured_has_stable_code -q`
+Run: `cd api && ./.venv/bin/python -m pytest tests/test_ai_router.py::test_explain_sql_route_returns_explanation tests/test_ai_router.py::test_explain_not_configured_has_stable_code -q`
 Expected: PASS (2 passed)
 
 - [ ] **Step 9: 提交**
@@ -607,7 +607,7 @@ def test_nl_to_sql_tolerates_garbage_json():
 
 - [ ] **Step 2: 跑测试确认失败**
 
-Run: `cd api && /Users/keliang/mypy/duckdb-query/.venv/bin/python -m pytest tests/test_ai_nl_to_sql.py -q`
+Run: `cd api && ./.venv/bin/python -m pytest tests/test_ai_nl_to_sql.py -q`
 Expected: FAIL with `ModuleNotFoundError: No module named 'core.services.ai_nl_to_sql'`
 
 - [ ] **Step 3: 实现 `api/core/services/ai_nl_to_sql.py`**
@@ -654,7 +654,7 @@ def nl_to_sql(llm, question: str, context: str, locale: str = "zh") -> Dict[str,
 
 - [ ] **Step 4: 跑测试确认转绿**
 
-Run: `cd api && /Users/keliang/mypy/duckdb-query/.venv/bin/python -m pytest tests/test_ai_nl_to_sql.py -q`
+Run: `cd api && ./.venv/bin/python -m pytest tests/test_ai_nl_to_sql.py -q`
 Expected: PASS (3 passed)
 
 - [ ] **Step 5: 写路由失败测试**
@@ -686,7 +686,7 @@ def test_nl_to_sql_route_returns_safe_select(tmp_path, monkeypatch):
 
 - [ ] **Step 6: 跑路由测试确认失败**
 
-Run: `cd api && /Users/keliang/mypy/duckdb-query/.venv/bin/python -m pytest tests/test_ai_router.py::test_nl_to_sql_route_returns_safe_select -q`
+Run: `cd api && ./.venv/bin/python -m pytest tests/test_ai_router.py::test_nl_to_sql_route_returns_safe_select -q`
 Expected: FAIL —— 路由不存在。
 
 - [ ] **Step 7: 实现路由 —— 修改 `api/routers/ai.py`**
@@ -742,7 +742,7 @@ def nl_to_sql_route(payload: NlToSqlPayload):
 
 - [ ] **Step 8: 跑路由测试 + 全量 AI 套件确认转绿**
 
-Run: `cd api && /Users/keliang/mypy/duckdb-query/.venv/bin/python -m pytest tests/test_ai_router.py tests/test_ai_nl_to_sql.py tests/test_ai_explain.py tests/test_retriever.py tests/test_llm_context.py tests/test_ai_config.py tests/test_llm_service.py tests/test_crypto.py -q`
+Run: `cd api && ./.venv/bin/python -m pytest tests/test_ai_router.py tests/test_ai_nl_to_sql.py tests/test_ai_explain.py tests/test_retriever.py tests/test_llm_context.py tests/test_ai_config.py tests/test_llm_service.py tests/test_crypto.py -q`
 Expected: PASS (全绿)
 
 - [ ] **Step 9: 提交**
@@ -1667,7 +1667,7 @@ spec §9 step 7。无新代码,做收口验证。
 
 - [ ] **Step 1: 后端全量 AI 套件**
 
-Run: `cd api && /Users/keliang/mypy/duckdb-query/.venv/bin/python -m pytest tests/test_ai_router.py tests/test_ai_explain.py tests/test_ai_nl_to_sql.py tests/test_retriever.py tests/test_llm_context.py tests/test_ai_config.py tests/test_llm_service.py tests/test_crypto.py -q`
+Run: `cd api && ./.venv/bin/python -m pytest tests/test_ai_router.py tests/test_ai_explain.py tests/test_ai_nl_to_sql.py tests/test_retriever.py tests/test_llm_context.py tests/test_ai_config.py tests/test_llm_service.py tests/test_crypto.py -q`
 Expected: 全绿。
 
 - [ ] **Step 2: 前端全量测试 + 类型检查 + 构建**
@@ -1677,7 +1677,7 @@ Expected: tsc EXIT 0;vitest 全绿;build 成功。
 
 - [ ] **Step 3: 后端整库回归(确认没破坏其它)**
 
-Run: `cd api && /Users/keliang/mypy/duckdb-query/.venv/bin/python -m pytest -q`
+Run: `cd api && ./.venv/bin/python -m pytest -q`
 Expected: 仅 `test_duckdb_pool.py` 的 2 个预存在失败(与本计划无关),其余全绿。
 
 - [ ] **Step 4: 三态联通手测(需 `docker compose build` 出前端 + 起服务)**

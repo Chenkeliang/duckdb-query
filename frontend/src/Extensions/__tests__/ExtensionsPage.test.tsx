@@ -224,16 +224,16 @@ describe('ExtensionsPage', () => {
     });
   });
 
-  it('renders a usage code block with a copy button when usage is set', async () => {
+  it('expands usage on demand instead of taking space in every row (2026-10-30)', async () => {
     renderPage();
     await screen.findByText('sqlite_scanner');
 
     const sqliteCard = screen.getByTestId('extension-card-sqlite_scanner');
-    expect(
-      within(sqliteCard).getByText(
-        "ATTACH 'path/to/data.db' AS sq (TYPE sqlite); SELECT * FROM sq.some_table"
-      )
-    ).toBeInTheDocument();
+    expect(within(sqliteCard).queryByRole('button', { name: '复制' })).not.toBeInTheDocument();
+    await userEvent.click(within(sqliteCard).getByRole('button', { name: /查看.*用法/ }));
+    expect(sqliteCard).toHaveTextContent(
+      "ATTACH 'path/to/data.db' AS sq (TYPE sqlite); SELECT * FROM sq.some_table"
+    );
     expect(within(sqliteCard).getByRole('button', { name: '复制' })).toBeInTheDocument();
   });
 
@@ -260,10 +260,31 @@ describe('ExtensionsPage', () => {
     await screen.findByText('vss');
 
     const vssCard = screen.getByTestId('extension-card-vss');
+    await user.click(within(vssCard).getByRole('button', { name: /查看.*用法/ }));
     await user.click(within(vssCard).getByRole('button', { name: '复制' }));
 
     expect(writeTextMock).toHaveBeenCalledWith(
       'CREATE INDEX idx ON tbl USING HNSW (embedding)'
     );
+  });
+
+  it('searches descriptions and filters installation state without fetching again (2026-10-30)', async () => {
+    const user = userEvent.setup();
+    renderPage();
+    await screen.findByText('vss');
+    await user.click(screen.getByRole('tab', { name: '已安装' }));
+    expect(screen.queryByTestId('extension-card-vss')).not.toBeInTheDocument();
+    expect(screen.getByTestId('extension-card-excel')).toBeInTheDocument();
+    await user.click(screen.getByRole('tab', { name: '可安装' }));
+    expect(screen.queryByTestId('extension-card-excel')).not.toBeInTheDocument();
+    await user.type(screen.getByRole('textbox', { name: '搜索扩展名称或用途' }), 'HNSW');
+    expect(screen.getByTestId('extension-card-vss')).toBeInTheDocument();
+    expect(screen.queryByTestId('extension-card-sqlite_scanner')).not.toBeInTheDocument();
+    await user.clear(screen.getByRole('textbox', { name: '搜索扩展名称或用途' }));
+    await user.type(screen.getByRole('textbox', { name: '搜索扩展名称或用途' }), 'no-match');
+    expect(screen.getByText('没有符合条件的扩展')).toBeInTheDocument();
+    await user.click(screen.getByRole('button', { name: '清除筛选' }));
+    expect(screen.getByTestId('extension-card-excel')).toBeInTheDocument();
+    expect(listDuckDBExtensions).toHaveBeenCalledTimes(1);
   });
 });
