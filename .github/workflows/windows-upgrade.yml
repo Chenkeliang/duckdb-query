@@ -1,0 +1,76 @@
+name: Windows Upgrade Regression
+
+on:
+  pull_request:
+    branches: [main]
+  workflow_dispatch: {}
+
+permissions:
+  contents: read
+
+jobs:
+  windows-upgrade:
+    name: Windows Real Installer Upgrade
+    runs-on: windows-latest
+    timeout-minutes: 45
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.12"
+          architecture: x64
+          cache: pip
+      - name: Install backend dependencies
+        run: pip install -r api/requirements.txt pyinstaller
+      - name: Fetch bundled extension
+        run: python api/scripts/fetch_duckdb_extensions.py windows_amd64
+      - name: Freeze candidate backend
+        working-directory: api
+        run: pyinstaller duckquery.spec --noconfirm --distpath dist --workpath build
+      - name: Frozen backend smoke
+        working-directory: api
+        run: python scripts/frozen_smoke.py
+      - name: Stage candidate backend
+        shell: pwsh
+        run: |
+          New-Item -ItemType Directory -Force frontend/src-tauri/binaries | Out-Null
+          Copy-Item -Recurse api/dist/duckquery-api frontend/src-tauri/binaries/duckquery-api
+      - uses: actions/setup-node@v6
+        with:
+          node-version: "24"
+          cache: npm
+          cache-dependency-path: frontend/package-lock.json
+      - name: Install frontend dependencies
+        working-directory: frontend
+        run: npm ci
+      - uses: dtolnay/rust-toolchain@stable
+        with:
+          targets: x86_64-pc-windows-msvc
+      - uses: Swatinem/rust-cache@v2
+        with:
+          workspaces: "./frontend/src-tauri -> target"
+      - name: Build actual NSIS candidate
+        working-directory: frontend
+        shell: pwsh
+        run: |
+          $config = Join-Path $env:RUNNER_TEMP 'tauri-upgrade-test.json'
+          '{"bundle":{"createUpdaterArtifacts":false}}' | Set-Content -Encoding utf8 $config
+          npx tauri build --target x86_64-pc-windows-msvc --bundles nsis --config $config --ci
+      - name: Install old versions and verify real overlay upgrades
+        shell: pwsh
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $candidate = Get-ChildItem frontend/src-tauri/target/x86_64-pc-windows-msvc/release/bundle/nsis -Filter "*.exe" | Select-Object -First 1
+          if (!$candidate) { throw "Candidate installer not found" }
+          python api/scripts/windows_upgrade_smoke.py --candidate $candidate.FullName --output "$env:RUNNER_TEMP/upgrade-results.json"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+      - name: Save upgrade evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-upgrade-evidence
+          path: |
+            ${{ runner.temp }}/upgrade-results.json
+            ${{ runner.temp }}/duckquery-upgrade-*/*.log
+          if-no-files-found: ignore

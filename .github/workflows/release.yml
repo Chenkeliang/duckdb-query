@@ -141,6 +141,28 @@ jobs:
           prerelease: false
           args: --target ${{ matrix.rust_target }} --bundles ${{ matrix.bundles }}
 
+      - name: Real Windows overlay upgrade regression
+        if: runner.os == 'Windows'
+        shell: pwsh
+        timeout-minutes: 20
+        env:
+          GH_TOKEN: ${{ github.token }}
+        run: |
+          $candidate = Get-ChildItem "frontend/src-tauri/target/${{ matrix.rust_target }}/release/bundle/nsis" -Filter "*.exe" | Select-Object -First 1
+          if (!$candidate) { throw "Candidate installer not found" }
+          python api/scripts/windows_upgrade_smoke.py --candidate $candidate.FullName --output "$env:RUNNER_TEMP/upgrade-results.json"
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Save Windows upgrade evidence
+        if: always() && runner.os == 'Windows'
+        uses: actions/upload-artifact@v4
+        with:
+          name: release-windows-upgrade-evidence
+          path: |
+            ${{ runner.temp }}/upgrade-results.json
+            ${{ runner.temp }}/duckquery-upgrade-*/*.log
+          if-no-files-found: ignore
+
       # ---- 离线全量包(第二资产,不进更新通道) ----
       # 标准包只含 excel 扩展、Windows 用 WebView2 downloadBootstrapper(~90MB);
       # -offline 包给内网/无外网环境:全量 DuckDB 扩展(excel/httpfs/mysql/postgres),

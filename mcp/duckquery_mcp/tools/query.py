@@ -9,12 +9,16 @@ def _truncate(data: dict, cfg: Config) -> dict:
     """Compact a /execute-style result; cap rows at cfg.row_cap."""
     rows = data.get("data") or []
     capped = rows[: cfg.row_cap]
-    return {
+    result = {
         "columns": data.get("columns"),
         "rows": capped,
         "row_count": data.get("row_count", len(rows)),
         "truncated": len(rows) > len(capped),
     }
+    for field in ("column_types", "pushdown", "warnings"):
+        if field in data:
+            result[field] = data[field]
+    return result
 
 
 async def _is_mutating(client: DuckQueryClient | None, sql: str) -> bool:

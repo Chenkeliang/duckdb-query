@@ -51,14 +51,21 @@ Windows: `%APPDATA%\Claude\claude_desktop_config.json`):
 
 ## Tools
 
-MCP package version 0.4.0 adds `get_capabilities`. Call it before emitting
-DuckDB 2.0-specific SQL: it reports engine support separately from direct SQL,
-Agent, and MCP policy support. `run_sql` and `federated_query` use the backend's
-fail-closed SQL classification when available and retain a conservative local
-fallback for older DuckQuery backends.
+Version 0.4.1 retains the existing tool signatures and safety modes, adds optional column_types/pushdown/warnings to query results, and adds three read-only exploration tools for DuckQuery >=2.1.2:
 
-Version 0.4.0 is available from PyPI, and its wheel is also attached to the
-[DuckQuery v2.0.0 release](https://github.com/Chenkeliang/duckdb-query/releases/tag/v2.0.0).
+- get_column_insights: suggestions from actual field types, without row sampling.
+- discover_json_paths: apply filters before sampling at most 100 rows; paths are not a complete schema.
+- generate_insight_query: generate metrics or JSON-extraction SQL without executing it. Planned pushdown is not evidence of actual execution.
+
+Call get_capabilities before using DuckDB 2.0-specific SQL. run_sql/federated_query retain server classification and the conservative old-backend fallback. Legacy pivot execute=True generates SQL only; it does not create a table. Its existing confirmation gate and write-tier registration are unchanged. Materialization still uses save_as_table with explicit confirmation.
+
+The 0.4.1 wheel and source distribution accompany [DuckQuery v2.1.3](https://github.com/Chenkeliang/duckdb-query/releases/tag/v2.1.3). To use that exact wheel independently of PyPI publication:
+
+```bash
+uvx --from https://github.com/Chenkeliang/duckdb-query/releases/download/v2.1.3/duckquery_mcp-0.4.1-py3-none-any.whl duckquery-mcp
+```
+
+The unpinned uvx command uses the version available on PyPI (and its cache). After a PyPI update, use uvx --refresh duckquery-mcp@0.4.1 and reconnect/restart the MCP server. Existing MCP 0.4.0 tools remain compatible with DuckQuery v2.1.3; the Windows packaging repair does not require a client update.
 
 High-level tools (query, the AI agent tools below, discover, add sources,
 configure LLM, transform, export) plus a generic `duckquery_request` passthrough.
@@ -88,3 +95,14 @@ All five are `read`-tier tools — exposed in every safety mode — and never ex
 The AI-settings tools (`configure_llm`, `test_llm_provider`) are write-tier:
 hidden in `read-only`, and in `normal` mode they take the same `confirm=true`
 parameter as every other write tool.
+
+## Publishing (maintainers)
+
+The manual `Publish MCP` workflow builds/tests the version already merged into main, then publishes through PyPI OIDC without storing an API token in the repository. Configure a Trusted Publisher for the `duckquery-mcp` PyPI project:
+
+- GitHub owner: `Chenkeliang`
+- Repository: `duckdb-query`
+- Workflow: `publish-mcp.yml`
+- Environment: `pypi`
+
+After that one-time PyPI configuration, dispatch the workflow from main with version `0.4.1`. The publish job only receives an OIDC token, separate from the build job. Never put publication tokens in issues, release notes or source files.

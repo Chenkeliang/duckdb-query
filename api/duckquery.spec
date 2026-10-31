@@ -2,6 +2,7 @@
 import os
 import glob
 import shutil
+import runpy
 from PyInstaller.utils.hooks import collect_data_files, collect_submodules
 
 starlette_hidden = collect_submodules('starlette')
@@ -41,6 +42,8 @@ a = Analysis(
               'pyarrow', 'hf_xet', 'numpy', 'pandas', 'sqlalchemy'],
     noarchive=False,
 )
+_layout = runpy.run_path(os.path.join(SPECPATH, 'scripts', 'frozen_runtime_layout.py'))
+a.binaries = _layout['canonicalize_duckdb_binary'](a.binaries)
 pyz = PYZ(a.pure)
 exe = EXE(pyz, a.scripts, [], exclude_binaries=True, name='duckquery-api',
           debug=False, bootloader_ignore_signals=False, strip=False, upx=False,
