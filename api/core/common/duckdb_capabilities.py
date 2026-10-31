@@ -248,7 +248,7 @@ def build_capability_contract(
     ]
     return {
         "contract_version": CONTRACT_VERSION,
-        "product_version": "2.1.2",
+        "product_version": "2.1.3",
         "engine": {
             "python_version": python_version,
             "version": engine_version,
@@ -273,7 +273,7 @@ def build_capability_contract(
             }
         },
         "agent": {"profile_revision": AGENT_PROFILE_REVISION, "execution": "read-only"},
-        "mcp": {"package_version": "0.4.0", "execution_modes": ["read-only", "normal", "full"]},
+        "mcp": {"package_version": "0.4.1", "execution_modes": ["read-only", "normal", "full"]},
         "features": features,
     }
 

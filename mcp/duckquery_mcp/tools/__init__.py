@@ -5,7 +5,7 @@ from mcp.server.fastmcp import FastMCP
 from duckquery_mcp.client import BackendError, BackendNotFound, DuckQueryClient
 from duckquery_mcp.config import Config
 from duckquery_mcp.safety import tool_allowed
-from duckquery_mcp.tools import ai_settings, discover, export, passthrough, query, sources, transform
+from duckquery_mcp.tools import ai_settings, discover, export, insights, passthrough, query, sources, transform
 from duckquery_mcp.util import normalize_attach_list, normalize_connection_id
 
 
@@ -46,6 +46,9 @@ def register_all(mcp: FastMCP, client: DuckQueryClient, cfg: Config) -> None:
 
     add("read")(discover.list_tables)
     add("read")(discover.get_capabilities)
+    add("read")(insights.get_column_insights)
+    add("read")(insights.discover_json_paths)
+    add("read")(insights.generate_insight_query)
     add("read")(discover.describe_table)
     add("read")(discover.list_connections)
     add("read")(discover.list_db_objects)

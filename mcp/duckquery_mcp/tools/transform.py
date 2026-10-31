@@ -34,10 +34,15 @@ async def save_as_table(client, cfg, *, sql: str, table_name: str,
 
 async def pivot(client, cfg, *, config: dict, pivot_config: dict, execute: bool = False,
                 limit: int = 100, confirm: bool = False) -> Any:
-    """Pivot a table. execute=False previews; execute=True writes the pivoted result.
+    """Pivot a table: execute=False previews rows; execute=True generates SQL ONLY.
+
+    The legacy execute=True name does not execute SQL or create a result table.
+    To materialize the generated SQL, call save_as_table with explicit confirmation.
+    The existing permission gate is retained: this legacy flag still requires
+    confirm=true in normal mode, and the tool remains hidden in read-only mode.
 
     config is the BASE-QUERY config (which table to read), NOT the pivot dimensions:
-      {"table_name": "orders", "filters": [], "limit": null}
+      {"table_name": "orders", "filters": []}
     pivot_config holds the pivot shape. Minimal working example:
       {"rows": ["region"], "columns": ["month"],
        "values": [{"column": "amount", "aggregation": "SUM"}]}
@@ -47,10 +52,10 @@ async def pivot(client, cfg, *, config: dict, pivot_config: dict, execute: bool 
     totals), include_subtotals, include_grand_totals.
     Preview rows are capped by `limit` (default 100; raise explicitly for more) —
     `row_count` in the response is still the full pivoted total.
-    execute=True writes a table, so it needs confirm=true (preview does not).
+    execute=True retains its confirm=true requirement; preview does not.
     """
     from duckquery_mcp.safety import confirm_required
-    # Only execute=True mutates (writes a result table); preview stays read-only.
+    # Retain the legacy confirmation contract even though /generate only returns SQL.
     blocked = confirm_required(cfg, execute, confirm)
     if blocked:
         return blocked

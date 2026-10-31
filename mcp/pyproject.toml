@@ -1,10 +1,10 @@
 [project]
 name = "duckquery-mcp"
-version = "0.4.0"
+version = "0.4.1"
 description = "MCP server for a locally-running DuckQuery backend"
 readme = "README.md"
 license = { text = "MIT" }
-authors = [{ name = "Chen" }]
+authors = [{ name = "Chenkeliang" }]
 keywords = ["mcp", "duckdb", "sql", "data-analysis", "duckquery"]
 classifiers = [
     "Programming Language :: Python :: 3",

@@ -1,0 +1,58 @@
+name: Publish MCP
+
+on:
+  workflow_dispatch:
+    inputs:
+      version:
+        description: MCP version already merged into main
+        required: true
+        default: "0.4.1"
+
+permissions:
+  contents: read
+
+jobs:
+  build:
+    if: github.ref == 'refs/heads/main'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v6
+      - uses: actions/setup-python@v6
+        with:
+          python-version: "3.11"
+      - uses: astral-sh/setup-uv@v7
+      - name: Verify requested version
+        env:
+          EXPECTED_VERSION: ${{ inputs.version }}
+        run: |
+          python - <<'PY'
+          import os, tomllib
+          from pathlib import Path
+          actual = tomllib.loads(Path('mcp/pyproject.toml').read_text())['project']['version']
+          assert actual == os.environ['EXPECTED_VERSION'], (actual, 'requested version mismatch')
+          PY
+      - name: Test and build MCP
+        working-directory: mcp
+        run: |
+          uv sync --frozen --extra dev
+          uv run python -m pytest tests -q
+          uv build --out-dir dist
+          uvx --from twine twine check dist/*
+      - uses: actions/upload-artifact@v4
+        with:
+          name: mcp-distributions
+          path: mcp/dist/*
+
+  publish:
+    needs: build
+    runs-on: ubuntu-latest
+    environment: pypi
+    permissions:
+      id-token: write
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          name: mcp-distributions
+          path: dist
+      - name: Publish using PyPI Trusted Publishing
+        uses: pypa/gh-action-pypi-publish@release/v1

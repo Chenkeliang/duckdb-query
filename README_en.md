@@ -32,7 +32,7 @@ DuckQuery is an independently developed, local-first data workbench powered by D
 
 ### Desktop (Recommended)
 
-The latest release is **[v2.1.2](https://github.com/Chenkeliang/duckdb-query/releases/tag/v2.1.2)**. Features below describe this release; its source is available at the [v2.1.2 tag](https://github.com/Chenkeliang/duckdb-query/tree/v2.1.2).
+The latest release is **[v2.1.3](https://github.com/Chenkeliang/duckdb-query/releases/tag/v2.1.3)**. Features below describe this release; its source is available at the [v2.1.3 tag](https://github.com/Chenkeliang/duckdb-query/tree/v2.1.3).
 
 Choose the installer for your machine from [GitHub Releases](https://github.com/Chenkeliang/duckdb-query/releases/latest):
 
@@ -51,7 +51,7 @@ Use the standard build when online; some external database connections download 
 Install Docker and Docker Compose, then run:
 
 ```bash
-git clone --branch v2.1.2 --depth 1 https://github.com/Chenkeliang/duckdb-query.git
+git clone --branch v2.1.3 --depth 1 https://github.com/Chenkeliang/duckdb-query.git
 cd duckdb-query
 ./quick-start.sh
 ```
@@ -148,9 +148,9 @@ See the [MCP documentation](mcp/README.md) for client configuration, backend dis
 
 ## Engine and Upgrade Notes
 
-The **latest released app version is v2.1.2**, adding data exploration, JSON extraction, safe MySQL candidate filtering and compact extension management. See the [v2.1.2 release notes](https://github.com/Chenkeliang/duckdb-query/blob/v2.1.2/docs/releases/v2.1.2_en.md).
+The **latest released app version is v2.1.3**, repairing Windows engine startup after overlay upgrades while retaining v2.1.2 data exploration, JSON extraction, safe MySQL candidate filtering and compact extensions. See the [v2.1.3 release notes](docs/releases/v2.1.3_en.md).
 
-The app and DuckDB **engine versions** are maintained separately. v2.1.2 uses **stable DuckDB 2.0** (`duckdb==2.0.0`, engine `v2.0.0`); v2.1.1 used `1.6.0.dev379` / `v2.0.0-alpha39998`. New databases still use `v2.0.0` storage, existing files are not automatically migrated, and extensions must match the stable engine and platform.
+The app and DuckDB **engine versions** are maintained separately. v2.1.3 uses **stable DuckDB 2.0** (`duckdb==2.0.0`, engine `v2.0.0`); v2.1.1 used `1.6.0.dev379` / `v2.0.0-alpha39998`. New databases still use `v2.0.0` storage, existing files are not automatically migrated, and extensions must match the stable engine and platform.
 
 Data exploration suggests operations by actual column types, previews SQL and displays metric cards. It can also discover paths in JSON/VARIANT/text and extract typed columns. Discovery applies current filters before sampling at most 100 rows; sampled paths are not a complete schema. Statistics cover all filtered input. Text extraction preserves large integers by default; missing paths and failed casts return NULL. Desktop and server editions provide this entry; the browser-only Wasm demo does not.
 
@@ -160,7 +160,7 @@ Extension management supports name/purpose search, installation-state filters an
 
 Upgrading from DuckQuery 2.0.x introduces no new storage migration. Before upgrading from 1.x, back up `main.db`, `system.db`, and their `.wal` files, then read the [2.0 major-version notes](docs/releases/v2.0.0_en.md). Existing databases are not silently migrated at startup. After an explicit migration to the new storage format, restore a pre-upgrade backup to return to an older version.
 
-Earlier release notes: [v2.1.1](docs/releases/v2.1.1_en.md) · [v2.1.0](docs/releases/v2.1.0_en.md) · [v2.0.1](docs/releases/v2.0.1_en.md) · [v2.0.0](docs/releases/v2.0.0_en.md).
+Earlier release notes: [v2.1.2](docs/releases/v2.1.2_en.md) · [v2.1.1](docs/releases/v2.1.1_en.md) · [v2.1.0](docs/releases/v2.1.0_en.md) · [v2.0.1](docs/releases/v2.0.1_en.md) · [v2.0.0](docs/releases/v2.0.0_en.md).
 
 Settings → DuckDB database storage shows resource budgets, backup checks, and recovery guidance. Extensions are isolated by engine version; see the [engine upgrade specification](docs/specs/duckdb-2-compatibility-and-capabilities.md) for compatibility details.
 
