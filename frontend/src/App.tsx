@@ -51,6 +51,7 @@ import { useAsyncTaskMonitor } from "./hooks/useAsyncTaskMonitor";
 import { useAiStatus } from "./hooks/useAiStatus";
 import { agentChatBus } from "./Query/SQLQuery/ai/agentChatBus";
 import { queueWorkbenchCommand } from "./Query/workbenchCommands";
+import { QuackServicesPanel } from '@/Quack';
 
 import Logo from "./assets/duckq-logo.svg";
 import { isTauri, openExternal } from "./desktop/openExternal";
@@ -424,6 +425,7 @@ const AppInner: React.FC = () => {
 
     if (currentTab === "datasource") {
       return <DataSourcePage
+        quackServicesPanel={!IS_DEMO && <QuackServicesPanel mode="manage" onOpenQuery={(service, sql) => runOnWorkbench(() => queueWorkbenchCommand('openQuackQuery', service, sql))} />}
         onAddData={openAddData}
         onBackToWorkbench={() => setCurrentTab('queryworkbench')}
         onQueryTable={(name) => {

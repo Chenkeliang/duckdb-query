@@ -162,6 +162,36 @@ def main() -> None:
         _check("DuckDB engine", capabilities["engine"]["version"], "v2.0.0")
         _check("DuckDB Python", capabilities["engine"]["python_version"], "2.0.0")
         _check("DuckDB release stage", capabilities["engine"]["release_stage"], "stable")
+        package = json.loads(
+            (Path(__file__).resolve().parents[2] / "frontend/package.json").read_text(
+                encoding="utf-8"
+            )
+        )
+        _check("application version", capabilities["product_version"], package["version"])
+        quack = next(
+            feature for feature in capabilities["features"]
+            if feature["id"] == "quack_services"
+        )
+        _check("Quack service API", quack["service_api"]["status"], "supported")
+        _check("Quack Agent boundary", quack["agent"]["status"], "blocked")
+        _check("Quack MCP boundary", quack["mcp"]["status"], "blocked")
+
+        # Synthetic config only: no connection test, download or remote server.
+        token = "frozen-synthetic-token"
+        status, saved = _post_json(port, "/api/quack/services", {
+            "name": "Frozen smoke", "uri": "quack:127.0.0.1:9", "token": token,
+        })
+        _check("Quack registration status", status, 200)
+        _check("Quack credential sentinel", saved["data"]["has_token"], True)
+        _check("Quack credential not returned", token in json.dumps(saved), False)
+        stored = (workdir / "config/quack-services.json").read_text(encoding="utf-8")
+        _check("Quack credential not stored as plaintext", token in stored, False)
+        status, rejected = _post_json(
+            port, f"/api/quack/services/{saved['data']['id']}/execute",
+            {"sql": "SELECT * FROM \"checkpoint\"('synthetic')"},
+        )
+        _check("Quack mutating function rejected before connection", status, 400)
+        _check("Quack read-only error", rejected["error"]["code"], "QUACK_READ_ONLY_REQUIRED")
         variant = next(
             feature for feature in capabilities["features"]
             if feature["id"] == "variant_and_json_mutation"
@@ -194,6 +224,20 @@ def main() -> None:
         rows = _execute(port, "SELECT 42 AS a, 'x' AS s")
         _check("plain int", rows[0]["a"], 42)
         _check("plain varchar", rows[0]["s"], "x")
+
+        status, saved = _post_json(port, "/api/duckdb/execute", {
+            "sql": "SELECT 1::INTEGER AS id, 1.25::DECIMAL(18,2) AS amount",
+            "save_as_table": "frozen_smoke_fields",
+        })
+        _check("structure fixture status", status, 200)
+        with urllib.request.urlopen(
+            f"http://127.0.0.1:{port}/api/duckdb/tables/frozen_smoke_fields?columns_only=true",
+            timeout=10,
+        ) as response:
+            structure = json.loads(response.read())["data"]
+        _check("structure-only column count", structure["column_count"], 2)
+        _check("structure-only DECIMAL type", structure["columns"][1]["type"], "DECIMAL(18,2)")
+        _check("structure-only omits row statistics", "row_count" in structure, False)
 
         # AI 链路（llm_client + httpx）在冻结包内可用:配一个不可达端点的
         # provider,期待干净的"请求失败"JSON——若打包漏了 httpx 传递依赖,

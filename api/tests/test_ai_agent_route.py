@@ -164,6 +164,39 @@ def test_suggest_chart_run_and_fallback(tmp_path, monkeypatch):
     assert data["termination_reason"] == "output_invalid" and data["result"] is None
 
 
+@pytest.mark.parametrize("transport", ["run", "stream"])
+def test_chart_context_reaches_model_through_real_endpoint(tmp_path, monkeypatch, transport):
+    """2026-11-02: typed context and runner preparation silently dropped chart metadata."""
+    _enable_ai(tmp_path, monkeypatch)
+    captured = []
+
+    async def model(**kwargs):
+        captured.extend(kwargs["messages"])
+        return json.dumps({"action": "final", "result": {
+            "type": "line", "x": "d", "y": ["v"], "agg": "avg", "dataMode": "rows"}})
+
+    monkeypatch.setattr("core.services.llm_service.llm_client.complete_async", model)
+    body = {
+        "mode": "suggest_chart", "input": {
+            "columns": [{"name": "d", "type": "DATE"}, {"name": "v", "type": "DOUBLE"}], "sample": []},
+        "context": {"chart_goal": "trend", "current_sql": "SELECT d, AVG(v) v FROM t GROUP BY d",
+                    "chart_summary": {"row_count": 20, "truncated": True,
+                                      "columns": [{"name": "d", "observed_min": "2026-10-01"}]}},
+    }
+    if transport == "run":
+        response = client.post("/api/ai/agent/run", json=body)
+        assert response.status_code == 200
+        assert response.json()["data"]["result"]["dataMode"] == "rows"
+    else:
+        with client.stream("POST", "/api/ai/agent/stream", json=body) as response:
+            assert response.status_code == 200
+            assert next(event for event in _read_events(response) if event["event"] == "answer")["result"]["dataMode"] == "rows"
+    messages = "\n".join(message["content"] for message in captured)
+    assert "# Analysis goal\ntrend" in messages
+    assert '"row_count": 20' in messages and '"truncated": true' in messages
+    assert "observed_min" in messages and "AVG(v)" in messages
+
+
 def test_unknown_mode_400(tmp_path, monkeypatch):
     """未知 mode 是非法判别键(取值错误)→ 400 VALIDATION_ERROR,绝不是
     ai_not_configured(那只表示供应商/模型没配)。stream / run 两个 transport 都覆盖。"""

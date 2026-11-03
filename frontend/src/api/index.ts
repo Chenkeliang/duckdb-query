@@ -36,6 +36,7 @@ export {
 
 // ==================== Types ====================
 export * from './types';
+export * from './quackApi';
 
 // ==================== Query API ====================
 export {
@@ -150,6 +151,9 @@ export {
     getDuckDBTables,
     fetchDuckDBTableSummaries,
     getDuckDBTableDetail,
+    getDuckDBTableStructure,
+    getExternalTableStructure,
+    type TableStructure,
     deleteDuckDBTable,
     refreshDuckDBTableMetadata,
     getExternalTableDetail,

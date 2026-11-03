@@ -436,11 +436,18 @@ def _ensure_table_exists(con, table_name: str) -> None:
 
 
 @router.get("/api/duckdb/tables/detail/{table_name}", tags=["DuckDB Query"])
-def get_duckdb_table_detail(table_name: str):
+def get_duckdb_table_detail(table_name: str, columns_only: bool = False):
     """获取指定表的列级详细信息"""
     try:
         with with_duckdb_connection() as con:
             _ensure_table_exists(con, table_name)
+            if columns_only:
+                rows = con.execute(f"DESCRIBE {quote_identifier(table_name)}").fetchall()
+                columns = [{"name": row[0], "type": row[1]} for row in rows]
+                return create_success_response(
+                    data={"table_name": table_name, "columns": columns, "column_count": len(columns)},
+                    message_code=MessageCode.TABLE_RETRIEVED,
+                )
             metadata = get_table_metadata(table_name, con)
             metadata_dict = (
                 metadata.model_dump()
@@ -463,9 +470,9 @@ def get_duckdb_table_detail(table_name: str):
 
 
 @router.get("/api/duckdb/tables/{table_name}", tags=["DuckDB Query"])
-def get_duckdb_table(table_name: str):
+def get_duckdb_table(table_name: str, columns_only: bool = False):
     """获取指定表的详细信息（别名端点）"""
-    return get_duckdb_table_detail(table_name)
+    return get_duckdb_table_detail(table_name, columns_only=columns_only)
 
 
 @router.post("/api/duckdb/table/{table_name}/refresh", tags=["DuckDB Query"])

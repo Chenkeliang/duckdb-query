@@ -42,6 +42,7 @@ import { openExternal } from '@/desktop/openExternal';
 import type { SelectedTableObject } from '@/types/SelectedTable';
 import { invalidateDuckDBTables } from '@/hooks/useDuckDBTables';
 import { invalidateDataSources } from '@/hooks/useDataSources';
+import { invalidateTableColumns } from '@/hooks/useTableColumns';
 import { invalidateAfterTableDelete } from '@/utils/cacheInvalidation';
 import { showSuccessToast, showErrorToast, showDownloadStartedToast } from '@/utils/toastHelpers';
 
@@ -63,6 +64,7 @@ interface TableContextMenuProps {
   table: SelectedTableObject;
   canDelete?: boolean; // 是否可以删除（外部表不能删除）
   onPreview?: () => void;
+  onPreviewSQL?: () => void;
   onProfile?: () => void;
   onDelete?: (tableName: string) => Promise<void> | void;
   onImport?: (table: SelectedTableObject) => void;
@@ -73,6 +75,7 @@ export const TableContextMenu: React.FC<TableContextMenuProps> = ({
   table,
   canDelete = true,
   onPreview,
+  onPreviewSQL,
   onProfile,
   onDelete,
   onImport,
@@ -183,6 +186,7 @@ export const TableContextMenu: React.FC<TableContextMenuProps> = ({
       await Promise.all([
         invalidateDuckDBTables(queryClient),
         invalidateDataSources(queryClient),
+        invalidateTableColumns(queryClient, table.name),
       ]);
       showSuccessToast(t, 'TABLE_REFRESHED', t('dataSource.refreshSuccess', { tableName: table.name }));
     } catch (error) {
@@ -225,6 +229,10 @@ export const TableContextMenu: React.FC<TableContextMenuProps> = ({
           {children}
         </ContextMenuTrigger>
         <ContextMenuContent className="w-56">
+          {onPreviewSQL && <ContextMenuItem onClick={onPreviewSQL}>
+            <Eye className="mr-2 h-4 w-4" />
+            <span>{t('dataSource.openPreviewSQL')}</span>
+          </ContextMenuItem>}
           {/* 预览数据 - 所有表都可用 */}
           <ContextMenuItem onClick={handlePreview}>
             <Eye className="mr-2 h-4 w-4" />

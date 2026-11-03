@@ -9,6 +9,7 @@ import { queueWorkbenchCommand, __resetWorkbenchCommands } from '../../workbench
 afterEach(() => { cleanup(); __resetWorkbenchCommands(); });
 
 const panelProps = vi.hoisted(() => ({
+  source: undefined as import('@/types/queryWorkspace').TableSource | undefined,
   joinTables: undefined as SelectedTable[] | undefined,
   activeSqlTables: [] as SelectedTable[],
   previewNonce: undefined as number | undefined,
@@ -20,7 +21,8 @@ vi.mock('react-i18next', () => ({
     i18n: { language: 'zh' },
   }),
 }));
-vi.mock('../../SQLQuery', () => ({ SQLQueryPanel: ({ isActive, selectedTables, previewNonce }: { isActive: boolean; selectedTables: SelectedTable[]; previewNonce?: number }) => {
+vi.mock('../../SQLQuery', () => ({ SQLQueryPanel: ({ isActive, selectedTables, previewNonce, executionSource }: { isActive: boolean; selectedTables: SelectedTable[]; previewNonce?: number; executionSource?: import('@/types/queryWorkspace').TableSource }) => {
+  if (isActive) panelProps.source = executionSource;
   if (isActive) panelProps.previewNonce = previewNonce;
   if (isActive) panelProps.activeSqlTables = selectedTables;
   const [draft, setDraft] = useState('');
@@ -144,4 +146,23 @@ it('2026-10-10: repeating an identical external preview delivers a new editor re
   const firstRequest = panelProps.previewNonce;
   rerender(<QueryTabs {...props} previewNonce={2} />);
   expect(panelProps.previewNonce).toBeGreaterThan(firstRequest!);
+});
+
+/** Regression 2026-11-03: service selection must not retarget a local editor. */
+it('keeps remote targets and local drafts independent', () => {
+  render(<QueryTabs activeTab="sql" selectedTablesByTab={selectedTablesByTab} onTabChange={vi.fn()} onExecute={vi.fn(async () => undefined)} />);
+  fireEvent.change(screen.getByLabelText('active editor'), { target: { value: 'SELECT local_value' } });
+  act(() => queueWorkbenchCommand('openQuackQuery', { id: 'qa', name: 'Server A' }, 'SELECT remote_value'));
+  expect(screen.getByRole('tab', { name: 'Server A · SQL 2' })).toHaveAttribute('aria-selected', 'true');
+  expect(panelProps.source).toEqual({ type: 'quack', connectionId: 'qa', connectionName: 'Server A' });
+  expect(panelProps.activeSqlTables).toEqual([]);
+  fireEvent.change(screen.getByLabelText('active editor'), { target: { value: 'SELECT remote_draft' } });
+  act(() => queueWorkbenchCommand('openQuackQuery', { id: 'qb', name: 'Server B' }));
+  expect(panelProps.source?.connectionId).toBe('qb');
+  fireEvent.click(screen.getByRole('tab', { name: 'Server A · SQL 2' }));
+  expect(panelProps.source?.connectionId).toBe('qa');
+  expect(screen.getByLabelText('active editor')).toHaveValue('SELECT remote_draft');
+  fireEvent.click(screen.getByRole('tab', { name: 'SQL 1' }));
+  expect(panelProps.source).toBeUndefined();
+  expect(screen.getByLabelText('active editor')).toHaveValue('SELECT local_value');
 });

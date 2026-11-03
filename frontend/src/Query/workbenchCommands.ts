@@ -8,6 +8,8 @@
  */
 
 export interface WorkbenchCommandMap {
+  /** Open an independent remote SQL editor without changing an existing target. */
+  openQuackQuery: (service: { id: string; name: string }, sql?: string) => void;
   /** 执行当前 SQL 标签 */
   run: () => void;
   /** 当前 SQL 以异步任务提交 */
@@ -18,6 +20,8 @@ export interface WorkbenchCommandMap {
   insertText: (text: string) => void;
   /** 把一段 SQL 载入编辑器（历史 / 收藏 / 运行记录） */
   loadSql: (sql: string) => void;
+  /** Open a table preview in a local/federated SQL editor without a dialog or execution. */
+  openTableQuery: (sql: string) => void;
   /** 新建查询标签 */
   newTab: (kind?: 'sql' | 'join' | 'set' | 'pivot') => void;
   /** 显示 / 隐藏左侧数据源面板 */

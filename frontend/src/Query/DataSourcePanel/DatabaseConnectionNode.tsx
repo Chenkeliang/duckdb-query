@@ -9,6 +9,7 @@ import { SchemaNode } from '@/Query/DataSourcePanel/SchemaNode';
 import { TableItem } from './TableItem';
 import { useSchemas } from '@/hooks/useSchemas';
 import { useSchemaTables } from '@/hooks/useSchemaTables';
+import { TABLE_COLUMNS_QUERY_KEY } from '@/hooks/useTableColumns';
 import type { DatabaseConnection } from '@/hooks/useDatabaseConnections';
 import type { SelectedTable } from '@/types/SelectedTable';
 import { createExternalTable, isTableSelected } from '@/utils/tableUtils';
@@ -122,6 +123,10 @@ export const DatabaseConnectionNode: React.FC<DatabaseConnectionNodeProps> = ({
         }),
         queryClient.invalidateQueries({
           queryKey: ['schema-tables', connection.id]
+        }),
+        queryClient.invalidateQueries({
+          queryKey: TABLE_COLUMNS_QUERY_KEY,
+          predicate: query => query.queryKey[2] === connection.id,
         }),
       ]);
       showSuccessToast(t, 'CONNECTION_REFRESHED', t('dataSource.refreshConnectionSuccess', { name: connection.name }));

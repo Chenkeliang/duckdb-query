@@ -1,9 +1,12 @@
 /** 查询结果图表 —— 纯函数:列分类 / 默认 spec / 校验 / 生成聚合 SQL / 客户端聚合。 */
 
 import { sqlStringLiteral } from '@/utils/sqlLiteral';
+import { tokenizeSQL } from '@/utils/sqlTokenizer';
+import { combineChartValues } from './chartNumbers';
 import {
   isNumericType as isDuckDBNumericType,
   isDateOrTimestampType,
+  isIntegerType,
 } from '@/utils/duckdbTypes';
 
 export type ChartType = 'bar' | 'line' | 'area' | 'pie' | 'donut' | 'kpi';
@@ -16,6 +19,8 @@ export interface ChartSpec {
   agg: AggFn;
   xBin?: 'day' | 'month' | null;
   stacked?: boolean;
+  dataMode?: 'rows' | 'aggregate';
+  reason?: string;
 }
 
 export interface ColumnInfo {
@@ -59,17 +64,35 @@ export function classifyColumns(columns: ColumnInfo[]): {
 const CHART_TYPES: ChartType[] = ['bar', 'line', 'area', 'pie', 'donut', 'kpi'];
 const AGG_FNS: AggFn[] = ['sum', 'count', 'avg', 'min', 'max'];
 
-export function defaultSpec(columns: ColumnInfo[]): ChartSpec {
-  const { dims, metrics, dates } = classifyColumns(columns);
+/** Conservative defaults only; excluded fields remain available for explicit selection. */
+export function metricCandidates(columns: ColumnInfo[], rows?: Array<Record<string, unknown>>): string[] {
+  return columns.filter((column) => isNumericType(column.type))
+    .filter(({ name }) => !/(^|_)(id|uuid|guid|key|code|type|status|flag|category)$/i.test(name))
+    .filter((column) => {
+      if (!rows || rows.length <= 1) return true;
+      const values = rows.map((row) => row[column.name]).filter((value) => value != null && String(value).trim() !== '');
+      const distinct = new Set(values.map(String)).size;
+      if (distinct <= 1) return false;
+      return !(isIntegerType(column.type) && values.length >= 20 && distinct <= 12 && distinct / values.length <= 0.1);
+    })
+    .sort((a, b) => Number(isIntegerType(a.type)) - Number(isIntegerType(b.type)))
+    .map((column) => column.name);
+}
+
+export function defaultSpec(columns: ColumnInfo[], rows?: Array<Record<string, unknown>>): ChartSpec {
+  const { dims, dates } = classifyColumns(columns);
   const x = dates[0] ?? dims[0] ?? null;
-  const y = metrics.slice(0, 1);
+  // Names are only a conservative exclusion hint, never a business definition.
+  // Identifier columns remain available in the manual selector.
+  const y = metricCandidates(columns, rows).slice(0, 1);
   return {
     type: dates[0] ? 'line' : 'bar',
     x,
     y,
     agg: y.length ? 'sum' : 'count',
-    xBin: dates[0] && x === dates[0] ? 'day' : null,
+    xBin: null,
     stacked: false,
+    dataMode: 'rows',
   };
 }
 
@@ -80,7 +103,8 @@ export function validateSpec(spec: ChartSpec, columns: ColumnInfo[]): ChartSpec 
   const xOk = spec?.type === 'kpi' || (spec?.x != null && names.has(spec.x));
   const yOk = Array.isArray(spec?.y) && spec.y.every((c) => names.has(c));
   const binOk = spec?.xBin == null || spec.xBin === 'day' || spec.xBin === 'month';
-  if (typeOk && aggOk && xOk && yOk && binOk) {
+  const modeOk = spec?.dataMode == null || spec.dataMode === 'rows' || spec.dataMode === 'aggregate';
+  if (typeOk && aggOk && xOk && yOk && binOk && modeOk) {
     // 护栏:日期维度不该用饼/环(占比图),日期是趋势 → 自动改折线
     if ((spec.type === 'pie' || spec.type === 'donut') && spec.x) {
       const col = (columns || []).find((c) => c.name === spec.x);
@@ -93,11 +117,14 @@ export function validateSpec(spec: ChartSpec, columns: ColumnInfo[]): ChartSpec 
   return defaultSpec(columns);
 }
 
-export function stripTrailingLimit(sql: string): string {
-  return (sql || '')
-    .replace(/;\s*$/, '')
-    .replace(/\s+limit\s+\d+\s*(offset\s+\d+\s*)?$/i, '')
-    .trim();
+/** Keep business restrictions and comments intact; only remove the statement terminator. */
+function chartInnerSql(sql: string, previewLimit?: number): string {
+  const tokens = tokenizeSQL(sql);
+  const last = tokens[tokens.length - 1];
+  const inner = (last?.type === 'semicolon'
+    ? sql.slice(0, last.position) + sql.slice(last.position + last.raw.length)
+    : sql).trim();
+  return previewLimit == null ? inner : `SELECT * FROM (\n${inner}\n) AS _preview LIMIT ${previewLimit}`;
 }
 
 function xExpr(spec: ChartSpec): string {
@@ -116,18 +143,18 @@ function metricColExpr(col: string, agg: AggFn, columns?: ColumnInfo[]): string 
 }
 
 /** 把用户 SQL 包成子查询做全量聚合(截断时用)。返回值由调用方按本地/联邦端点执行。 */
-export function buildChartSql(userSql: string, spec: ChartSpec, columns?: ColumnInfo[]): string {
-  const inner = stripTrailingLimit(userSql);
+export function buildChartSql(userSql: string, spec: ChartSpec, columns?: ColumnInfo[], options: { previewLimit?: number } = {}): string {
+  const inner = chartInnerSql(userSql, options.previewLimit);
   if (spec.type === 'kpi') {
     const metric = spec.y[0] ? `${spec.agg}(${metricColExpr(spec.y[0], spec.agg, columns)})` : 'count(*)';
-    return `SELECT ${metric} AS metric FROM (${inner}) AS _src`;
+    return `SELECT ${metric} AS metric FROM (\n${inner}\n) AS _src`;
   }
   const metricSql = spec.y.length
     ? spec.y.map((col, i) => `${spec.agg}(${metricColExpr(col, spec.agg, columns)}) AS m_${i}`).join(', ')
     : 'count(*) AS m_0';
   // 无维度(空列等退化场景)用常量单桶,避免生成 "null" 列
   const dimExpr = spec.x ? xExpr(spec) : `'全部'`;
-  return `SELECT ${dimExpr} AS dim, ${metricSql} FROM (${inner}) AS _src GROUP BY 1 ORDER BY 1 LIMIT 200`;
+  return `SELECT ${dimExpr} AS dim, ${metricSql} FROM (\n${inner}\n) AS _src GROUP BY 1 ORDER BY 1 LIMIT 200`;
 }
 
 /** 把 dim 值(两种形态:服务端 date_trunc 结果 / 客户端 binDim 截断串)归一化为 {y,m,d}。 */
@@ -156,7 +183,7 @@ function binRange(v: string, xBin: 'day' | 'month'): { start: string; end: strin
  * 图表点击下钻:把被点的维度值转成明细 SQL(包裹子查询,复用 buildChartSql 的既有模式)。
  * 不可下钻(KPI / 无维度 / 「其它」「全部」合并桶)时返回 null。
  */
-export function buildDrilldownSql(spec: ChartSpec, clickedDim: string, sourceSql: string | null): string | null {
+export function buildDrilldownSql(spec: ChartSpec, clickedDim: string, sourceSql: string | null, options: { previewLimit?: number } = {}): string | null {
   if (!sourceSql || !spec.x || spec.type === 'kpi') return null;
   if (clickedDim === '其它' || clickedDim === '全部') return null;
 
@@ -171,16 +198,16 @@ export function buildDrilldownSql(spec: ChartSpec, clickedDim: string, sourceSql
     cond = `${q(spec.x)} = ${sqlStringLiteral(clickedDim)}`;
   }
 
-  const inner = stripTrailingLimit(sourceSql);
+  const inner = chartInnerSql(sourceSql, options.previewLimit);
   // 源 SQL 本身已是同条件的下钻结果(在明细图表上再次点击同一桶)时,不再嵌套包裹
-  if (inner.endsWith(`AS _src WHERE ${cond}`)) {
-    return `${inner} LIMIT 500`;
+  if (inner.endsWith(`AS _src WHERE ${cond} LIMIT 500`)) {
+    return inner;
   }
-  return `SELECT * FROM (${inner}) AS _src WHERE ${cond} LIMIT 500`;
+  return `SELECT * FROM (\n${inner}\n) AS _src WHERE ${cond} LIMIT 500`;
 }
 
 export interface AggResult {
-  data: Array<Record<string, string | number>>;
+  data: Array<Record<string, string | number | null>>;
   metricKeys: string[];
   kpi?: number;
 }
@@ -208,22 +235,20 @@ const MAX_PIE_CATS = 12; // 饼/环类目过多无法读,封顶 12 + 其它
 
 /** 类目超过 max 时:按首指标降序取 Top-max,其余按聚合方式合并为「其它」(avg 不可合并→截断)。 */
 export function capCategories(
-  data: Array<Record<string, string | number>>,
+  data: Array<Record<string, string | number | null>>,
   metricKeys: string[],
   agg: AggFn,
   max: number,
-): Array<Record<string, string | number>> {
+): Array<Record<string, string | number | null>> {
   if (data.length <= max) return data;
   const key = metricKeys[0];
   const sorted = [...data].sort((a, b) => Number(b[key]) - Number(a[key]));
   const top = sorted.slice(0, max);
   const rest = sorted.slice(max);
   if (agg === 'avg') return top;
-  const other: Record<string, string | number> = { dim: '其它' };
+  const other: Record<string, string | number | null> = { dim: '其它' };
   for (const k of metricKeys) {
-    const vals = rest.map((d) => Number(d[k] || 0));
-    other[k] =
-      agg === 'min' ? Math.min(...vals) : agg === 'max' ? Math.max(...vals) : vals.reduce((a, b) => a + b, 0);
+    other[k] = combineChartValues(rest.map((d) => d[k]), agg);
   }
   return [...top, other];
 }
@@ -250,7 +275,7 @@ export function aggregateRows(rows: Array<Record<string, unknown>>, spec: ChartS
       if (!Number.isNaN(n)) g.valsByY[y].push(n);
     }
   }
-  let data = Array.from(groups.entries()).map(([dim, g]) => {
+  let data: AggResult['data'] = Array.from(groups.entries()).map(([dim, g]) => {
     const item: Record<string, string | number> = { dim };
     if (spec.y.length) for (const y of spec.y) item[y] = applyAgg(g.valsByY[y], g.count, spec.agg);
     else item['count'] = g.count;

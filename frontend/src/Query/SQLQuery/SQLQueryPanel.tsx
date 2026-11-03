@@ -59,6 +59,7 @@ function diagnosticFromApiError(error: unknown): SQLErrorDiagnostic | null {
 }
 
 export interface SQLQueryPanelProps {
+  executionSource?: TableSource;
   /** Report each kept-alive editor draft for the AI change preview. */
   onSqlChange?: (sql: string) => void;
   /** 初始 SQL */
@@ -106,6 +107,7 @@ export interface SQLQueryPanelProps {
  * SQL 查询面板组件
  */
 export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
+  executionSource,
   initialSQL = '',
   onSqlChange,
   selectedTable,
@@ -143,6 +145,8 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
     sqlRevisionRef.current += 1;
     setSqlDiagnostic(null);
   }, []);
+
+  const isQuack = executionSource?.type === 'quack';
 
   // Global History
   const { addToHistory } = useGlobalHistory();
@@ -187,7 +191,7 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
     sql,
     selectedTables,
     debounceMs: 300,
-    enabled: true,
+    enabled: !isQuack,
   });
 
   // 规范化选中的表并分析来源（提前计算，供后续使用）
@@ -498,7 +502,7 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
 
     // The toolbar is debounced; execution must bind the current editor text.
     const localAliases = extractSqlAttachedAliases(sql);
-    const detected = buildAttachDatabasesFromParsedRefs(
+    const detected = isQuack ? { attachDatabases: [], unrecognizedPrefixes: [] } : buildAttachDatabasesFromParsedRefs(
       parseSQLTableReferences(sql).filter((ref) => !ref.prefix || !localAliases.has(ref.prefix.toLowerCase())),
       availableConnections,
       extractSQLQueryAliases(sql).filter((alias) => !localAliases.has(alias.toLowerCase())),
@@ -540,7 +544,7 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
       try {
         setSqlDiagnostic(null);
         // 构建执行时的 TableSource，包含联邦查询信息
-        const executeSource: TableSource = currentAttachments.requiresFederatedQuery
+        const executeSource: TableSource = isQuack && executionSource ? executionSource : currentAttachments.requiresFederatedQuery
           ? {
             type: 'federated',
             connectionId: currentAttachments.attachDatabases[0]?.connectionId,
@@ -553,11 +557,15 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
         addToHistory({
           type: 'sql',
           sql: displaySql,
+          ...(isQuack ? { source: executionSource } : {}),
           executionTime: Date.now() - startTime,
         });
         // 重置警告状态
         setDismissedWarning(false);
       } catch (err) {
+        const retired = err as { name?: string; code?: string } | null;
+        if (isQuack && (retired?.name === 'AbortError' || retired?.name === 'CanceledError'
+          || retired?.code === 'ERR_CANCELED' || retired?.code === 'QUERY_CANCELLED')) return;
         if (
           executionRevision === sqlRevisionRef.current &&
           executionId === latestExecutionRef.current
@@ -568,6 +576,7 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
         addToHistory({
           type: 'sql',
           sql: displaySql,
+          ...(isQuack ? { source: executionSource } : {}),
           error: (err as Error)?.message || String(err),
         });
         onExecuteError?.(err as Error, displaySql);
@@ -580,7 +589,7 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
     }
   }, [sql, onExecute, execute, onExecuteError, tableSourceInfo, applyDisplayLimit,
     availableConnections, selectedTables, manualDatabases, dismissedWarning, addToHistory,
-    invalidateSqlDiagnostic, setSQL]);
+    invalidateSqlDiagnostic, setSQL, isQuack, executionSource]);
 
   // 处理忽略未识别前缀并执行
   const handleIgnoreAndExecute = useCallback(() => {
@@ -667,20 +676,20 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
         onCancel={onCancel}
         onAsyncExecute={handleAsyncExecute}
         onFormat={handleFormat}
-        onSave={() => setSaveDialogOpen(true)}
+        onSave={isQuack ? undefined : () => setSaveDialogOpen(true)}
         isExecuting={executing}
         isCancelling={isCancelling}
         disableExecute={!sql.trim() || (tableSourceInfo.hasMixedSources && !requiresFederatedQuery)}
         executionTime={executionTime}
         extraContent={
-          <FederationChip
+          isQuack ? undefined : <FederationChip
             queryType={queryType}
             attachDatabases={attachDatabases}
             connections={availableConnections}
           />
         }
         aiSlot={
-          chatStatus.enabled ? (
+          !isQuack && chatStatus.enabled ? (
             <ChatToggleButton
               active={chatOpen}
               onClick={() =>
@@ -703,9 +712,9 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
           placeholder={t('query.sql.placeholder')}
           minHeight={editorMinHeight}
           maxHeight={editorMaxHeight}
-          tables={autocompleteTables}
-          columns={autocompleteColumns}
-          columnNameHints={flatColumnNames}
+          tables={isQuack ? [] : autocompleteTables}
+          columns={isQuack ? {} : autocompleteColumns}
+          columnNameHints={isQuack ? [] : flatColumnNames}
           defaultTable={completionDefaultTable}
           diagnostic={sqlDiagnostic}
           autoFocus
@@ -722,6 +731,7 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
 
       {/* 异步任务对话框 */}
       <AsyncTaskDialog
+        quackServiceId={isQuack ? executionSource.connectionId : undefined}
         open={asyncDialogOpen}
         onOpenChange={setAsyncDialogOpen}
         sql={businessSql}

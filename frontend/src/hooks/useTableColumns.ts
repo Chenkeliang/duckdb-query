@@ -1,5 +1,5 @@
 import { useQueries, useQuery, useQueryClient } from '@tanstack/react-query';
-import { getDuckDBTableDetail, getExternalTableDetail } from '@/api';
+import { getDuckDBTableDetail, getExternalTableDetail, getDuckDBTableStructure, getExternalTableStructure } from '@/api';
 import type { SelectedTable } from '@/types/SelectedTable';
 import { normalizeSelectedTable, getTableName } from '@/utils/tableUtils';
 
@@ -131,7 +131,8 @@ export const transformDuckDBColumns = (columns: unknown): TableColumn[] => {
  * );
  * ```
  */
-export const useTableColumns = (table: SelectedTable | null): UseTableColumnsResult => {
+export const useTableColumns = (table: SelectedTable | null, options: { columnsOnly?: boolean } = {}): UseTableColumnsResult => {
+  const columnsOnly = options.columnsOnly === true;
   // 标准化表信息
   const normalized = table ? normalizeSelectedTable(table) : null;
   const tableName = table ? getTableName(table) : null;
@@ -145,12 +146,20 @@ export const useTableColumns = (table: SelectedTable | null): UseTableColumnsRes
     tableName,
     isExternal ? connectionId : 'duckdb',
     schema,
+    ...(columnsOnly ? ['columns-only'] : []),
   ] as const;
 
   const query = useQuery({
     queryKey,
     queryFn: async (): Promise<TableColumn[]> => {
       if (!normalized || !tableName) return [];
+
+      if (columnsOnly) {
+        const response = isExternal && connectionId
+          ? await getExternalTableStructure(connectionId, tableName, schema)
+          : await getDuckDBTableStructure(tableName);
+        return isExternal ? transformExternalColumns(response.columns) : transformDuckDBColumns(response.columns);
+      }
 
       if (isExternal && connectionId) {
         // 外部表：使用 getExternalTableDetail API
@@ -168,7 +177,7 @@ export const useTableColumns = (table: SelectedTable | null): UseTableColumnsRes
     enabled: !!normalized && !!tableName,
     staleTime: 5 * 60 * 1000, // 5 分钟缓存
     gcTime: 10 * 60 * 1000, // 10 分钟后清理
-    retry: 2,
+    retry: columnsOnly ? false : 2,
     retryDelay: (attemptIndex) => Math.min(1000 * 2 ** attemptIndex, 10000),
   });
 

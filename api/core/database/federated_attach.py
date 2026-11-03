@@ -584,6 +584,8 @@ def execute_sql_and_persist(
     query_id: Optional[str] = None,
     reject_empty: bool = False,
     overwrite: bool = True,
+    *,
+    native_source: Optional[Tuple[str, str]] = None,
 ) -> Dict[str, Any]:
     """在一个连接内 ATTACH(如有)→ 执行到临时表 → 视 reject_empty 决定是否
     DROP+RENAME 覆盖目标表 → 取行数/列信息 → DETACH。
@@ -599,6 +601,9 @@ def execute_sql_and_persist(
     当纯粹的校验判断,而不必担心这个判断前 target 已经被写坏。
     reject_empty=False(默认)时任何行数都提交,匹配 async 任务那条已验证
     过的 CTAS 路径的语义(0 行结果也是合法结果)。
+
+    native_source 仅供内部临时 DuckDB 文件传输:(唯一别名, 文件路径),只读挂载
+    并在退出时卸载。默认 None 不改变原有本地/联邦执行路径。
 
     mysql 双引号规整只在存在 ATTACH 时应用(纯本地 DuckDB 原生 SQL 不会出现
     MySQL 客户端习惯写法,无条件应用只会对合法的双引号中文标识符引入误伤风险)。
@@ -622,7 +627,14 @@ def execute_sql_and_persist(
 
     def _run(conn: Any) -> Dict[str, Any]:
         attached: List[str] = []
+        native_alias = None
         try:
+            if native_source is not None:
+                alias, path = native_source
+                conn.execute(
+                    f"ATTACH '{escape_string_literal(path)}' AS {_quote_identifier(alias)} (READ_ONLY)"
+                )
+                native_alias = alias
             if attach_configs:
                 configure_mysql_fresh_connections(conn, attach_configs)
                 attached = attach_databases_on_connection(
@@ -689,8 +701,12 @@ def execute_sql_and_persist(
                 )
             raise
         finally:
-            if attached:
-                detach_databases_on_connection(conn, attached)
+            try:
+                if attached:
+                    detach_databases_on_connection(conn, attached)
+            finally:
+                if native_alias is not None:
+                    conn.execute(f"DETACH {_quote_identifier(native_alias)}")
 
     with single_threaded_mysql_persistence(attach_configs):
         if query_id:
@@ -736,7 +752,7 @@ def federated_source_sql_alias(table_ref: str, attach_aliases: set[str]) -> str:
     """
     ATTACH 后 DuckDB 可见的短表名（一般为物理表名，不含 attach 前缀）。
 
-    例：mysql_sorder.iget_order + attach mysql_sorder → iget_order
+    例：mysql_demo.orders + attach mysql_demo → orders
     """
     trimmed = (table_ref or "").strip().strip('"')
     if not trimmed:

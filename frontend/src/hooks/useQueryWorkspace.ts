@@ -3,6 +3,7 @@ import { useTranslation } from "react-i18next";
 import {
   executeDuckDBSQL,
   executeFederatedQuery,
+  executeQuackQuery,
   cancelSyncQuery,
   moveQueryToBackground,
   type ColumnInfo,
@@ -178,6 +179,33 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
   // 多 Tab 并发刷新时相互覆盖（回归 #10，详见 requestSlotKey 上方注释）。
   const latestRequestByKeyRef = useRef<Map<string, string>>(new Map());
   const abortByKeyRef = useRef<Map<string, AbortController>>(new Map());
+  const quackRequestIdsRef = useRef<Set<string>>(new Set());
+  const mostRecentRequestIdRef = useRef<string | null>(null);
+  const cancellingRequestIdRef = useRef<string | null>(null);
+  const promotingRequestsRef = useRef<Map<string, { detached: boolean; cancelled: boolean; quack: boolean; uncertain: boolean }>>(new Map());
+
+  const retireQueryRequest = useCallback(async (key: string, notifyServer = false) => {
+    const requestId = latestRequestByKeyRef.current.get(key);
+    const controller = abortByKeyRef.current.get(key);
+    const promotion = requestId ? promotingRequestsRef.current.get(requestId) : undefined;
+    if (controller && promotion) {
+      promotion.detached = true;
+      if (notifyServer) promotion.cancelled = true;
+    }
+    const cancelRemote = !!controller && !!requestId
+      && (notifyServer || (quackRequestIdsRef.current.has(requestId) && !promotion));
+    // The aborted signal retires the response. Keep its ID until this slot is
+    // reused so a delayed cancellation acknowledgement cannot change a new query.
+    abortByKeyRef.current.delete(key);
+    controller?.abort();
+    if (cancelRemote && requestId) {
+      try {
+        await cancelSyncQuery(requestId);
+      } catch (error) {
+        console.warn('Cancel request failed:', error);
+      }
+    }
+  }, []);
 
   const buildQueryResult = useCallback((
     response: {
@@ -240,6 +268,12 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
       execTime?: number;
       preview_limit_applied?: number | null;
     }> => {
+      if (source.type === 'quack') {
+        if (!source.connectionId) throw new Error('Remote query requires a Quack service');
+        const startedAt = Date.now();
+        const result = await executeQuackQuery(source.connectionId, sql, { requestId, signal, isPreview: true });
+        return { ...result, execTime: Date.now() - startedAt };
+      }
       if (source.type === 'federated') {
         const attachDatabases = [...(source.attachDatabases ?? [])];
 
@@ -382,10 +416,13 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
       const requestId = crypto.randomUUID();
       const key = requestSlotKey(options);
       // 同一槽位若已有在飞请求，先中止它——同一个 Tab 再次刷新取代上一次
-      abortByKeyRef.current.get(key)?.abort();
+      void retireQueryRequest(key);
       const controller = new AbortController();
       abortByKeyRef.current.set(key, controller);
       latestRequestByKeyRef.current.set(key, requestId);
+      mostRecentRequestIdRef.current = requestId;
+      cancellingRequestIdRef.current = null;
+      setIsCancelling(false);
       setIsCancelled(false);
 
       if (retainQueryResults && options?.refresh && options.tabId) {
@@ -413,26 +450,28 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
 
       return { requestId, key, signal: controller.signal };
     },
-    [retainQueryResults]
+    [retainQueryResults, retireQueryRequest]
   );
 
   const executeQuery = useCallback(
     async (
       sql: string,
       source?: TableSource,
-      options?: { refresh?: boolean; tabId?: string; baseSql?: string }
+      options?: { refresh?: boolean; tabId?: string; baseSql?: string; propagateError?: boolean }
     ) => {
       const querySource: TableSource = source || { type: 'duckdb' };
       const { requestId, key, signal } = beginQueryExecution(options);
+      if (querySource.type === 'quack') quackRequestIdsRef.current.add(requestId);
       setActiveExecution({ requestId, key, startedAt: Date.now() });
       // 该请求所属槽位是否已被更新的请求取代（同一 Tab 又刷新了一次）——只按本
       // 槽位判断，不看全局，这样其它 Tab 的并发请求不会误伤本请求（回归 #10）
-      const isStale = () => latestRequestByKeyRef.current.get(key) !== requestId;
+      const isStale = () => latestRequestByKeyRef.current.get(key) !== requestId || signal.aborted;
 
       try {
         const response = await runSqlQuery(sql, querySource, requestId, signal);
 
         if (isStale()) {
+          if (options?.propagateError) throw new DOMException('Query no longer owns its result', 'AbortError');
           return;
         }
 
@@ -444,6 +483,7 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
         setLastFailure(null);
       } catch (error) {
         if (isStale()) {
+          if (options?.propagateError) throw new DOMException('Query no longer owns its result', 'AbortError');
           return;
         }
 
@@ -478,7 +518,11 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
         setLastFailure({ sql, source: querySource, errorMessage: (error as Error).message });
 
         showErrorToast(t, undefined, t('query.error', { message: (error as Error).message }));
+        if (options?.propagateError) throw error;
       } finally {
+        quackRequestIdsRef.current.delete(requestId);
+        promotingRequestsRef.current.delete(requestId);
+        if (latestRequestByKeyRef.current.get(key) === requestId) abortByKeyRef.current.delete(key);
         setActiveExecution((current) => current?.requestId === requestId ? null : current);
       }
     },
@@ -488,9 +532,30 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
   const moveToBackground = useCallback(async () => {
     if (!activeExecution) return undefined;
     const { requestId, key } = activeExecution;
-    const { task_id } = await moveQueryToBackground(requestId);
+    const promotion = promotingRequestsRef.current.get(requestId)
+      ?? { detached: false, cancelled: false, quack: quackRequestIdsRef.current.has(requestId), uncertain: false };
+    promotingRequestsRef.current.set(requestId, promotion);
+    let task_id: string;
+    try {
+      ({ task_id } = await moveQueryToBackground(requestId));
+      promotion.uncertain = false;
+    } catch (error) {
+      const status = (error as { statusCode?: number } | null)?.statusCode;
+      const rejected = typeof status === 'number' && status >= 400 && status < 500 && status !== 408 && status !== 499;
+      // A lost acknowledgement is not proof that the server rejected ownership.
+      // Keep that decision attached to A even if B starts after this error.
+      if (!rejected) promotion.uncertain = true;
+      if (rejected && !promotion.uncertain && promotion.detached && promotion.quack && !promotion.cancelled) {
+        try { await cancelSyncQuery(requestId); } catch (cancelError) { console.warn('Cancel request failed:', cancelError); }
+      }
+      throw error;
+    } finally {
+      if (!promotion.uncertain || latestRequestByKeyRef.current.get(key) !== requestId || !abortByKeyRef.current.has(key)) {
+        promotingRequestsRef.current.delete(requestId);
+      }
+    }
     // Only detach the adopted slot. Abort the HTTP wait, not the server query.
-    if (latestRequestByKeyRef.current.get(key) === requestId) {
+    if (!promotion.cancelled && latestRequestByKeyRef.current.get(key) === requestId) {
       latestRequestByKeyRef.current.delete(key);
       abortByKeyRef.current.get(key)?.abort();
       abortByKeyRef.current.delete(key);
@@ -507,7 +572,7 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
 
   const handleQueryExecute = useCallback(
     async (sql: string, source?: TableSource, options?: { baseSql?: string }) => {
-      await executeQuery(sql, source, options);
+      await executeQuery(sql, source, { ...options, propagateError: source?.type === 'quack' });
     },
     [executeQuery]
   );
@@ -559,10 +624,9 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
   // 供批量关闭在 updater 里逐个调用也安全(StrictMode 重复执行无副作用)。
   const freeResultTabSlot = useCallback((id: string) => {
     const key = `tab:${id}`;
-    abortByKeyRef.current.get(key)?.abort();
-    abortByKeyRef.current.delete(key);
+    void retireQueryRequest(key);
     latestRequestByKeyRef.current.delete(key);
-  }, []);
+  }, [retireQueryRequest]);
 
   // 批量关闭:被移除(prev\next 差集)的每个 Tab 都要释放其槽位——单个关闭之外的
   // 三条路径此前遗漏,导致与 #4 同类的泄漏。
@@ -698,62 +762,35 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
   }, []);
 
   const cancelQuery = useCallback(async () => {
+    const pending = (key: string) => abortByKeyRef.current.has(key);
+    const activeKey = activeExecution && latestRequestByKeyRef.current.get(activeExecution.key) === activeExecution.requestId
+      && pending(activeExecution.key) ? activeExecution.key : null;
+    const resultKey = retainQueryResults && activeResultTabId ? `tab:${activeResultTabId}` : null;
+    const key = activeKey ?? (pending(SINGLE_SLOT_KEY) ? SINGLE_SLOT_KEY : resultKey && pending(resultKey) ? resultKey : null);
+    if (!key) return;
+    const requestId = latestRequestByKeyRef.current.get(key);
+    cancellingRequestIdRef.current = requestId ?? null;
     setIsCancelling(true);
-
-    // 取消当前正在运行的查询：单结果槽，以及（保留模式下）当前激活 Tab 的槽位。
-    // 只中止这两个槽位、不动其它 Tab 的并发刷新——取消当前查询不应连累别的 Tab。
-    const keys = new Set<string>([SINGLE_SLOT_KEY]);
-    if (retainQueryResults && activeResultTabId) {
-      keys.add(`tab:${activeResultTabId}`);
+    await retireQueryRequest(key, true);
+    if (cancellingRequestIdRef.current === requestId) {
+      cancellingRequestIdRef.current = null;
+      setIsCancelling(false);
     }
-    for (const key of keys) {
-      const requestId = latestRequestByKeyRef.current.get(key);
-      // 先让槽位失效再触发 abort，避免取消 rejection 抢在后端取消请求前
-      // 被当前查询当作 NETWORK_ERROR 处理。
-      latestRequestByKeyRef.current.delete(key);
-      const controller = abortByKeyRef.current.get(key);
-      if (controller) {
-        controller.abort();
-        abortByKeyRef.current.delete(key);
-      }
-      if (requestId) {
-        try {
-          await cancelSyncQuery(requestId);
-        } catch (e) {
-          console.warn('Cancel request failed:', e);
-        }
+    // A later request may have reused this slot while server cancellation waited.
+    if (latestRequestByKeyRef.current.get(key) === requestId) {
+      if (mostRecentRequestIdRef.current === requestId) setIsCancelled(true);
+      if (key === SINGLE_SLOT_KEY) {
+        setIsResultLoading(false);
+        if (!retainQueryResults) setSingleResult(previous => previous ? { ...previous, loading: false, error: null } : null);
+      } else {
+        const tabId = key.slice(4);
+        setResultTabs(previous => previous.map(tab => tab.id === tabId
+          ? { ...tab, result: { ...tab.result, loading: false, error: null } } : tab));
       }
     }
-
-    setIsCancelled(true);
-    setIsCancelling(false);
-    setIsResultLoading(false);
-
-    if (retainQueryResults && activeResultTabId) {
-      setResultTabs((prev) =>
-        prev.map((tab) =>
-          tab.id === activeResultTabId
-            ? {
-                ...tab,
-                result: {
-                  ...tab.result,
-                  loading: false,
-                  error: null,
-                },
-              }
-            : tab
-        )
-      );
-    } else if (!retainQueryResults) {
-      setSingleResult((prev) =>
-        prev
-          ? { ...prev, loading: false, error: null }
-          : null
-      );
-    }
-
+    setActiveExecution(current => current?.requestId === requestId ? null : current);
     toast.info(t('query.cancelled'));
-  }, [activeResultTabId, retainQueryResults, t]);
+  }, [activeExecution, activeResultTabId, retainQueryResults, retireQueryRequest, t]);
 
   const displayQueryPreview = useCallback(
     (

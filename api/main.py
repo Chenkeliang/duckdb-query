@@ -32,6 +32,7 @@ from routers import (
     pivot_query,  # /api/pivot-query/*
     set_operations,  # /api/set-operations/*
     query_export,  # /api/query-results/export
+    quack,  # Isolated remote DuckDB service and query endpoints.
     duckdb_extensions,  # DuckDB 扩展管理：/api/duckdb/extensions/*
     column_analysis,  # /api/columns/infer-cast
 )
@@ -125,7 +126,7 @@ async def app_lifespan(app: FastAPI):
 app = FastAPI(
     title="DuckQuery · DuckDB Query API",
     description="API for DuckDB ingestion, federated SQL, JOIN/pivot/set-operation builders, and async analytics.",
-    version="2.1.3",
+    version="2.2.0",
     lifespan=app_lifespan,
 )
 
@@ -161,6 +162,7 @@ app.include_router(join_query.router)
 app.include_router(pivot_query.router)
 app.include_router(set_operations.router)
 app.include_router(query_export.router)
+app.include_router(quack.router)
 app.include_router(column_analysis.router)
 app.include_router(paste_data.router)
 app.include_router(chunked_upload.router)
@@ -186,7 +188,7 @@ if os.getenv("DUCKQUERY_DESKTOP") == "1":
 async def root():
     return {
         "message": "Welcome to the DuckQuery · DuckDB analytics API",
-        "version": "2.1.3",
+        "version": "2.2.0",
         "features": [
             "DuckDB-native execution with multi-database federation (MySQL, PostgreSQL, SQLite)",
             "High-performance file ingestion (CSV, Excel, JSON, Parquet)",

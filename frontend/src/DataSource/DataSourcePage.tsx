@@ -14,13 +14,14 @@ import { showErrorToast, showSuccessToast } from '@/utils/toastHelpers';
 
 interface DataSourcePageProps {
   savedConnectionsPanel: ReactNode;
+  quackServicesPanel?: ReactNode;
   onAddData: (method: DataSourceMethod) => void;
   onBackToWorkbench: () => void;
   onQueryTable: (name: string) => void;
 }
 
 /** Connections and local tables share an overview; imports live in Add data. */
-export default function DataSourcePage({ savedConnectionsPanel, onAddData, onBackToWorkbench, onQueryTable }: DataSourcePageProps) {
+export default function DataSourcePage({ savedConnectionsPanel, quackServicesPanel, onAddData, onBackToWorkbench, onQueryTable }: DataSourcePageProps) {
   const { t, i18n } = useTranslation('common');
   const queryClient = useQueryClient();
   const { tables, isLoading, refresh } = useDuckDBTables();
@@ -44,6 +45,7 @@ export default function DataSourcePage({ savedConnectionsPanel, onAddData, onBac
           </div>
         </header>
         <section>{savedConnectionsPanel}</section>
+        {quackServicesPanel && <section>{quackServicesPanel}</section>}
         <section>
           <div className="mb-4 flex flex-wrap items-center justify-between gap-3">
             <h2 className="text-base font-semibold">{t('page.datasource.localTables')} <span className="ml-2 font-mono text-xs font-normal text-muted-foreground">{tables.length}</span></h2>

@@ -221,8 +221,8 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL, prev
   const queryTabsRef = React.useRef<QueryTabsHandle>(null);
 
   // 图表下钻:把明细 SQL 回填进 SQL 编辑器(不自动执行)
-  const handleDrilldown = React.useCallback((sql: string) => {
-    queryTabsRef.current?.loadSql(sql);
+  const handleDrilldown = React.useCallback((sql: string, source?: TableSource) => {
+    queryTabsRef.current?.loadSql(sql, 'sql', { source });
   }, []);
 
   const [desktopAiDock, setDesktopAiDock] = React.useState<HTMLDivElement | null>(null);
@@ -334,7 +334,7 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL, prev
         <Button variant="outline" size="sm" disabled={movingToBackground || isCancelling} onClick={() => void handleMoveToBackground()}>{t(movingToBackground ? 'query.background.moving' : 'query.background.move')}</Button>
       </div>}
       {savedOpen && <SavedQueriesPanel open={savedOpen} onOpenChange={setSavedOpen} onLoad={(sql, type) => queryTabsRef.current?.loadSql(sql, type)} />}
-      <GlobalHistoryPanel open={historyOpen} onOpenChange={setHistoryOpen} history={history} onLoad={(item) => queryTabsRef.current?.loadSql(item.sql, item.type, { joinSnapshot: item.joinSnapshot })} onDelete={deleteHistoryItem} onClear={clearHistory} />
+      <GlobalHistoryPanel open={historyOpen} onOpenChange={setHistoryOpen} history={history} onLoad={(item) => queryTabsRef.current?.loadSql(item.sql, item.type, { joinSnapshot: item.joinSnapshot, source: item.source })} onDelete={deleteHistoryItem} onClear={clearHistory} />
       <PanelGroup id="query-workspace-horizontal" direction="horizontal" autoSaveId="query-workspace-h">
         {/* 数据源面板 */}
         <ExplorerPanel
@@ -423,7 +423,7 @@ export const QueryWorkspace: React.FC<QueryWorkspaceProps> = ({ previewSQL, prev
                       : (queryResults?.loading ?? false) || isResultLoading
                   }
                   error={queryResults?.error ?? null}
-                  selfHealErrorMessage={lastFailure?.errorMessage ?? null}
+                  selfHealErrorMessage={lastFailure?.source.type === 'quack' ? null : lastFailure?.errorMessage ?? null}
                   onSelfHealRerun={() => void retryLastFailure()}
                   execTime={queryResults?.execTime}
                   previewLimitApplied={queryResults?.previewLimitApplied}

@@ -6,7 +6,7 @@ import asyncio
 import json
 import logging
 from datetime import datetime
-from typing import Any, Dict
+from typing import Any, Dict, Literal
 
 from core.common.exceptions import ResourceNotFoundError
 from core.common.timezone_utils import format_storage_time_for_response
@@ -115,6 +115,8 @@ class AgentContext(BaseModel):
     current_sql: str = ""
     locale: str = "zh"
     scope: AgentScope | None = None
+    chart_goal: Literal["auto", "trend", "compare", "share", "metric"] = "auto"
+    chart_summary: Dict[str, Any] = {}
 
 
 class AgentRequest(BaseModel):
@@ -209,6 +211,8 @@ def _prepare_agent(req: AgentRequest):
         "attach_databases": req.context.attach_databases,
         "current_sql": req.context.current_sql,
         "locale": req.context.locale,
+        "chart_goal": req.context.chart_goal,
+        "chart_summary": req.context.chart_summary,
     }
     messages = inp.get("messages") if isinstance(inp, dict) else None
     agen = ai_agent.run_agent(

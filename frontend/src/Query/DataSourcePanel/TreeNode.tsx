@@ -46,7 +46,7 @@ const getStatusIndicatorClass = (status?: string): string => {
 };
 
 export const TreeNode: React.FC<TreeNodeProps> = ({
-  id: _id, // 保留 id prop，虽然未使用但为了接口完整性
+  id: _id,
   label,
   icon,
   level,
@@ -100,6 +100,9 @@ export const TreeNode: React.FC<TreeNodeProps> = ({
         {/* 展开/折叠箭头 */}
         {isExpandable ? (
           <button
+            aria-label={label}
+            aria-expanded={isExpanded}
+            aria-controls={`${_id}-children`}
             onClick={handleToggle}
             className="flex items-center justify-center w-4 h-4 mr-1 text-muted-foreground hover:text-foreground transition-colors"
           >
@@ -139,7 +142,7 @@ export const TreeNode: React.FC<TreeNodeProps> = ({
 
       {/* 子节点 */}
       {isExpandable && isExpanded && children && (
-        <div className="tree-node-children">{children}</div>
+        <div id={`${_id}-children`} className="tree-node-children">{children}</div>
       )}
     </div>
   );

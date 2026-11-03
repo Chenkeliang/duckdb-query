@@ -68,7 +68,7 @@ export interface AsyncTask {
     custom_table_name?: string;
     display_name?: string;
   };
-  metadata?: { datasource?: { id: string; name?: string; type?: TableSource['databaseType'] }; attach_databases?: Array<{ alias: string; connection_id: string }>; original_started_at?: string; is_federated?: boolean; custom_table_name?: string };
+  metadata?: { source?: TableSource; quack_service_id?: string; datasource?: { id: string; name?: string; type?: TableSource['databaseType'] }; attach_databases?: Array<{ alias: string; connection_id: string }>; original_started_at?: string; is_federated?: boolean; custom_table_name?: string };
 }
 
 export interface AsyncTaskPanelProps {
@@ -312,7 +312,9 @@ export const AsyncTaskPanel: React.FC<AsyncTaskPanelProps> = ({
       });
       if (request !== previewRequest.current) return;
       const attachments = task.metadata?.attach_databases ?? [];
-      const source: TableSource = attachments.length
+      const source: TableSource = isSnapshot && task.metadata?.quack_service_id
+        ? { type: 'quack', connectionId: task.metadata.quack_service_id, connectionName: task.metadata.source?.connectionName ?? task.metadata.quack_service_id }
+        : attachments.length
         ? { type: 'federated', connectionId: attachments[0].connection_id, connectionName: attachments[0].alias,
           attachDatabases: attachments.map((item) => ({ alias: item.alias, connectionId: item.connection_id })) }
         : { type: 'duckdb' };
@@ -322,7 +324,9 @@ export const AsyncTaskPanel: React.FC<AsyncTaskPanelProps> = ({
         source.connectionName = datasource.name || source.connectionName;
         source.databaseType = datasource.type;
       }
-      onPreviewResult(result, task.sql || (table ? `SELECT * FROM ${quoteDuckDBTable(table)}` : ''), source);
+      const resultSql = !isSnapshot && task.metadata?.quack_service_id && table
+        ? `SELECT * FROM ${quoteDuckDBTable(table)}` : task.sql || (table ? `SELECT * FROM ${quoteDuckDBTable(table)}` : '');
+      onPreviewResult(result, resultSql, source);
     } catch (error) {
       if (request === previewRequest.current) handleApiErrorToast(t, error as Error);
     } finally {

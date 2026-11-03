@@ -7,7 +7,7 @@ export interface AttachDatabase {
 }
 
 export interface TableSource {
-  type: 'duckdb' | 'federated';
+  type: 'duckdb' | 'federated' | 'quack';
   connectionId?: string;
   connectionName?: string;
   databaseType?: DatabaseType;

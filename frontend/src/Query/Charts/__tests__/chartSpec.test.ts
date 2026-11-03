@@ -81,14 +81,12 @@ describe('validateSpec', () => {
   });
 });
 
-import { buildChartSql, stripTrailingLimit } from '../chartSpec';
+import { buildChartSql } from '../chartSpec';
 
-describe('stripTrailingLimit', () => {
-  it('removes trailing LIMIT / LIMIT OFFSET / trailing ;', () => {
-    expect(stripTrailingLimit('SELECT * FROM t LIMIT 10000')).toBe('SELECT * FROM t');
-    expect(stripTrailingLimit('SELECT * FROM t limit 50 offset 10')).toBe('SELECT * FROM t');
-    expect(stripTrailingLimit('SELECT * FROM t;')).toBe('SELECT * FROM t');
-    expect(stripTrailingLimit('SELECT * FROM t')).toBe('SELECT * FROM t');
+describe('business SQL restrictions (regression 2026-11-03)', () => {
+  it.each(['LIMIT 10000', 'limit 50 offset 10', 'FETCH FIRST 2 ROWS ONLY'])('retains %s inside the wrapped source', (restriction) => {
+    expect(buildChartSql(`SELECT * FROM t ${restriction};`, { type: 'kpi', x: null, y: [], agg: 'count' }))
+      .toContain(`FROM (\nSELECT * FROM t ${restriction}\n) AS _src`);
   });
 });
 
@@ -97,7 +95,7 @@ describe('buildChartSql', () => {
     const sql = buildChartSql('SELECT * FROM orders LIMIT 10000', {
       type: 'bar', x: 'status', y: ['amount'], agg: 'sum',
     });
-    expect(sql).toContain('FROM (SELECT * FROM orders) AS _src');
+    expect(sql).toContain('FROM (\nSELECT * FROM orders LIMIT 10000\n) AS _src');
     expect(sql).toContain('"status" AS dim');
     expect(sql).toMatch(/sum\("amount"\) AS m_0/);
     expect(sql).toContain('GROUP BY 1');
@@ -243,9 +241,9 @@ import { buildDrilldownSql } from '../chartSpec';
 describe('buildDrilldownSql', () => {
   const catSpec = { type: 'bar' as const, x: 'region', y: ['amount'], agg: 'sum' as const };
 
-  it('categorical value -> equality filter, wraps source and strips trailing LIMIT', () => {
+  it('categorical value -> equality filter, wraps source and preserves its business LIMIT', () => {
     const sql = buildDrilldownSql(catSpec, '华东', 'SELECT * FROM demo_sales LIMIT 10000');
-    expect(sql).toBe(`SELECT * FROM (SELECT * FROM demo_sales) AS _src WHERE "region" = '华东' LIMIT 500`);
+    expect(sql).toBe(`SELECT * FROM (\nSELECT * FROM demo_sales LIMIT 10000\n) AS _src WHERE "region" = '华东' LIMIT 500`);
   });
 
   it('escapes single quotes in the clicked value', () => {

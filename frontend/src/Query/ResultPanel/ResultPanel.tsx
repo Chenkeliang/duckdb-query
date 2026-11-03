@@ -96,7 +96,7 @@ export interface ResultPanelProps {
   /** 未开启保留时的单槽标题 */
   singleResultSlotLabel?: string;
   /** 图表下钻:收到明细 SQL,由调用方负责填入编辑器(不自动执行) */
-  onDrilldown?: (sql: string) => void;
+  onDrilldown?: (sql: string, source?: TableSource) => void;
 }
 
 const emptyStats = {
@@ -145,6 +145,7 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
   const { t, i18n } = useTranslation('common');
   const [isFullscreen, setIsFullscreen] = useState(false);
   const [importDialogOpen, setImportDialogOpen] = useState(false);
+  const [saveSnapshot, setSaveSnapshot] = useState<{ sql: string; source?: TableSource } | null>(null);
   const [dataGridStats, setDataGridStats] = useState<{
     totalRows: number;
     filteredRows: number;
@@ -185,6 +186,9 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
 
   const effectiveSource = useMultiTabGrids ? activeTab?.query.source : source;
   const effectiveSQL = useMultiTabGrids ? activeTab?.query.sql : currentSQL;
+  const effectiveSaveSql = useMultiTabGrids ? activeTab?.query.baseSql ?? activeTab?.query.sql : currentBaseSQL ?? currentSQL;
+  const saveSql = importDialogOpen && saveSnapshot ? saveSnapshot.sql : effectiveSaveSql;
+  const saveSource = importDialogOpen && saveSnapshot ? saveSnapshot.source : effectiveSource;
 
   // 图表视图：列信息（多页用激活 tab 的,单槽用外层;优先 duckdbColumnTypes 取精确类型）
   const chartColumns = React.useMemo(() => {
@@ -211,10 +215,12 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
   );
 
   const chartSource = React.useMemo(() => ({
+    quackServiceId: effectiveSource?.type === 'quack' ? effectiveSource.connectionId : undefined,
     sql: effectiveSQL ?? null,
+    baseSql: effectiveSaveSql ?? null,
     attachDatabases: effectiveAttachDatabases,
     requiresFederated: effectiveSource?.type === 'federated',
-  }), [effectiveSQL, effectiveAttachDatabases, effectiveSource?.type]);
+  }), [effectiveSQL, effectiveSaveSql, effectiveAttachDatabases, effectiveSource?.type, effectiveSource?.connectionId]);
 
   // AI 报错医生（LLM 解释并修复），仅在 AI 开启时露出入口
   const aiEnabled = useAiEnabled();
@@ -249,7 +255,7 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
         source={chartSource}
         aiEnabled={aiEnabled}
         locale={aiLocale}
-        onDrilldown={onDrilldown}
+        onDrilldown={onDrilldown ? (sql) => onDrilldown(sql, effectiveSource) : undefined}
       />
     </div>
   );
@@ -282,8 +288,12 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
   }, []);
 
   const handleImportClick = useCallback(() => {
-    if (effectiveSQL) setImportDialogOpen(true);
-  }, [effectiveSQL]);
+    if (!effectiveSaveSql) return;
+    setSaveSnapshot({ sql: effectiveSaveSql, source: effectiveSource ? {
+      ...effectiveSource, attachDatabases: effectiveSource.attachDatabases?.map(item => ({ ...item })),
+    } : undefined });
+    setImportDialogOpen(true);
+  }, [effectiveSaveSql, effectiveSource]);
 
   const handleColumnVisibilityChange = useCallback((columns: DataGridColumnInfo[]) => {
     setGridColumns(columns);
@@ -315,6 +325,7 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
         if (!targetPath) return; // 用户取消
       }
       const result = await exportQueryResults({
+        quack_service_id: effectiveSource?.type === 'quack' ? effectiveSource.connectionId : undefined,
         sql,
         format: 'parquet',
         apply_row_limit: applyRowLimit,
@@ -345,6 +356,7 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
     currentSQL,
     currentBaseSQL,
     effectiveAttachDatabases,
+    effectiveSource,
     t,
   ]);
 
@@ -407,7 +419,8 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
     return (
       <>
         <div className="flex items-stretch border-b border-border bg-muted/30 min-h-[40px]">
-          <div className="flex min-w-0 flex-1 items-center overflow-x-auto">{headerLeft}</div>
+          <div className="flex min-w-0 flex-1 items-center overflow-x-auto">{headerLeft}
+          </div>
           {toolbar && (
             <div className="flex shrink-0 items-center pr-2">
               <div className="mx-2 h-4 w-px bg-border" />
@@ -417,7 +430,7 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
         </div>
         {/* 自愈横幅挂在头部栏下方:与结果视图分支无关,多 Tab 模式失败(无错误视图)也可见 */}
         <PushdownStatus report={useMultiTabGrids ? activeTab?.result.pushdown : pushdown} />
-        {selfHealErrorMessage && onSelfHealRerun && (
+        {selfHealErrorMessage && onSelfHealRerun && effectiveSource?.type !== 'quack' && (
           <EngineCompatSelfHealBanner
             errorMessage={selfHealErrorMessage}
             onRerun={onSelfHealRerun}
@@ -429,11 +442,10 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
   };
 
   if (useMultiTabGrids) {
-    const activeSql = activeTab?.query.sql;
     // 保存到 DuckDB 用基础 SQL(无系统预览 LIMIT):生成式面板(JOIN/SET/Pivot)的 query.sql
     // 烤入了预览 LIMIT,"全量"落表会只存预览行数;与服务端导出同一口径(复审 P1)
-    const activeSaveSql = activeTab?.query.baseSql ?? activeSql;
-    const activeSource = activeTab?.query.source;
+    const activeSaveSql = saveSql;
+    const activeSource = saveSource;
 
     return (
       <div className={`flex flex-col h-full ${isFullscreen ? 'fixed inset-0 z-50 bg-background' : ''} ${className}`}>
@@ -464,6 +476,7 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
         </div>
         {activeSaveSql && (
           <AsyncTaskDialog
+            quackServiceId={activeSource?.type === 'quack' ? activeSource.connectionId : undefined}
             open={importDialogOpen}
             onOpenChange={setImportDialogOpen}
             sql={activeSaveSql}
@@ -554,7 +567,7 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
                 })}
               </span>
             )}
-            {aiEnabled && effectiveSQL && (
+            {aiEnabled && effectiveSQL && effectiveSource?.type !== 'quack' && (
               <Button variant="outline" size="sm" disabled={aiFixing} onClick={runAiFix}>
                 {aiFixing ? (
                   <Loader2 className="h-4 w-4 animate-spin" />
@@ -564,7 +577,7 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
                 <span className="ml-1">{t('query.result.aiExplainFix', 'AI 解释并修复')}</span>
               </Button>
             )}
-            {aiFix && (
+            {aiFix && effectiveSource?.type !== 'quack' && (
               <div className="w-full text-left text-foreground border rounded-lg p-3 mt-1">
                 <p className="text-sm text-muted-foreground mb-2 whitespace-pre-wrap">
                   {aiFix.explanation}
@@ -637,15 +650,16 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
       </div>
 
       {/* 保存到 DuckDB 用基础 SQL(无系统预览 LIMIT),与服务端导出同一口径(复审 P1) */}
-      {(currentBaseSQL ?? currentSQL) && (
+      {saveSql && (
         <AsyncTaskDialog
+          quackServiceId={saveSource?.type === 'quack' ? saveSource.connectionId : undefined}
           open={importDialogOpen}
           onOpenChange={setImportDialogOpen}
-          sql={(currentBaseSQL ?? currentSQL)!}
+          sql={saveSql}
           queryOrigin="result"
-          attachDatabases={source?.attachDatabases}
-          datasource={source?.connectionId && source.databaseType ? {
-            id: source.connectionId, type: source.databaseType, name: source.connectionName,
+          attachDatabases={saveSource?.attachDatabases}
+          datasource={saveSource?.connectionId && saveSource.databaseType ? {
+            id: saveSource.connectionId, type: saveSource.databaseType, name: saveSource.connectionName,
           } : undefined}
         />
       )}

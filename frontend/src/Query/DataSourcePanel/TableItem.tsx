@@ -1,9 +1,11 @@
 import * as React from 'react';
 import { forwardRef } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Check, Copy, Database, Table2, Plus } from 'lucide-react';
+import { Check, Copy, Database, Table2, Plus, ChevronRight } from 'lucide-react';
 import { Checkbox } from '@/components/ui/checkbox';
+import { Button } from '@/components/ui/button';
 import { TableContextMenu } from './ContextMenu';
+import { TableColumns } from './TableColumns';
 import type { SelectedTableObject } from '@/types/SelectedTable';
 import { queueWorkbenchCommand } from '../workbenchCommands';
 import { generateExternalTableReference } from '@/utils/sqlUtils';
@@ -60,6 +62,7 @@ interface TableItemButtonProps {
   isSelected: boolean;
   disabled: boolean;
   onClick: (e: React.MouseEvent) => void;
+  onDoubleClick?: (e: React.MouseEvent) => void;
   onKeyDown: (e: React.KeyboardEvent) => void;
   children: React.ReactNode;
   className?: string; // Add className prop
@@ -112,6 +115,8 @@ export const TableItem = forwardRef<HTMLDivElement, TableItemProps>(({
   const { t } = useTranslation('common');
   const tableIcon = React.useMemo(() => getTableIcon(table), [table]);
   const [nameCopied, setNameCopied] = React.useState(false);
+  const [columnsExpanded, setColumnsExpanded] = React.useState(false);
+  const columnsId = React.useId();
 
   // 复制表名:阻止冒泡以免触发行选中;失败静默(剪贴板权限等)
   const handleCopyName = React.useCallback(async (e: React.MouseEvent) => {
@@ -154,6 +159,8 @@ export const TableItem = forwardRef<HTMLDivElement, TableItemProps>(({
   };
   const handleClick = React.useCallback((e: React.MouseEvent) => {
     if (disabled) return;
+    // A double-click selects once before opening SQL, rather than toggling a JOIN table twice.
+    if (!batchMode && e.detail > 1) return;
     // 批量删除模式：行点击切换删除勾选
     if (batchMode) {
       if ((e.target as HTMLElement).closest('[role="checkbox"]')) return;
@@ -172,6 +179,11 @@ export const TableItem = forwardRef<HTMLDivElement, TableItemProps>(({
       onPreview(table);
     }
   }, [onPreview, table]);
+
+  const handlePreviewSQL = React.useCallback(() => {
+    const { qualifiedName } = generateExternalTableReference(table);
+    queueWorkbenchCommand('openTableQuery', `SELECT * FROM ${qualifiedName} LIMIT 100;`);
+  }, [table]);
 
   const handleProfile = React.useCallback(() => {
     if (onProfile) {
@@ -205,10 +217,11 @@ export const TableItem = forwardRef<HTMLDivElement, TableItemProps>(({
   }, []);
 
   return (
-    <TableContextMenu
+    <><TableContextMenu
       table={table}
       canDelete={canDelete}
       onPreview={handlePreview}
+      onPreviewSQL={disabled || batchMode ? undefined : handlePreviewSQL}
       onProfile={handleProfile}
       onDelete={onDelete}
       onImport={onImport}
@@ -218,10 +231,21 @@ export const TableItem = forwardRef<HTMLDivElement, TableItemProps>(({
         isSelected={batchMode ? batchChecked : isSelected}
         disabled={disabled}
         onClick={handleClick}
+        onDoubleClick={(event) => {
+          if (disabled || batchMode || (event.target as HTMLElement).closest('button, [role="checkbox"]')) return;
+          event.stopPropagation();
+          handlePreviewSQL();
+        }}
         onKeyDown={handleKeyDown}
         className={getIndentClass(level)} // 应用缩进样式
       >
         <div className="flex items-center gap-2">
+          {!batchMode && <Button variant="quiet" size="sm" className="size-4 shrink-0 p-0" disabled={disabled}
+            aria-label={t(columnsExpanded ? 'dataSource.collapseFields' : 'dataSource.expandFields', { name: table.name })}
+            aria-expanded={columnsExpanded} aria-controls={columnsId}
+            onClick={event => { event.stopPropagation(); setColumnsExpanded(!columnsExpanded); }}>
+            <ChevronRight className={`size-4 ${columnsExpanded ? 'rotate-90' : ''}`} />
+          </Button>}
           {/* 批量删除模式：显示删除勾选框 */}
           {batchMode ? (
             <Checkbox
@@ -283,6 +307,8 @@ export const TableItem = forwardRef<HTMLDivElement, TableItemProps>(({
         </div>
       </TableItemButton>
     </TableContextMenu>
+      {columnsExpanded && !batchMode && !disabled && <div id={columnsId} className="ml-3 border-l border-border pl-2"><TableColumns table={table} /></div>}
+    </>
   );
 });
 TableItem.displayName = 'TableItem';

@@ -404,3 +404,14 @@ it('2026-10-10: paste and immediate Execute bind the new external source before 
     type: 'federated', attachDatabases: [{ alias: 'demo', connectionId: 'external-demo' }],
   });
 });
+
+/** Regression 2026-11-03: remote catalog names must bypass local federation inference. */
+it('binds remote catalog SQL to its service and preserves base SQL', async () => {
+  const onExecute = createExecuteMock();
+  const source = { type: 'quack' as const, connectionId: 'remote-a', connectionName: 'Analytics' };
+  renderPanel({ initialSQL: 'SELECT * FROM analytics.main.orders', executionSource: source, onExecute });
+  fireEvent.click(screen.getByRole('button', { name: 'execute' }));
+  await waitFor(() => expect(onExecute).toHaveBeenCalledTimes(1));
+  expect(onExecute.mock.calls[0][1]).toEqual(source);
+  expect(onExecute.mock.calls[0][2]?.baseSql).toBe('SELECT * FROM analytics.main.orders');
+});
