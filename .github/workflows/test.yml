@@ -133,8 +133,8 @@ jobs:
         with:
           python-version: "3.11"
 
-      - name: Install DuckDB for generated chart SQL integration tests
-        run: python -m pip install duckdb==2.0.0
+      - name: Install SQL integration-test dependencies
+        run: python -m pip install duckdb==2.0.0 "sqlglot>=30.11,<31"
 
       - name: Install dependencies
         run: cd frontend && npm ci

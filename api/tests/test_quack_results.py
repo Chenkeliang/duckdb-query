@@ -112,18 +112,16 @@ def test_native_local_save_restores_exact_and_nested_types(remote):
 
 @pytest.mark.parametrize("operation", ["export", "save"])
 def test_native_transfer_evaluates_remote_rows_only_once(remote, operation):
-    """2026-11-03: schema discovery and local publication must not replay remote rows."""
+    """2026-11-03: prove one remote evaluation using native SQL, without NumPy UDFs."""
     _instance, identifier, info = remote
     server = info["server"]
-    function = "transfer_probe_" + uuid.uuid4().hex
-    evaluations = []
-
-    def probe(value):
-        evaluations.append(value)
-        return value
-
-    server.create_function(function, probe, ["INTEGER"], "INTEGER", side_effects=True)
-    sql = f"SELECT {function}(id) AS id FROM records WHERE id < 3 ORDER BY id"
+    sequence = "transfer_sequence_" + uuid.uuid4().hex
+    view = "transfer_probe_" + uuid.uuid4().hex
+    server.execute(f"CREATE SEQUENCE {sequence} START 1")
+    server.execute(
+        f"CREATE VIEW {view} AS SELECT (nextval('{sequence}') - 1)::INTEGER AS id FROM range(3)"
+    )
+    sql = f"SELECT id FROM {view} ORDER BY id"
     name = "quack_once_" + uuid.uuid4().hex
     query_id = "quack-once-" + uuid.uuid4().hex
     path = None
@@ -138,14 +136,15 @@ def test_native_transfer_evaluates_remote_rows_only_once(remote, operation):
             assert payload["row_count_estimate"] == 3
         else:
             assert quack_results.persist_quack_query(sql, name, identifier, query_id)["row_count"] == 3
-        assert sorted(evaluations) == [0, 1, 2]
+        assert server.execute(f"SELECT currval('{sequence}')").fetchone()[0] == 3
     finally:
         if path:
             path.unlink(missing_ok=True)
         if operation == "save":
             connection_registry.forget_publication(query_id)
             _cleanup_table(name)
-        server.remove_function(function)
+        server.execute(f"DROP VIEW {view}")
+        server.execute(f"DROP SEQUENCE {sequence}")
 
 
 def test_native_async_local_save_and_retry_keep_source(remote):
