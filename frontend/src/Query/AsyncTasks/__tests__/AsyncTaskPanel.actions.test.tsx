@@ -276,3 +276,18 @@ it('2026-10-10: opens an adopted snapshot without a result table or a SQL rerun'
   expect(executeDuckDBSQLMock).not.toHaveBeenCalled();
   expect(retryAsyncTaskMock).not.toHaveBeenCalled();
 });
+
+/** Regression 2026-11-03: materialized remote results refresh the local saved table. */
+it('opens a saved Quack task as a local table, not its original remote SQL', async () => {
+  vi.clearAllMocks();
+  const task = { ...completedTask(), metadata: { quack_service_id: 'service-a', source: { type: 'quack', connectionId: 'service-a', connectionName: 'Analytics' } } };
+  tableState.tables = [{ name: 'async_result_historical_task', type: 'TABLE' }];
+  const response = { success: true, data: [{ value: 7 }], columns: ['value'], row_count: 1 };
+  executeDuckDBSQLMock.mockResolvedValue(response);
+  listAsyncTasksMock.mockResolvedValue({ tasks: [task] });
+  const onPreviewResult = vi.fn();
+  render(<TestWrapper><AsyncTaskPanel onPreviewResult={onPreviewResult} /></TestWrapper>);
+  fireEvent.click(await screen.findByRole('button', { name: '预览结果' }));
+  await waitFor(() => expect(onPreviewResult).toHaveBeenCalledWith(response, 'SELECT * FROM "async_result_historical_task"', { type: 'duckdb' }));
+  expect(getBackgroundQueryResultMock).not.toHaveBeenCalled();
+});

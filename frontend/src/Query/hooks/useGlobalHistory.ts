@@ -2,6 +2,7 @@ import { useState, useCallback, useEffect } from 'react';
 import { useTranslation } from 'react-i18next';
 import { showSuccessToast } from '@/utils/toastHelpers';
 import type { JoinWorkspaceSnapshot } from '@/Query/JoinQuery/joinWorkspaceSnapshot';
+import type { TableSource } from '@/types/queryWorkspace';
 
 export interface GlobalHistoryItem {
     id: string;
@@ -14,6 +15,7 @@ export interface GlobalHistoryItem {
     name?: string; // 可选的命名（如 Saved Query 恢复）
     /** JOIN 工作台快照（表、别名、ON、筛选等） */
     joinSnapshot?: JoinWorkspaceSnapshot;
+    source?: TableSource;
 }
 
 const STORAGE_KEY = 'duckquery-global-history';
@@ -91,6 +93,8 @@ export const useGlobalHistory = () => {
             (h) =>
                 h.sql === newItem.sql &&
                 h.type === newItem.type &&
+                h.source?.type === newItem.source?.type &&
+                h.source?.connectionId === newItem.source?.connectionId &&
                 JSON.stringify(h.joinSnapshot ?? null) === JSON.stringify(newItem.joinSnapshot ?? null)
         );
         let newHistory = currentHistory;

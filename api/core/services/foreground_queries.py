@@ -69,10 +69,14 @@ class ForegroundQueries:
                 return
             if not isinstance(response, dict) or not response.get("success"):
                 message = str(error) if error else "Query failed"
+                payload = response if isinstance(response, dict) else {}
                 if response is not None and hasattr(response, "body"):
                     payload = json.loads(response.body)
                     message = payload.get("message", message)
-                task_manager.fail_task(task_id, message)
+                if payload.get("error", {}).get("code") == "QUERY_CANCELLED":
+                    task_manager.mark_cancelled(task_id)
+                else:
+                    task_manager.fail_task(task_id, message)
                 return
             payload = response["data"]
             path = Path(config_manager.get_exports_dir()) / f"task-{task_id}-snapshot.json"
@@ -87,6 +91,11 @@ class ForegroundQueries:
                 "row_count": payload.get("row_count", 0),
                 "column_count": len(payload.get("columns", [])),
                 "preview_limit_applied": payload.get("preview_limit_applied"),
+                **{
+                    key: entry["metadata"][key]
+                    for key in ("quack_service_id", "source")
+                    if key in entry["metadata"]
+                },
             })
             if not completed:
                 path.unlink(missing_ok=True)
@@ -118,7 +127,9 @@ def track_foreground_query(function):
         arguments = signature.bind(*args, **kwargs).arguments
         request = arguments["request"]
         request_id = arguments.get("x_request_id")
-        if not isinstance(request_id, str) or not request_id or request.save_as_table or not is_read_only_sql(request.sql):
+        if not isinstance(request_id, str) or not request_id:
+            request_id = getattr(request, "request_id", None)
+        if not isinstance(request_id, str) or not request_id or getattr(request, "save_as_table", None) or not is_read_only_sql(request.sql):
             return function(*args, **kwargs)
         attachments = getattr(request, "attach_databases", None) or []
         metadata = {
@@ -126,6 +137,15 @@ def track_foreground_query(function):
             "is_federated": bool(attachments),
             "attach_databases": [item.model_dump() for item in attachments],
         }
+        service_id = arguments.get("service_id") or getattr(request, "quack_service_id", None)
+        if service_id:
+            from core.services.quack_results import quack_source_metadata
+            from core.services.quack_service import QuackError
+
+            try:
+                metadata.update(quack_source_metadata(service_id))
+            except QuackError:
+                return function(*args, **kwargs)
         foreground_queries.begin(request_id, request.sql, metadata)
         try:
             response = function(*args, **kwargs)

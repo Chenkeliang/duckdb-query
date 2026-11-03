@@ -9,11 +9,14 @@ import shutil
 import threading
 import time
 import uuid
+from contextlib import contextmanager
+from tempfile import TemporaryDirectory
 from typing import List, Literal, Optional
 
 import duckdb
 from core.common.config_manager import config_manager
 from core.common.exceptions import ValidationError as APIValidationError
+from core.common.exceptions import BaseAPIException
 from core.common.sql_capabilities import is_read_only_sql
 from core.database.duckdb_engine import with_duckdb_connection
 from core.database.duckdb_pool import interruptible_connection
@@ -30,6 +33,7 @@ from core.common.sql_error_location import (
     structured_duckdb_errors,
 )
 from core.database.query_metrics import log_query_duration
+from core.services.quack_service import QuackError
 from fastapi import APIRouter, Header
 from fastapi.responses import FileResponse
 from models.query_models import AttachDatabase
@@ -59,8 +63,54 @@ class QueryResultExportRequest(BaseModel):
     sql: str = Field(..., min_length=1)
     format: Literal["parquet", "csv"] = "parquet"
     attach_databases: Optional[List[AttachDatabase]] = None
+    quack_service_id: Optional[str] = Field(default=None, min_length=1)
     # 行数范围最终选择:False(默认)=移除页面最外层 LIMIT;True=保留或补默认 LIMIT。
     apply_row_limit: bool = False
+
+
+@contextmanager
+def _export_execution_context(request, sql_query, query_id, deadline):
+    """Keep remote source execution separate from the existing federated pool."""
+    if request.quack_service_id:
+        from core.services.quack_service import quack_query_context
+        from core.services.quack_results import quack_parquet_projection
+
+        with TemporaryDirectory(
+            prefix="quack-export-", dir=config_manager.get_exports_dir()
+        ) as directory:
+            with quack_query_context(
+                request.quack_service_id, sql_query, query_id
+            ) as (connection, remote_sql):
+                if request.format == "parquet":
+                    remote_sql, _columns = quack_parquet_projection(
+                        connection, remote_sql, directory
+                    )
+                yield connection, remote_sql
+        return
+
+    from routers.query_sql_utils import prepare_query_for_embedding
+
+    embedded_sql = prepare_query_for_embedding(sql_query)
+    with interruptible_connection(query_id, sql_query) as connection:
+        attached_aliases = []
+        try:
+            attach_configs = resolve_attach_configs(request.attach_databases)
+            if attach_configs:
+                attached_aliases = attach_databases_on_connection(
+                    connection,
+                    attach_configs,
+                    deadline_monotonic=deadline,
+                    query_id=query_id,
+                )
+            with structured_duckdb_errors(connection):
+                with federated_execution_scope(
+                    connection, embedded_sql, attach_configs, query_id,
+                    materialize_result=False,
+                ) as execution:
+                    yield connection, execution.sql
+        finally:
+            if attached_aliases:
+                detach_databases_on_connection(connection, attached_aliases)
 
 
 @router.post("/api/query-results/export", tags=["Query Export"])
@@ -80,7 +130,10 @@ def export_query_results(
     if not sql_query:
         raise APIValidationError("SQL cannot be empty")
 
-    _ensure_read_only(sql_query)
+    if not request.quack_service_id:
+        _ensure_read_only(sql_query)
+    if request.quack_service_id and request.attach_databases:
+        raise APIValidationError("Quack exports cannot include local database attachments")
     embedded_sql = prepare_query_for_embedding(sql_query)
 
     exports_dir = str(config_manager.get_exports_dir())
@@ -93,14 +146,13 @@ def export_query_results(
     query_id = f"sync:{x_request_id}" if x_request_id else f"export:{uuid.uuid4()}"
     timeout_s = int(config_manager.get_app_config().federated_query_timeout or 300)
     deadline = time.monotonic() + timeout_s
-    conn_ctx = interruptible_connection(query_id, sql_query)
+    conn_ctx = _export_execution_context(request, sql_query, query_id, deadline)
 
     # Newlines keep a terminal ``-- comment`` from swallowing COPY's closing parenthesis.
     copy_sql = (
         f"COPY (\n{embedded_sql}\n) TO '{file_path}' "
         f"(FORMAT {'PARQUET' if request.format == 'parquet' else 'CSV'})"
     )
-    attached_aliases: List[str] = []
     row_count = 0
     timed_out = False
 
@@ -111,46 +163,26 @@ def export_query_results(
 
     try:
         start = time.time()
-        with conn_ctx as con:
-            timer = threading.Timer(timeout_s, _on_timeout)
-            timer.start()
-            try:
-                attach_configs = []
-                if request.attach_databases:
-                    attach_configs = resolve_attach_configs(request.attach_databases)
-                    attached_aliases = attach_databases_on_connection(
-                        con,
-                        attach_configs,
-                        deadline_monotonic=deadline,
-                        query_id=query_id,
-                    )
-
-                with structured_duckdb_errors(con):
-                    with federated_execution_scope(
-                        con,
-                        embedded_sql,
-                        attach_configs,
-                        query_id,
-                        materialize_result=False,
-                    ) as execution:
-                        prepared_copy = (
-                            f"COPY (\n{execution.sql}\n) TO '{file_path}' "
-                            f"(FORMAT {'PARQUET' if request.format == 'parquet' else 'CSV'})"
-                        )
-                        copy_result = con.execute(prepared_copy).fetchone()
-                        row_count = int(copy_result[0]) if copy_result else 0
+        timer = threading.Timer(timeout_s, _on_timeout)
+        timer.start()
+        try:
+            with conn_ctx as (con, execution_sql):
+                prepared_copy = (
+                    f"COPY (\n{execution_sql}\n) TO '{file_path}' "
+                    f"(FORMAT {'PARQUET' if request.format == 'parquet' else 'CSV'})"
+                )
+                copy_result = con.execute(prepared_copy).fetchone()
+                row_count = int(copy_result[0]) if copy_result else 0
                 finalize_query_if_not_cancelled(query_id)
-            finally:
-                timer.cancel()
-                if attached_aliases:
-                    detach_databases_on_connection(con, attached_aliases)
+        finally:
+            timer.cancel()
 
         elapsed_ms = (time.time() - start) * 1000
         explain_threshold = max(
             config_manager.get_app_config().duckdb_auto_explain_threshold_ms or 0, 0
         )
         # 仅在确实需要 EXPLAIN 时才额外获取连接，避免每次导出多占一个池连接
-        if explain_threshold and elapsed_ms >= explain_threshold:
+        if explain_threshold and elapsed_ms >= explain_threshold and not request.quack_service_id:
             with with_duckdb_connection() as metrics_con:
                 log_query_duration(
                     metrics_con,
@@ -179,6 +211,16 @@ def export_query_results(
             message_code=MessageCode.OPERATION_SUCCESS,
             message="Export completed",
         )
+    except QuackError as exc:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        if timed_out and exc.code == "QUERY_CANCELLED":
+            return error_json_response(504, MessageCode.QUERY_TIMEOUT, "Export timed out")
+        return error_json_response(exc.status_code, exc.code, str(exc))
+    except BaseAPIException:
+        if os.path.exists(file_path):
+            os.remove(file_path)
+        raise
     except duckdb.InterruptException as exc:
         if os.path.exists(file_path):
             os.remove(file_path)
@@ -205,6 +247,9 @@ def export_query_results(
             MessageCode.OPERATION_FAILED,
             f"Export failed: {safe_message}",
         )
+    finally:
+        if request.quack_service_id:
+            connection_registry.forget_publication(query_id)
 
 
 @router.get("/api/query-results/export/{file_id}/download", tags=["Query Export"])

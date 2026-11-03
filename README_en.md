@@ -32,7 +32,7 @@ DuckQuery is an independently developed, local-first data workbench powered by D
 
 ### Desktop (Recommended)
 
-The latest release is **[v2.1.3](https://github.com/Chenkeliang/duckdb-query/releases/tag/v2.1.3)**. Features below describe this release; its source is available at the [v2.1.3 tag](https://github.com/Chenkeliang/duckdb-query/tree/v2.1.3).
+The latest release is **[v2.2.0](https://github.com/Chenkeliang/duckdb-query/releases/tag/v2.2.0)**. Features below describe this release; its source is available at the [v2.2.0 tag](https://github.com/Chenkeliang/duckdb-query/tree/v2.2.0).
 
 Choose the installer for your machine from [GitHub Releases](https://github.com/Chenkeliang/duckdb-query/releases/latest):
 
@@ -51,7 +51,7 @@ Use the standard build when online; some external database connections download 
 Install Docker and Docker Compose, then run:
 
 ```bash
-git clone --branch v2.1.3 --depth 1 https://github.com/Chenkeliang/duckdb-query.git
+git clone --branch v2.2.0 --depth 1 https://github.com/Chenkeliang/duckdb-query.git
 cd duckdb-query
 ./quick-start.sh
 ```
@@ -72,15 +72,30 @@ The script supports configurable build-image mirrors; see the [configuration ref
 |---|---|
 | Turn scattered files into queryable data | CSV / Excel / Parquet / JSON / JSONL import, table pasting, URL import, and server directory access |
 | Reconcile files against a business database | Cross-source joins with MySQL / PostgreSQL / SQLite / DuckDB, with eligible remote filters optimized |
+| Run computations on remote DuckDB | Independent Quack connections, remote table/column browsing, service-bound read-only SQL tabs, cancellation, background tasks, export, and local saves |
 | Iterate on a query | SQL tabs, table and column completion, error locations, query history, and SQL bookmarks |
 | Analyze without writing every query | Visual JOIN, set-operation, and pivot builders, including statistics without grouping fields, with generated SQL available to inspect |
 | Keep long queries running | Async tasks, moving active queries to the background, task search, cancellation, retry, and result viewing; moving a query does not run it again |
-| Understand and present results | Virtualized grid, column origins, JSON viewer, bar / line / area / pie / donut / KPI charts, and chart drill-down |
+| Understand and present results | Virtualized grid, column origins, JSON viewer, structure-based chart suggestions, explicit recalculation, and drill-down; charts default to the current SQL result |
 | Deliver the data | CSV / Excel / JSON / Parquet export, or save as a local DuckDB table |
 | Get AI assistance | Scoped data questions, schema and value inspection, read-only queries, SQL explanation and optimization, error repair, and chart suggestions |
 | Connect AI coding tools | An MCP server for Claude Code, Codex, Cursor, and other clients, with three permission modes |
 
 The workbench supports Chinese / English, dark / light themes, a command palette, and customizable keyboard shortcuts.
+
+### Remote Quack and Data Browsing
+
+Add an existing service's address and token in data-source management or the separate **Quack services** group. SQL runs on remote DuckDB; the connection originates from the machine running the DuckQuery backend. A server can expose CSV / Parquet views, DuckDB tables, and other configured data. The client browses the server's actual catalogs and does not configure its MySQL / PostgreSQL sources.
+
+Quack currently supports read-only SQL tabs. Visual JOIN, set operations, pivot, exploration, AI questions/repair for remote SQL, and SQL bookmarks are not integrated. Saving a table writes to local DuckDB, never to the remote service. The browser-only Wasm demo does not support Quack. An explicit first connection test installs the official `httpfs` / `quack` extensions as needed. Current offline bundles do not include `quack`; restricted networks need extensions matching the engine and platform installed in advance. See the [Quack guide (Chinese)](docs/guide/quack-services.md).
+
+Local DuckDB, existing database connections, and Quack tables all support arrow-based field/type expansion. Double-click a table or choose **Open preview SQL (100 rows)** from its context menu to fill SQL without executing it. Identical SQL already open for the same Quack service refocuses that tab; edited drafts are preserved. Explicitly creating a query still opens an independent tab.
+
+### Charts and AI Suggestions
+
+Charts default to displaying the rows returned by the current SQL, without silently rerunning or aggregating truncated results. Suggestions use field types and the current result. To group data, choose the calculation and scope, then explicitly preview it. The UI reports date ordering issues, duplicate/invalid dates, and display point limits. Plot coordinates are approximate; tooltips preserve the original scalar precision supplied by the backend.
+
+AI suggestions contact your configured model only after a click, sending current SQL, columns, a distribution summary of the current result, and at most five bounded sample rows. Review the explanation before choosing to preview a suggestion; it is not applied or executed automatically.
 
 ## From Data to Results
 
@@ -144,13 +159,13 @@ claude mcp add duckquery -- uvx duckquery-mcp
 | `normal` (default) | Exposes mutating tools; changes require explicit confirmation |
 | `full` | Bypasses MCP confirmation gates; backend restrictions still apply |
 
-See the [MCP documentation](mcp/README.md) for client configuration, backend discovery, and tools. The MCP package is versioned separately from the app.
+See the [MCP documentation](mcp/README.md) for client configuration, backend discovery, tools, and installation sources. The MCP package is versioned separately from the app; its current companion version remains 0.4.1.
 
 ## Engine and Upgrade Notes
 
-The **latest released app version is v2.1.3**, repairing Windows engine startup after overlay upgrades while retaining v2.1.2 data exploration, JSON extraction, safe MySQL candidate filtering and compact extensions. See the [v2.1.3 release notes](docs/releases/v2.1.3_en.md).
+The **latest released app version is v2.2.0**, adding remote read-only Quack SQL, consistent table-structure browsing and preview interactions, and updated chart/AI suggestions. It retains the v2.1.3 Windows overlay-upgrade repair, data exploration, JSON extraction, safe MySQL filtering, and extension management. See the [v2.2.0 release notes](docs/releases/v2.2.0_en.md).
 
-The app and DuckDB **engine versions** are maintained separately. v2.1.3 uses **stable DuckDB 2.0** (`duckdb==2.0.0`, engine `v2.0.0`); v2.1.1 used `1.6.0.dev379` / `v2.0.0-alpha39998`. New databases still use `v2.0.0` storage, existing files are not automatically migrated, and extensions must match the stable engine and platform.
+The app and DuckDB **engine versions** are maintained separately. v2.2.0 continues to use **stable DuckDB 2.0** (`duckdb==2.0.0`, engine `v2.0.0`); v2.1.1 used `1.6.0.dev379` / `v2.0.0-alpha39998`. New databases still use `v2.0.0` storage, existing files are not automatically migrated, and extensions must match the stable engine and platform.
 
 Data exploration suggests operations by actual column types, previews SQL and displays metric cards. It can also discover paths in JSON/VARIANT/text and extract typed columns. Discovery applies current filters before sampling at most 100 rows; sampled paths are not a complete schema. Statistics cover all filtered input. Text extraction preserves large integers by default; missing paths and failed casts return NULL. Desktop and server editions provide this entry; the browser-only Wasm demo does not.
 
@@ -160,7 +175,7 @@ Extension management supports name/purpose search, installation-state filters an
 
 Upgrading from DuckQuery 2.0.x introduces no new storage migration. Before upgrading from 1.x, back up `main.db`, `system.db`, and their `.wal` files, then read the [2.0 major-version notes](docs/releases/v2.0.0_en.md). Existing databases are not silently migrated at startup. After an explicit migration to the new storage format, restore a pre-upgrade backup to return to an older version.
 
-Earlier release notes: [v2.1.2](docs/releases/v2.1.2_en.md) · [v2.1.1](docs/releases/v2.1.1_en.md) · [v2.1.0](docs/releases/v2.1.0_en.md) · [v2.0.1](docs/releases/v2.0.1_en.md) · [v2.0.0](docs/releases/v2.0.0_en.md).
+Earlier release notes: [v2.1.3](docs/releases/v2.1.3_en.md) · [v2.1.2](docs/releases/v2.1.2_en.md) · [v2.1.1](docs/releases/v2.1.1_en.md) · [v2.1.0](docs/releases/v2.1.0_en.md) · [v2.0.1](docs/releases/v2.0.1_en.md) · [v2.0.0](docs/releases/v2.0.0_en.md).
 
 Settings → DuckDB database storage shows resource budgets, backup checks, and recovery guidance. Extensions are isolated by engine version; see the [engine upgrade specification](docs/specs/duckdb-2-compatibility-and-capabilities.md) for compatibility details.
 

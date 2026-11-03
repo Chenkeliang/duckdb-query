@@ -219,6 +219,16 @@ def build_capability_contract(
             "extension": "quack",
         },
         {
+            "id": "quack_services",
+            "kind": "connection",
+            "engine": v2_surface("supported", "Requires official Quack extensions installed by an explicit connection test"),
+            "service_api": v2_surface("supported", "Read-only remote SQL through isolated /api/quack/services sessions"),
+            "direct_sql": _surface("blocked", "Use the dedicated Quack service API; shared-pool CONNECT remains blocked"),
+            "agent": _surface("blocked", "Quack services are not exposed to Agent tools"),
+            "mcp": _surface("blocked", "Quack services are not exposed as MCP tools"),
+            "extension": "quack",
+        },
+        {
             "id": "triggers",
             "kind": "write",
             "engine": engine_surface("triggers"),
@@ -248,7 +258,7 @@ def build_capability_contract(
     ]
     return {
         "contract_version": CONTRACT_VERSION,
-        "product_version": "2.1.3",
+        "product_version": "2.2.0",
         "engine": {
             "python_version": python_version,
             "version": engine_version,

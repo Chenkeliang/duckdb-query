@@ -27,7 +27,8 @@ from core.data.file_datasource_manager import (
 from core.services.task_manager import TaskStatus, task_manager
 from fastapi import APIRouter, BackgroundTasks, Body
 from fastapi.responses import FileResponse, JSONResponse
-from pydantic import BaseModel
+from pydantic import BaseModel, Field
+from core.services.quack_service import QuackError, validate_quack_sql
 from core.common.exceptions import (
     BaseAPIException,
     ResourceNotFoundError,
@@ -350,6 +351,7 @@ class AsyncQueryRequest(BaseModel):
     datasource: Optional[Dict[str, Any]] = None
     # 联邦查询支持：需要 ATTACH 的外部数据库列表
     attach_databases: Optional[List[AttachDatabase]] = None
+    quack_service_id: Optional[str] = Field(default=None, min_length=1)
     # 自定义表名撞已有表时是否允许覆盖；默认 False，避免静默 CREATE OR REPLACE 毁数据
     overwrite: bool = False
     # 最终行数选择:False=移除页面最外层 LIMIT;True=保留或补 max_query_rows。
@@ -415,6 +417,17 @@ def submit_async_query(
                 details={"field": "sql"},
             )
 
+        quack_metadata = {}
+        if request.quack_service_id:
+            if request.attach_databases or (
+                request.datasource and request.datasource.get("type") != "quack"
+            ):
+                raise APIValidationError("Quack tasks cannot include local database attachments")
+            from core.services.quack_results import quack_source_metadata
+
+            validate_quack_sql(request.sql)
+            quack_metadata = quack_source_metadata(request.quack_service_id)
+
         attach_list, is_federated = resolve_attach_databases_for_async(
             request.attach_databases, request.datasource
         )
@@ -436,6 +449,7 @@ def submit_async_query(
             "is_federated": is_federated,
             "overwrite": request.overwrite,
             "apply_row_limit": request.apply_row_limit,
+            **quack_metadata,
         }
 
         # 创建任务并保存元数据
@@ -471,6 +485,10 @@ def submit_async_query(
                 request.datasource,
                 request.overwrite,
                 request.apply_row_limit,
+                **({
+                    "quack_service_id": request.quack_service_id,
+                    "quack_service_revision": quack_metadata["quack_service_revision"],
+                } if request.quack_service_id else {}),
             )
 
         return create_success_response(
@@ -478,6 +496,8 @@ def submit_async_query(
             message_code=MessageCode.TASK_SUBMITTED,
         )
 
+    except QuackError as exc:
+        return error_json_response(exc.status_code, exc.code, str(exc))
     except BaseAPIException:
         raise
     except Exception as e:
@@ -704,6 +724,18 @@ def retry_async_task(
         # 保留原任务的行数范围选择(全量/限制),重试不应把用户选的"限制"悄悄变回全量
         apply_row_limit = bool(payload.get("apply_row_limit", False))
 
+        quack_service_id = payload.get("quack_service_id")
+        quack_metadata = {}
+        if quack_service_id:
+            if payload.get("attach_databases") or (
+                datasource and datasource.get("type") != "quack"
+            ):
+                raise APIValidationError("Quack tasks cannot include local database attachments")
+            validate_quack_sql(sql)
+            from core.services.quack_results import quack_source_metadata
+
+            quack_metadata = quack_source_metadata(quack_service_id)
+
         attach_list, is_federated = resolve_attach_databases_for_async(
             payload.get("attach_databases"), datasource
         )
@@ -731,6 +763,7 @@ def retry_async_task(
                 "retry_of": task_id,
             }
         )
+        retry_metadata.update(quack_metadata)
 
         new_task_id = task_manager.create_task(
             sql,
@@ -763,6 +796,10 @@ def retry_async_task(
                 datasource,
                 overwrite=True,
                 apply_row_limit=apply_row_limit,
+                **({
+                    "quack_service_id": quack_service_id,
+                    "quack_service_revision": quack_metadata["quack_service_revision"],
+                } if quack_service_id else {}),
             )
 
         # 注意：移除了 update_task 调用，避免写写冲突
@@ -773,6 +810,8 @@ def retry_async_task(
             message_code=MessageCode.TASK_RETRY_SUCCESS,
             message="Task has been resubmitted",
         )
+    except QuackError as exc:
+        return error_json_response(exc.status_code, exc.code, str(exc))
     except BaseAPIException:
         raise
     except Exception as e:
@@ -1014,6 +1053,8 @@ def execute_async_query(
     datasource: Optional[Dict[str, Any]] = None,
     overwrite: bool = False,
     apply_row_limit: bool = False,
+    quack_service_id: Optional[str] = None,
+    quack_service_revision: Optional[str] = None,
 ):
     """
     执行异步查询（后台任务）- 内存优化版本
@@ -1095,13 +1136,21 @@ def execute_async_query(
 
         from core.database.federated_attach import execute_sql_and_persist
 
-        metadata_snapshot = execute_sql_and_persist(
-            clean_sql,
-            table_name,
-            attach_list,
-            query_id=task_id,
-            overwrite=overwrite,
-        )
+        if quack_service_id:
+            from core.services.quack_results import persist_quack_query
+
+            metadata_snapshot = persist_quack_query(
+                clean_sql, table_name, quack_service_id, task_id, overwrite=overwrite,
+                expected_revision=quack_service_revision,
+            )
+        else:
+            metadata_snapshot = execute_sql_and_persist(
+                clean_sql,
+                table_name,
+                attach_list,
+                query_id=task_id,
+                overwrite=overwrite,
+            )
         row_count = metadata_snapshot.get("row_count", 0)
         columns = [
             {"name": profile["name"], "type": profile["duckdb_type"]}
@@ -1135,6 +1184,13 @@ def execute_async_query(
             table_metadata["source_datasource"] = source_datasource_id
             table_metadata["source_datasource_type"] = datasource_type
 
+        if quack_service_id:
+            task = task_manager.get_task(task_id)
+            source = (task.metadata or {}).get("source") if task else None
+            table_metadata["quack_service_id"] = quack_service_id
+            if source:
+                table_metadata["source"] = source
+
         try:
             file_datasource_manager.save_file_datasource(table_metadata)
             logger.info(f"Table metadata saved successfully: {source_id}")
@@ -1154,6 +1210,11 @@ def execute_async_query(
         if source_datasource_id:
             task_info["source_datasource"] = source_datasource_id
             task_info["source_datasource_type"] = datasource_type
+
+        if quack_service_id:
+            task_info["quack_service_id"] = quack_service_id
+            if source:
+                task_info["source"] = source
 
         if custom_table_name:
             task_info["custom_table_name"] = custom_table_name
@@ -1206,7 +1267,7 @@ def execute_async_query(
         task_manager.mark_cancelled(task_id, "Query interrupted by user")
 
     except Exception as e:
-        error_message = duckdb_error_message(e)
+        error_message = f"{e.code}: {e}" if isinstance(e, QuackError) else duckdb_error_message(e)
         logger.error("Async query task failed: %s, error: %s", task_id, error_message)
         logger.error(traceback.format_exc())
 

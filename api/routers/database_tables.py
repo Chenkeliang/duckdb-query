@@ -831,8 +831,17 @@ def list_schema_tables(connection_id: str, schema: str):
 
 
 
+def _table_columns_response(table_name: str, columns: list[dict]) -> dict:
+    """Return structural metadata without inventing row counts or sampling data."""
+    return create_success_response(
+        data={"table_name": table_name, "columns": columns, "column_count": len(columns)},
+        message_code=MessageCode.TABLE_RETRIEVED,
+    )
+
+
 @router.get("/api/datasources/databases/{connection_id}/tables/detail", tags=["Database Management"])
-def get_table_details(connection_id: str, table_name: str, schema: str | None = None):
+def get_table_details(connection_id: str, table_name: str, schema: str | None = None,
+                      columns_only: bool = False):
     """获取指定表的详细信息，包括字段详情和示例数据"""
     try:
         # 获取应用配置
@@ -897,6 +906,9 @@ def get_table_details(connection_id: str, table_name: str, schema: str | None = 
                                 "comment": _safe_decode_value(col_row[8]),
                             }
                         )
+
+                    if columns_only:
+                        return _table_columns_response(table_name, columns)
 
                     # 获取表注释
                     table_comment = None
@@ -1008,6 +1020,22 @@ def get_table_details(connection_id: str, table_name: str, schema: str | None = 
                 with conn.cursor() as cursor:
                     # 获取schema参数，默认为public
                     schema = schema or db_config.get("schema", "public")
+
+                    if columns_only:
+                        cursor.execute(
+                            """
+                            SELECT c.column_name, pg_catalog.format_type(a.atttypid, a.atttypmod)
+                            FROM information_schema.columns c
+                            JOIN pg_catalog.pg_namespace n ON n.nspname = c.table_schema
+                            JOIN pg_catalog.pg_class t ON t.relnamespace = n.oid AND t.relname = c.table_name
+                            JOIN pg_catalog.pg_attribute a ON a.attrelid = t.oid AND a.attname = c.column_name
+                            WHERE c.table_name = %s AND c.table_schema = %s
+                            ORDER BY c.ordinal_position
+                            """,
+                            (table_name, schema),
+                        )
+                        columns = [{"name": row[0], "type": row[1]} for row in cursor.fetchall()]
+                        return _table_columns_response(table_name, columns)
 
                     # 获取表结构详细信息 (包含注释)
                     cursor.execute(
@@ -1206,6 +1234,9 @@ def get_table_details(connection_id: str, table_name: str, schema: str | None = 
                     }
                     for c in col_rows
                 ]
+
+                if columns_only:
+                    return _table_columns_response(table_name, columns)
 
                 quoted_table = table_name.replace('"', '""')
                 row_count = con.execute(

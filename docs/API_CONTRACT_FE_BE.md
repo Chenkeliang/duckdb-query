@@ -108,7 +108,7 @@
 | POST | `/api/query/cancel/{request_id}` | 对象 | `cancelSyncQuery`；取消在查询连接注册前到达时也作为幂等请求接受并在注册时生效；200 表示请求已受理，不承诺远端已停止 |
 | POST | `/api/save_query_to_duckdb` | 对象 | 保存结果表元数据（依请求）；`apply_row_limit`（默认 `false`，兼容 `applyRowLimit`）为保存对话框的最终选择：`false`＝移除查询页面最外层 `LIMIT` 后全量保存（子查询 `LIMIT` 保留），`true`＝保留页面最外层 `LIMIT`，页面无最外层 `LIMIT` 时补默认 `max_query_rows` | `saveQueryToDuckDB` |
 | GET | `/api/duckdb/tables` | **列表** | `items[]`: `table_name`, `row_count`, `column_count`, `created_at`（应用时区 ISO，仅展示，可为 null）。顺序 = `system_table_registry.sort_seq` 倒序（稳定创建序登记表，新建/替换置顶，跨重启稳定；与 AI 目录同口径） | `getDuckDBTables` |
-| GET | `/api/duckdb/tables/{name}` | 对象 | 表详情 / `table` 包装 | `getDuckDBTableDetail` |
+| GET | `/api/duckdb/tables/{name}` | 对象 | 默认表详情 / `table` 包装；`columns_only=true`（同 `/tables/detail/{name}`）仅返回 `{table_name, columns: [{name, type}], column_count}`，只读结构、不统计行数或采样 | `getDuckDBTableDetail` / `getDuckDBTableStructure` |
 | DELETE | `/api/duckdb/tables/{name}` | 对象 | `deleted_table` | `deleteDuckDBTable` |
 | POST | `/api/duckdb/table/{name}/refresh` | 对象 | `table`, `refreshed` | `refreshDuckDBTableMetadata` |
 | GET | `/api/duckdb/pool/status` | 对象 | `pool_status`, `timestamp` | `getConnectionPoolStatus` |
@@ -121,7 +121,7 @@
 | GET | `/api/datasources/databases/{id}/schemas` | **列表** | `items[]`: `{ name, table_count? }`；PostgreSQL=全部用户 schemas，MySQL=所连库（schema≡database，单条），SQLite/DuckDB=空 | `listConnectionSchemas`（**前端已用**，UI 仅对 PostgreSQL 展示） |
 | GET | `/api/datasources/databases/{id}/schemas/{schema}/tables` | **列表** | `listSchemaTablesForConnection` |
 | GET | `/api/datasources/databases/{id}/tables` | 对象 | `tables[]`（非 `items`） | `listConnectionTablesFlat`（**前端已用**） |
-| GET | `/api/datasources/databases/{id}/tables/detail` | 对象 | `table_name`, `columns`, `indexes?`, `table_comment?` | `getExternalTableDetail`；`ContextMenu` / `useTableColumns` |
+| GET | `/api/datasources/databases/{id}/tables/detail` | 对象 | 默认 `table_name`, `columns`, `indexes?`, `table_comment?`；`columns_only=true` 仅返回 `{table_name, columns: [{name, type, ...}], column_count}`，不采样、不统计行数、不读取索引；PG 保留类型长度/精度。`table_name` / 可选 `schema` 按原接口传入 | `getExternalTableDetail` / `getExternalTableStructure`；`ContextMenu` / `useTableColumns` |
 
 ## 4. 数据源连接（`dataSourceApi.ts`）
 
@@ -182,6 +182,7 @@
 ### 执行中转后台与逐列来源
 
 - `POST /api/query/background/{request_id}`：接管带 `X-Request-ID` 的在途只读本地/联邦查询，返回 `{task_id}`；重复请求幂等返回同一任务。既不取消也不重新执行 SQL，保留该次查询的 LIMIT、精度与列元数据。结束与接管竞争时以服务端锁为准，已结束返回 409。保存表/写操作不参与接管。
+- 接管后仍可通过 `POST /api/query/cancel/{request_id}` 取消原执行。原查询以 `error.code=QUERY_CANCELLED` 结束时，接管任务终态为 `cancelled`，不要求先经任务取消接口进入 `cancelling`；超时 `QUERY_TIMEOUT` 及其他执行错误仍为 `failed`。终态分类依据稳定错误码，不匹配消息文本。
 - 查询快照是持久化任务结果，不参与 24 小时临时导出文件清理。任务列表和详情对 `result_info.result_kind=snapshot` 附加 `result_info.available`（布尔），以实际文件存在性为准；为 false 时前端提供重新运行，不展示必然失败的预览。重新运行会创建新任务，不代表恢复原结果。
 - `GET /api/async-tasks/{task_id}/result`：读取 `foreground_query` 任务的持久化结果快照，返回原查询结果对象（含 data/columns/column_types/execution_time_ms）；未完成 409，缺失 404。界面恢复到结果区后使用现有导出功能。普通异步任务仍按现有结果表下载/预览。
 - `column_types[].lineage`：`{kind: direct|derived|constant|unresolved, sources: [{catalog?, schema?, table, column}]}`。按列位置对应去重后的结果名；基于原 SQL 与实际结构解析别名、星号、JOIN、CTE 和 UNION。常量没有来源，未知来源明确标记 unresolved；不以优化临时表冒充原始来源。
@@ -291,7 +292,7 @@ BY NAME、LIMIT、预览 vs 执行语义见 [QUERY_BEHAVIOR_ZH.md](QUERY_BEHAVIO
 | `generate_sql` | `{ question }` | `{ sql, used_tables[], safe }`（`EXPLAIN` 干跑校验,不执行) | reject（`null`） | **后端 / MCP `generate_sql`**（当前无现役前端按钮） |
 | `repair_sql` | `{ sql, error }` | `{ explanation, fixed_sql\|null, safe }` | reject（`null`） | 前端结果面板报错修复（`runAgent`）+ MCP |
 | `explain_sql` | `{ sql }` | `{ explanation }`（无工具,`max_steps=1`) | typed_error | **后端 / MCP `explain_sql`**（当前无现役前端按钮） |
-| `suggest_chart` | `{ columns[], sample[] }` | `ChartSpec{ type, x, y[], agg?, xBin?, reason? }` | fallback（`null`→前端 `defaultSpec`） | 前端图表 AI 推荐（`runAgent`）+ MCP |
+| `suggest_chart` | `{ columns[], sample[] }`；可选 `context.current_sql`、`context.chart_goal`（`auto\|trend\|compare\|share\|metric`）、`context.chart_summary`（当前结果的行数、截断状态和字段分布摘要） | `ChartSpec{ type, x, y[], agg?, xBin?, reason?, dataMode? }`；`dataMode=rows\|aggregate`，缺省 `rows`，区分直接展示与再次汇总 | fallback（`null`；前端显示失败提示并保留当前图表）。推荐不自动应用或执行 SQL | 前端图表 AI 推荐（`runAgent`）+ MCP；旧请求与原 MCP 工具参数继续可用 |
 
 > 失败策略与终止码：`typed_error` → **error 事件**,`termination_reason=output_invalid`;`reject`/`fallback` → **answer 事件**,`result` 为 `null`(或 fallback),`termination_reason` 为 `output_invalid`(输出模型校验失败)或 `sql_validation_failed`(`generate_sql`/`repair_sql` 的 `EXPLAIN` 干跑失败)。故 `answer` 的 `termination_reason` 不只是 `completed`。
 >
@@ -353,3 +354,40 @@ BY NAME、LIMIT、预览 vs 执行语义见 [QUERY_BEHAVIOR_ZH.md](QUERY_BEHAVIO
 ## 12. Git / 发布注意
 
 同一契约字段变更：优先 **同一 PR** 内后端返回 + 前端消费；若分开发布，在本表增加「最低前端/后端版本」备注。
+
+## 13. Quack 远程分析服务（首版只读 SQL）
+
+`GET /api/capabilities` 新增 `features[id=quack_services]`，`service_api` 描述专用接口支持状态（需在显式测试连接时安装官方扩展）；普通 SQL 的 `connect_and_quack`、Agent、MCP 会话禁令保持不变，不能据此放开共享连接池 `CONNECT`。
+
+Quack 服务独立于 MySQL/PG 的 `DatabaseType`，保存在配置目录 `quack-services.json`；连接 Token 复用 `utils/encryption_utils.py` 的本机 XOR-v2 加密。配置写入原子替换，所有公开响应只返回 `has_token`，不返回 Token 或密文。每次查询独立创建内存 DuckDB 连接，经 `ATTACH` + 附件 `query` 宏将完整 SQL 发往远端；不使用本地连接池或修改其优化器设置。
+
+- 配置输入：`{name, uri, token?, disable_ssl?: boolean|null, ssl_fingerprint?: string|null, timeout_seconds?: number}`。`uri` 为 `quack:host[:port]`（允许 `quack://host`、IPv6）；禁止内嵌账号、密码、路径或查询参数。`timeout_seconds` 默认 30（1–600）。更新省略或传 `null` 的 Token 保留原值，显式空串清除。
+- 服务对象：`{id, name, uri, has_token, disable_ssl, ssl_fingerprint, timeout_seconds, created_at, updated_at}`。
+- 所有列表采用标准 `{items, total}`。错误使用标准错误体，`QUACK_SERVICE_NOT_FOUND` 404、`QUACK_READ_ONLY_REQUIRED` 400、`QUACK_EXTENSION_REQUIRED` 409、`QUACK_QUERY_FAILED`/`QUACK_CONNECTION_FAILED` 400、`QUERY_CANCELLED` 499、`QUERY_TIMEOUT` 504。错误与日志不得包含 Token。
+- 仅显式“测试连接”允许经 DuckDB 官方 `core` 仓库安装 `httpfs`/`quack`；启动、CRUD、列表不联网，查询及元数据读取仅加载已安装扩展。
+- 每个隔离客户端复用现有 `duckdb_memory_limit`、`duckdb_threads`、`duckdb_max_temp_directory_size`，使用配置临时目录内的独占子目录并在关闭时清理；不改变远端服务器的资源配置。
+- 应用层要求单条只读语句，并拒绝内嵌 `query`、`quack_query`、`quack_query_by_name`、`mysql_query`、`postgres_query`、`json_execute_serialized_sql` 等动态执行函数（含限定名/引号形式及 EXPLAIN 内层调用）。原生 AST 区分实际函数与同名表别名/CTE；只做序列化而不执行的 `json_serialize_sql` 仍可使用。此策略不等于远端服务已配置数据库级只读权限；服务端权限仍由服务管理员控制。
+
+| 方法 | 路径 | 标准响应的 `data` / 语义 |
+|------|------|-------------------------|
+| GET | `/api/quack/services` | `{items: Service[], total}` |
+| POST | `/api/quack/services` | 新 Service；保存不自动测试、不访问远端 |
+| PUT | `/api/quack/services/{id}` | 更新后的 Service |
+| DELETE | `/api/quack/services/{id}` | `{id}`；只删除本地服务配置，不删除远端数据 |
+| POST | `/api/quack/services/test` | 未保存配置的连接测试，返回 `{connected: true, server_version, application_read_only: true, server_read_only_verified: false}` |
+| POST | `/api/quack/services/{id}/test` | 已保存服务的连接测试，返回同上 |
+| GET | `/api/quack/services/{id}/catalogs` | `{items: [{name, type}], total}`；`type` 仅来自远端真实 `duckdb_databases()`，不根据名字猜测 |
+| GET | `/api/quack/services/{id}/schemas?catalog=` | `{items: [{name, catalog}], total}` |
+| GET | `/api/quack/services/{id}/tables?catalog=&schema=` | `{items: [{name, catalog, schema, type}], total}`；表和视图，不自动 COUNT |
+| GET | `/api/quack/services/{id}/columns?catalog=&schema=&table=` | `{items: [{name, type, nullable, ordinal_position}], total}` |
+| POST | `/api/quack/services/{id}/execute` | 请求 `{sql, is_preview?: true, request_id?}`，支持 `X-Request-ID`（优先于 body）；响应 `{columns, column_types: [{name, duckdb_type}], data: object[], row_count, preview_limit_applied, sql_executed, execution_time_ms}`。`row_count` 为实际返回行数；DECIMAL、大整数、嵌套值复用现有无损结果编码。预览仅在最外层没有 LIMIT/FETCH 时追加 `max_query_rows`，用户已有行数范围不变 |
+
+后台提升元数据保留 `{quack_service_id, source: {type: 'quack', connectionId, connectionName}}`，不含凭据。取消使用该查询独占的远端连接 ID，通过第二条独立控制连接执行 `quack_cancel`，不重放原查询。
+
+Quack 任务元数据另保留 `quack_service_revision`，即受理时服务 `updated_at` 的不可变快照，不包含端点、Token 或密文。异步保存开始建立连接时，以同一次读取到的配置核对该版本；配置已变化则任务明确失败（`QUACK_SERVICE_CHANGED`），不连接新端点、不发布本地表。用户显式重试会重新捕获当前版本和来源名称，新任务仍执行同样校验；已建立连接的查询及其取消器继续使用原配置快照，不受随后编辑影响。
+
+已有 `POST /api/query-results/export` 与 `POST /api/async-tasks` 请求增加可选 `quack_service_id: string`。提供时在该远端执行只读 SQL，不能同时指定本地/其他数据库附件；原有 `apply_row_limit`、响应及取消语义保持不变。导出文件与异步保存的结果表始终落在本地，绝不在远端执行 CTAS/写入；原 SQL、服务归属及重试元数据须保留。
+
+本地保存将远端 SQL 执行一次，直接写入隔离客户端拥有的临时 DuckDB 文件（storage `v2.0.0`）；关闭写入挂载后，在本地连接池以唯一别名 `READ_ONLY` 挂载，沿用现有 staging、重名保护和原子发布，并在退出时卸载。两阶段沿用同一取消 ID。内部传输不使用 Parquet 或文本 CAST，保留原生类型、UNION 活动成员、VARIANT 内大整数、微秒间隔和时区时间偏移。
+
+CSV 直接 COPY，使用 DuckDB 的自然文本表示。Parquet 导出先将远端 SQL 执行一次到隔离客户端的原生临时表，再检查类型，避免 DESCRIBE 重放远端 SQL。Parquet 不是全部 DuckDB 类型的无损容器：HUGEINT/UHUGEINT、INTERVAL、TIME WITH TIME ZONE、VARIANT、ENUM、BIT、定长 ARRAY 以及包含这些类型的 LIST/STRUCT/MAP 等整列导出为 VARCHAR 文本；保留整数位数、间隔微秒和原时区偏移，但不声称文本仍具有原生类型。DECIMAL 保留精度与标度，TIMESTAMP_NS 保留纳秒。含 UNION 的列（包括静态嵌套 UNION）拒绝 Parquet 导出，返回 HTTP 400 `QUACK_UNSUPPORTED_PARQUET_TYPE`，不生成下载文件；可选择 CSV 文本导出，或保存为本地表以保留成员标签。

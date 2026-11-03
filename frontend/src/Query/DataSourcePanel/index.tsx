@@ -24,6 +24,9 @@ import type { SelectedTable, SelectedTableObject } from '@/types/SelectedTable';
 import { TreeSection } from './TreeSection';
 import { TableItem } from './TableItem';
 import { DatabaseConnectionNode } from './DatabaseConnectionNode';
+import { QuackServicesPanel } from '@/Quack';
+import { queueWorkbenchCommand } from '@/Query/workbenchCommands';
+import { IS_DEMO } from '@/demo/isDemo';
 
 /**
  * 数据源面板
@@ -353,6 +356,8 @@ export const DataSourcePanel: React.FC<DataSourcePanelProps> = ({
             )}
           </div>
         )}
+        {!IS_DEMO && <div className="px-2 pb-2"><QuackServicesPanel mode="tree" search={debouncedSearch}
+          onOpenQuery={(service, sql) => queueWorkbenchCommand('openQuackQuery', service, sql)} /></div>}
       </div>
 
       {/* 底部操作按钮 */}

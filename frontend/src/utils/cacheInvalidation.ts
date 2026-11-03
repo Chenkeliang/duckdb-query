@@ -70,6 +70,7 @@ export const invalidateAfterDatabaseChange = async (queryClient: QueryClient) =>
   await Promise.all([
     invalidateDatabaseConnections(queryClient),
     invalidateDataSources(queryClient),
+    invalidateTableColumns(queryClient),
   ]);
 };
 

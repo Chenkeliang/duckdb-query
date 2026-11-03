@@ -42,6 +42,7 @@ export interface AttachDatabase {
 }
 
 export interface AsyncTaskDialogProps {
+  quackServiceId?: string;
   /** 是否打开 */
   open: boolean;
   /** 关闭回调 */
@@ -100,6 +101,7 @@ function validateTableName(name: string): { valid: boolean; error?: string } {
  * 异步任务发起对话框
  */
 export const AsyncTaskDialog: React.FC<AsyncTaskDialogProps> = ({
+  quackServiceId,
   open,
   onOpenChange,
   sql,
@@ -143,6 +145,7 @@ export const AsyncTaskDialog: React.FC<AsyncTaskDialogProps> = ({
         sql,
         task_type: 'query',
         apply_row_limit: applyRowLimit,
+        ...(quackServiceId ? { quack_service_id: quackServiceId } : {}),
       };
 
       if (customTableName.trim()) {
@@ -196,7 +199,7 @@ export const AsyncTaskDialog: React.FC<AsyncTaskDialogProps> = ({
         <DialogHeader className="flex-row flex-wrap items-baseline gap-x-2 gap-y-1 space-y-0">
           <DialogTitle>{t('async.dialog.title', '提交异步任务')}</DialogTitle>
           <DialogDescription>
-            {t('async.dialog.description', '后台执行 · 结果保存为 DuckDB 表')}
+            {quackServiceId ? t('quack.saveLocal') : t('async.dialog.description', '后台执行 · 结果保存为 DuckDB 表')}
           </DialogDescription>
         </DialogHeader>
 

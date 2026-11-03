@@ -5,6 +5,7 @@
 import { apiClient, handleApiError, normalizeResponse } from './client';
 
 export interface QueryResultExportPayload {
+    quack_service_id?: string;
     sql: string;
     format: 'parquet' | 'csv';
     attach_databases?: { alias: string; connection_id: string }[];

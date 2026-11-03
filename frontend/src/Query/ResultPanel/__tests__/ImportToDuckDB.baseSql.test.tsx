@@ -39,14 +39,14 @@ vi.mock('@/api', () => ({
 
 // ResultPanel 接线探针:记录 dialog 实际收到的 sql prop
 vi.mock('@/Query/AsyncTasks/AsyncTaskDialog', () => ({
-  AsyncTaskDialog: (props: { sql: string }) => (
-    <div data-testid="import-sql-probe">{props.sql}</div>
+  AsyncTaskDialog: (props: { sql: string; quackServiceId?: string }) => (
+    <div data-testid="import-sql-probe" data-quack-source={props.quackServiceId}>{props.sql}</div>
   ),
 }));
 vi.mock('../DataGridWrapper', () => ({
   DataGridWrapper: () => <div data-testid="grid" />,
 }));
-vi.mock('../ResultToolbar', () => ({ ResultToolbar: () => <div /> }));
+vi.mock('../ResultToolbar', () => ({ ResultToolbar: ({ onImportToDuckDB }: { onImportToDuckDB?: () => void }) => <button onClick={onImportToDuckDB}>save captured result</button> }));
 vi.mock('../ResultTabGridPane', () => ({ ResultTabGridPane: () => <div /> }));
 vi.mock('../hooks/useDataGridColumns', () => ({ useDataGridColumns: () => ({ columns: [] }) }));
 
@@ -149,4 +149,14 @@ describe('② ImportToDuckDBDialog 请求参数(真实对话框)', () => {
     expect(args[0]).toBe(BASE);
     expect(args[5]).toBe(true);        // 勾选限制
   });
+});
+
+/** Regression 2026-11-03: an open save dialog must never switch services with a new result. */
+it('captures base SQL and service when saving across result changes', () => {
+  const panel = (id: string) => <Wrap><ResultPanel data={[{ a: 1 }]} columns={['a']} currentSQL={`SELECT * FROM ${id} LIMIT 10`} currentBaseSQL={`SELECT * FROM ${id}`} source={{ type: 'quack', connectionId: id, connectionName: id }} /></Wrap>;
+  const view = render(panel('service_a'));
+  fireEvent.click(screen.getByRole('button', { name: 'save captured result' }));
+  view.rerender(panel('service_b'));
+  expect(screen.getByTestId('import-sql-probe')).toHaveTextContent('SELECT * FROM service_a');
+  expect(screen.getByTestId('import-sql-probe')).toHaveAttribute('data-quack-source', 'service_a');
 });

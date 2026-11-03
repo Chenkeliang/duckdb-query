@@ -73,11 +73,11 @@ describe('ResultPanel 联邦导出', () => {
   });
 
   it('导出携带来自 effectiveSource 的 attach_databases(而非未传递的 prop)', async () => {
-    const sql = 'SELECT id FROM "mysql_sorder"."bschool_order"';
+    const sql = 'SELECT id FROM "mysql_demo"."orders"';
     const source = {
       type: 'federated',
       sql,
-      attachDatabases: [{ alias: 'mysql_sorder', connectionId: 'SORDER' }],
+      attachDatabases: [{ alias: 'mysql_demo', connectionId: 'DEMO_CONNECTION' }],
     };
 
     render(
@@ -94,7 +94,7 @@ describe('ResultPanel 联邦导出', () => {
       expect.objectContaining({
         sql,
         format: 'parquet',
-        attach_databases: [{ alias: 'mysql_sorder', connection_id: 'SORDER' }],
+        attach_databases: [{ alias: 'mysql_demo', connection_id: 'DEMO_CONNECTION' }],
       })
     );
   });
@@ -116,4 +116,12 @@ describe('ResultPanel 联邦导出', () => {
       expect.objectContaining({ sql, format: 'parquet', attach_databases: undefined })
     );
   });
+});
+
+/** Regression 2026-11-03: export retains the original remote service and base SQL. */
+it('exports full remote results from the captured service', async () => {
+  exportMock.mockResolvedValue({ file_id: 'remote-export', download_url: '/api/query-results/export/remote-export/download', format: 'parquet' });
+  render(<Wrap><ResultPanel data={[{ id: 1 }]} currentSQL="SELECT * FROM orders LIMIT 10" currentBaseSQL="SELECT * FROM orders" source={{ type: 'quack', connectionId: 'service-a', connectionName: 'Analytics' }} /></Wrap>);
+  fireEvent.click(screen.getByTestId('export-parquet'));
+  await waitFor(() => expect(exportMock).toHaveBeenCalledWith(expect.objectContaining({ sql: 'SELECT * FROM orders', quack_service_id: 'service-a' })));
 });

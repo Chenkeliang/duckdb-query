@@ -242,6 +242,7 @@ export interface TaskResult {
 }
 
 export interface CreateTaskRequest {
+  quack_service_id?: string;
   sql: string;
   name?: string;
   custom_table_name?: string;

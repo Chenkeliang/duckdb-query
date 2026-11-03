@@ -11,6 +11,22 @@ import { normalizeConnectionId } from './databaseSchemasApi';
 import { IS_DEMO } from '@/demo/isDemo';
 import type { TableInfo, TableDetail, NormalizedResponse } from './types';
 
+export type TableStructure = Pick<TableDetail, 'table_name' | 'columns' | 'column_count'>;
+
+/** Read only column definitions, without table statistics or sample rows. */
+export async function getDuckDBTableStructure(tableName: string): Promise<TableStructure> {
+    const response = await apiClient.get(`/api/duckdb/tables/${encodeURIComponent(tableName)}?columns_only=true`);
+    return normalizeResponse<TableStructure>(response).data;
+}
+
+/** Read structural metadata from an existing database connection. */
+export async function getExternalTableStructure(connectionId: string, tableName: string, schema?: string): Promise<TableStructure> {
+    const params = new URLSearchParams({ table_name: tableName, columns_only: 'true' });
+    if (schema) params.set('schema', schema);
+    const response = await apiClient.get(`/api/datasources/databases/${normalizeConnectionId(connectionId)}/tables/detail?${params}`);
+    return normalizeResponse<TableStructure>(response).data;
+}
+
 type DuckDBTableListItem = {
     table_name?: string;
     name?: string;

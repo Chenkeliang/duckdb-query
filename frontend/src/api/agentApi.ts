@@ -37,6 +37,8 @@ export interface AgentContext {
   scope?: AgentScopePayload;
   current_sql?: string;
   locale?: 'zh' | 'en';
+  chart_goal?: 'auto' | 'trend' | 'compare' | 'share' | 'metric';
+  chart_summary?: Record<string, unknown>;
 }
 
 export interface AgentRequest {

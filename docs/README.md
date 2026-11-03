@@ -32,6 +32,8 @@
 
 ## 使用指南（面向用户）
 
+Quack 远程服务：[`连接、查询与本地保存`](guide/quack-services.md)。
+
 | 文档 | 用途 |
 |------|------|
 | [`guide/桌面版使用手册.md`](guide/桌面版使用手册.md) | 桌面版新手手册（零编程基础） |
@@ -51,6 +53,7 @@
 
 | 资源 | 用途 |
 |------|------|
+| [`releases/v2.2.0.md`](releases/v2.2.0.md) · [`English`](releases/v2.2.0_en.md) | v2.2.0：Quack 远程 SQL、字段展开与图表推荐交互 |
 | [`releases/v2.1.3.md`](releases/v2.1.3.md) · [`English`](releases/v2.1.3_en.md) | v2.1.3：Windows 覆盖升级修复与 MCP 0.4.1 |
 | [`releases/v2.1.2.md`](releases/v2.1.2.md) · [`English`](releases/v2.1.2_en.md) | v2.1.2：正式引擎、数据探索、MySQL 下推与扩展管理 |
 | [`releases/v2.1.1.md`](releases/v2.1.1.md) · [`English`](releases/v2.1.1_en.md) | v2.1.1：透视表无分组统计 |

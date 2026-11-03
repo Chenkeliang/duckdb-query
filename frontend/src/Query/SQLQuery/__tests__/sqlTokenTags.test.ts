@@ -3,18 +3,15 @@ import { describe, expect, it } from 'vitest';
 import { EditorState } from '@codemirror/state';
 import { EditorView } from '@codemirror/view';
 import { sql } from '@codemirror/lang-sql';
-import { syntaxTree } from '@codemirror/language';
+import { ensureSyntaxTree } from '@codemirror/language';
 import { duckDBDialect } from '../sqlDialect';
 import { sqlEditorLightTheme } from '../sqlEditorTheme';
 
-const SAMPLE = 'SELECT * FROM left0423_jst_del LIMIT 10000';
+const SAMPLE = 'SELECT * FROM sample_orders LIMIT 10000';
 
 function nodeNamesAt(doc: string) {
-  const state = EditorState.create({
-    doc,
-    extensions: [sql({ dialect: duckDBDialect, upperCaseKeywords: true })],
-  });
-  const tree = syntaxTree(state);
+  // 2026-11-03: initial state trees can be partial when the parser's time budget expires.
+  const tree = sql({ dialect: duckDBDialect, upperCaseKeywords: true }).language.parser.parse(doc);
   const parts: { text: string; name: string; from: number; to: number }[] = [];
   tree.cursor().iterate((node) => {
     if (node.from < node.to && node.name !== 'Statement') {
@@ -42,7 +39,7 @@ describe('SQL token names', () => {
 
   it('表名应为 Identifier', () => {
     const parts = nodeNamesAt(SAMPLE);
-    const table = parts.find((p) => p.text === 'left0423_jst_del');
+    const table = parts.find((p) => p.text === 'sample_orders');
     expect(table?.name).toBe('Identifier');
   });
 
@@ -70,6 +67,7 @@ describe('SQL editor DOM classes', () => {
         sqlEditorLightTheme,
       ],
     });
+    expect(ensureSyntaxTree(state, state.doc.length, 1000)).not.toBeNull();
     const view = new EditorView({ state, parent });
     const line = parent.querySelector('.cm-line')!;
     const spans = [...line.querySelectorAll('span')].map((s) => ({
@@ -77,7 +75,7 @@ describe('SQL editor DOM classes', () => {
       className: s.className,
     }));
     const selectSpan = spans.find((s) => s.text === 'SELECT');
-    const tableSpan = spans.find((s) => s.text === 'left0423_jst_del');
+    const tableSpan = spans.find((s) => s.text === 'sample_orders');
     expect(selectSpan).toBeTruthy();
     expect(tableSpan).toBeTruthy();
     expect(selectSpan!.className).not.toBe(tableSpan!.className);

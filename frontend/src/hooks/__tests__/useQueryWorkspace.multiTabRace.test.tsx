@@ -32,6 +32,7 @@ vi.mock('@/api', async (importOriginal) => {
     ...actual,
     executeDuckDBSQL: vi.fn(),
     executeFederatedQuery: vi.fn(),
+    executeQuackQuery: vi.fn(),
     cancelSyncQuery: vi.fn(),
     moveQueryToBackground: vi.fn(),
   };
@@ -417,4 +418,19 @@ it('2026-10-10: restoring a federated snapshot preserves the execution source fo
     sql: 'SELECT * FROM crm.customers', attachDatabases: source.attachDatabases,
   }));
   expect(api.executeDuckDBSQL).not.toHaveBeenCalled();
+});
+
+/** Regression 2026-11-03: refreshing a remote result must retain the captured target. */
+it('executes and refreshes Quack results without a local retry', async () => {
+  vi.clearAllMocks();
+  vi.mocked(api.executeQuackQuery).mockResolvedValue({ ...okResult('remote'), row_count: 1 } as never);
+  const { result } = renderHook(() => useQueryWorkspace());
+  const source = { type: 'quack' as const, connectionId: 'service-a', connectionName: 'Analytics' };
+  await act(async () => { await result.current.handleQueryExecute('SELECT 1', source); });
+  expect(api.executeQuackQuery).toHaveBeenCalledWith('service-a', 'SELECT 1', expect.objectContaining({ isPreview: true, requestId: expect.any(String) }));
+  expect(result.current.resultTabs[0].query.source).toEqual(source);
+  await act(async () => { await result.current.refreshResultTab(result.current.resultTabs[0].id); });
+  expect(api.executeQuackQuery).toHaveBeenCalledTimes(2);
+  expect(api.executeDuckDBSQL).not.toHaveBeenCalled();
+  expect(api.executeFederatedQuery).not.toHaveBeenCalled();
 });

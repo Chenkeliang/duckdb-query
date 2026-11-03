@@ -52,6 +52,7 @@ interface WorkbenchTab {
   kind: QueryTabKind;
   /** SQL 标签序号（标题 SQL 1、SQL 2…） */
   seq?: number;
+  source?: TableSource;
 }
 
 const KIND_META: Record<QueryTabKind, { labelKey: string; icon: React.ComponentType<{ className?: string }> }> = {
@@ -104,8 +105,9 @@ export interface QueryTabsHandle {
   loadSql: (
     sql: string,
     type?: string,
-    options?: { joinSnapshot?: GlobalHistoryItem['joinSnapshot'] }
+    options?: { joinSnapshot?: GlobalHistoryItem['joinSnapshot']; source?: TableSource }
   ) => void;
+  openQuackQuery: (service: { id: string; name: string }, sql?: string) => void;
 }
 
 export const QueryTabs = React.forwardRef<QueryTabsHandle, QueryTabsProps>(({
@@ -145,7 +147,7 @@ export const QueryTabs = React.forwardRef<QueryTabsHandle, QueryTabsProps>(({
   const [sqlTablesById, setSqlTablesById] = React.useState<Record<string, SelectedTable[]>>(() => ({ 'sql-1': selectedTablesByTab.sql || [] }));
   const incomingSqlTables = selectedTablesByTab.sql;
   React.useEffect(() => {
-    if (activeTabObj?.kind === 'sql') {
+    if (activeTabObj?.kind === 'sql' && activeTabObj.source?.type !== 'quack') {
       setSqlTablesById((previous) => ({ ...previous, [activeTabId]: incomingSqlTables || [] }));
     }
   }, [incomingSqlTables]);
@@ -242,7 +244,7 @@ export const QueryTabs = React.forwardRef<QueryTabsHandle, QueryTabsProps>(({
     sql: activeSql ?? '',
     selectedTables,
     debounceMs: 300,
-    enabled: chatStatus.configured,
+    enabled: chatStatus.configured && activeTabObj?.source?.type !== 'quack',
   });
   const [agentPreview, setAgentPreview] = React.useState<{ targetId: string | null; beforeSql: string; afterSql: string; stale: boolean } | null>(null);
   const [pendingAgentSql, setPendingAgentSql] = React.useState<{ targetId: string; sql: string } | null>(null);
@@ -290,8 +292,9 @@ export const QueryTabs = React.forwardRef<QueryTabsHandle, QueryTabsProps>(({
 
   /** 回填目标：当前 SQL 标签 > 最近的 SQL 标签 > 新建 */
   const resolveSqlTarget = React.useCallback((): string => {
-    if (activeTabObj?.kind === 'sql') return activeTabObj.id;
-    const last = tabs.find((tab) => tab.id === lastSqlTabIdRef.current && tab.kind === 'sql');
+    if (activeTabObj?.kind === 'sql' && activeTabObj.source?.type !== 'quack') return activeTabObj.id;
+    const last = tabs.find((tab) => tab.id === lastSqlTabIdRef.current && tab.kind === 'sql' && tab.source?.type !== 'quack')
+      ?? tabs.find((tab) => tab.kind === 'sql' && tab.source?.type !== 'quack');
     if (last) {
       activate(last.id);
       return last.id;
@@ -299,11 +302,41 @@ export const QueryTabs = React.forwardRef<QueryTabsHandle, QueryTabsProps>(({
     return openTab('sql');
   }, [activeTabObj, tabs, activate, openTab]);
 
+  const openQuackQuery = React.useCallback((service: { id: string; name: string }, sql = '') => {
+    const existing = sql.trim() ? tabs.find((tab) => tab.kind === 'sql'
+      && tab.source?.type === 'quack' && tab.source.connectionId === service.id
+      && sqlDraftsRef.current[tab.id] === sql) : undefined;
+    if (existing) {
+      activate(existing.id);
+      setPreviewDialogOpen(false);
+      agentChatBus.setOpen(false);
+      return;
+    }
+    const seq = ++sqlSeqRef.current;
+    const tab: WorkbenchTab = { id: `sql-${seq}`, kind: 'sql', seq,
+      source: { type: 'quack', connectionId: service.id, connectionName: service.name } };
+    const next = [...tabs, tab];
+    setTabs(next);
+    activate(tab.id, next);
+    setPreviewTargetId(tab.id);
+    setLoadedSqlPreview(sql);
+    setPreviewSeq((value) => value + 1);
+    setPreviewDialogOpen(false);
+    agentChatBus.setOpen(false);
+  }, [tabs, activate]);
+
+  React.useEffect(() => registerWorkbenchCommand('openQuackQuery', openQuackQuery), [openQuackQuery]);
+
   const handleLoadSQL = (
     sql: string,
     type: string = 'sql',
-    options?: { joinSnapshot?: GlobalHistoryItem['joinSnapshot'] }
+    options?: { joinSnapshot?: GlobalHistoryItem['joinSnapshot']; source?: TableSource },
+    showPreviewDialog = true,
   ) => {
+    if (options?.source?.type === 'quack' && options.source.connectionId) {
+      openQuackQuery({ id: options.source.connectionId, name: options.source.connectionName ?? options.source.connectionId }, sql);
+      return;
+    }
     if (type === 'join' && options?.joinSnapshot && restoreJoinWorkspace) {
       restoreJoinWorkspace(options.joinSnapshot);
       return;
@@ -321,12 +354,13 @@ export const QueryTabs = React.forwardRef<QueryTabsHandle, QueryTabsProps>(({
     setPreviewSeq((s) => s + 1);
     setPreviewDialogSql(sqlBody);
     setPreviewSource(undefined);
-    setPreviewDialogOpen(true);
+    setPreviewDialogOpen(showPreviewDialog);
   };
 
   // 外部(资源面板、图表下钻)回填 SQL 的入口
   React.useImperativeHandle(ref, () => ({
     loadSql: (sql, type, options) => handleLoadSQL(sql, type, options),
+    openQuackQuery,
   }));
 
   // 命令面板：新建标签 / 载入 SQL；非 SQL 标签激活时，SQL 专属命令给出提示而不是排队到别的标签
@@ -336,6 +370,7 @@ export const QueryTabs = React.forwardRef<QueryTabsHandle, QueryTabsProps>(({
     const offs = [
       registerWorkbenchCommand('newTab', (kind = 'sql') => void openTab(kind)),
       registerWorkbenchCommand('loadSql', (sql: string) => handleLoadRef.current(sql)),
+      registerWorkbenchCommand('openTableQuery', (sql: string) => handleLoadRef.current(sql, 'sql', undefined, false)),
     ];
     if (activeTabObj?.kind !== 'sql') {
       const sqlOnly = () => toast.info(t('command.sqlOnly', '该操作用于 SQL 标签'));
@@ -444,7 +479,7 @@ export const QueryTabs = React.forwardRef<QueryTabsHandle, QueryTabsProps>(({
   const handleInsightsExecute = React.useMemo(() => createWrappedExecute('sql'), [createWrappedExecute]);
 
   const tabLabel = (tab: WorkbenchTab) =>
-    tab.kind === 'sql' ? `SQL ${tab.seq ?? ''}`.trim() : t(KIND_META[tab.kind].labelKey);
+    tab.kind === 'sql' ? `${tab.source?.type === 'quack' ? `${tab.source.connectionName} · ` : ''}SQL ${tab.seq ?? ''}`.trim() : t(KIND_META[tab.kind].labelKey);
 
   const renderPanel = (tab: WorkbenchTab) => {
     const isActive = tab.id === activeTabObj?.id;
@@ -457,7 +492,8 @@ export const QueryTabs = React.forwardRef<QueryTabsHandle, QueryTabsProps>(({
             isActive={isActive && isWorkspaceActive}
             editorFill
             onSqlChange={(sql) => { sqlDraftsRef.current[tab.id] = sql; }}
-            selectedTables={sqlTablesById[tab.id] || []}
+            selectedTables={tab.source?.type === 'quack' ? [] : sqlTablesById[tab.id] || []}
+            executionSource={tab.source}
             onExecute={onExecute}
             onCancel={onCancel}
             isCancelling={isCancelling}
@@ -632,7 +668,7 @@ export const QueryTabs = React.forwardRef<QueryTabsHandle, QueryTabsProps>(({
       {/* 全局数据智能体:单例挂载,对话与滚动位置跨标签保留;经停靠位渲染到工作台右侧 */}
       {chatStatus.configured && (
         <AiChatDrawer
-          open={chatBus.open}
+          open={chatBus.open && activeTabObj?.source?.type !== 'quack'}
           onClose={() => agentChatBus.setOpen(false)}
           selectedTables={(selectedTables || []).map((tbl) => getTableName(tbl))}
           attachDatabases={chatAttachDatabases}
