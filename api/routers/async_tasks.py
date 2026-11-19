@@ -59,7 +59,7 @@ EXPORTS_DIR = str(config_manager.get_exports_dir())
 # 初始化任务工具类
 task_utils = TaskUtils(EXPORTS_DIR)
 
-SUPPORTED_EXTERNAL_TYPES = {"mysql", "postgresql", "sqlite", "duckdb"}
+SUPPORTED_EXTERNAL_TYPES = {"mysql", "postgresql", "oracle", "sqlite", "duckdb"}
 
 # 单一来源,避免下载与桌面直写两条路径各写一份格式白名单。
 LOCAL_EXPORT_FORMATS = ("csv", "parquet", "json", "xlsx")
@@ -236,6 +236,7 @@ def _attach_external_databases(
     from core.database.federated_attach import (
         _is_database_already_attached_error,
         _quote_identifier,
+        attach_databases_on_connection,
         redact_connection_secrets,
     )
     from core.security.encryption import password_encryptor
@@ -279,6 +280,10 @@ def _attach_external_databases(
             if password and password_encryptor.is_encrypted(password):
                 db_config["password"] = password_encryptor.decrypt_password(password)
                 logger.debug(f"Connection {connection_id} password processed")
+
+            if db_type == "oracle":
+                attached.extend(attach_databases_on_connection(con, [(alias, db_config)]))
+                continue
 
             try:
                 con.execute(f'DETACH {_quote_identifier(alias)}')
@@ -1351,13 +1356,7 @@ def execute_async_federated_query(
         # 行数范围按最终选择,与本地异步、导出、保存路径使用同一公共 helper。
         from routers.query_sql_utils import apply_row_limit_choice
 
-        from core.common.sql_mysql_quotes import (
-            normalize_mysql_double_quoted_strings_for_duckdb,
-        )
-
-        clean_sql = normalize_mysql_double_quoted_strings_for_duckdb(
-            apply_row_limit_choice(sql, apply_row_limit)
-        )
+        clean_sql = apply_row_limit_choice(sql, apply_row_limit)
         logger.info(f"Federated query ({'limited' if apply_row_limit else 'full'}): {clean_sql}")
 
         # 确定表名（洗空则回退 task_id 名，不建空名表）

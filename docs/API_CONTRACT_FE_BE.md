@@ -118,10 +118,12 @@
 
 | 方法 | 路径 | 成功体 | `data` 要点 | 前端入口 |
 |------|------|--------|-------------|----------|
-| GET | `/api/datasources/databases/{id}/schemas` | **列表** | `items[]`: `{ name, table_count? }`；PostgreSQL=全部用户 schemas，MySQL=所连库（schema≡database，单条），SQLite/DuckDB=空 | `listConnectionSchemas`（**前端已用**，UI 仅对 PostgreSQL 展示） |
-| GET | `/api/datasources/databases/{id}/schemas/{schema}/tables` | **列表** | `listSchemaTablesForConnection` |
+| GET | `/api/datasources/databases/{id}/schemas` | **列表** | `items[]`: `{ name, table_count? }`；PostgreSQL=用户 schemas，Oracle=扩展发现的可访问所有者，MySQL=所连库，SQLite/DuckDB=空 | `listConnectionSchemas` |
+| GET | `/api/datasources/databases/{id}/schemas/{schema}/tables` | **列表** | PostgreSQL／Oracle，Oracle 返回表和视图名称与类型，不执行行数统计 | `listSchemaTablesForConnection` |
 | GET | `/api/datasources/databases/{id}/tables` | 对象 | `tables[]`（非 `items`） | `listConnectionTablesFlat`（**前端已用**） |
 | GET | `/api/datasources/databases/{id}/tables/detail` | 对象 | 默认 `table_name`, `columns`, `indexes?`, `table_comment?`；`columns_only=true` 仅返回 `{table_name, columns: [{name, type, ...}], column_count}`，不采样、不统计行数、不读取索引；PG 保留类型长度/精度。`table_name` / 可选 `schema` 按原接口传入 | `getExternalTableDetail` / `getExternalTableStructure`；`ContextMenu` / `useTableColumns` |
+
+Oracle 连接类型为 `oracle`，沿用连接测试、保存、更新和刷新端点。`params` 使用 `host, port?, service_name, user, password`，默认端口 1521，Schema 由目录单独选择。连接测试和元数据执行要求当前后端已安装签名社区扩展 `oracle_scanner`。表详情返回挂载后的 DuckDB 列类型，平铺列表使用默认 Schema。联邦 SQL 沿用既有 `attach_databases`，Oracle 挂载固定只读，需使用 Oracle 只读用户。查询工作台通过普通表引用读取 Oracle，不接受 Oracle 原生执行函数或动态 SQL 表函数。扩展列表用 `source=community` 区分安装来源。
 
 ## 4. 数据源连接（`dataSourceApi.ts`）
 
@@ -255,6 +257,8 @@ BY NAME、LIMIT、预览 vs 执行语义见 [QUERY_BEHAVIOR_ZH.md](QUERY_BEHAVIO
 | GET | `/api/query-results/export/{file_id}/download` | 文件流 | `getQueryExportDownloadUrl` + 浏览器下载 |
 | POST | `/api/query-results/export/{file_id}/save-to-path` | `path`, `size_bytes` | `saveQueryExportToPath`（体：`target_path`）；**桌面模式专用**（同 async export-to-path 门控，非桌面 403）；400 路径非法；404 文件不存在 |
 
+同步导出的 CSV 文件为带 BOM 的 UTF-8，便于 Excel 直接打开时识别中文。浏览器下载与桌面保存使用同一文件。
+
 请求：`{ sql, format: "parquet"|"csv", attach_databases? }`；支持 `X-Request-ID` 取消（499 `QUERY_CANCELLED`）。
 
 **`setOperationsApi.ts` 已封装**：`generate`、`preview`、`validate`、`execute`、`simple-union`。
@@ -266,7 +270,7 @@ BY NAME、LIMIT、预览 vs 执行语义见 [QUERY_BEHAVIOR_ZH.md](QUERY_BEHAVIO
 
 | 方法 | 路径 | 成功体 | 前端入口 |
 |------|------|--------|----------|
-| POST | `/api/query` | 对象 | `performJoinQuery`；`data`: `data`, `columns`, `column_types[]`, `sql`, `row_count`, `pushdown?`（同联邦查询的实际执行方式）；联邦执行使用剩余服务端预算和远端取消；499 / 504 |
+| POST | `/api/query` | 对象 | `performJoinQuery`；`data`: `data`, `columns`, `column_types[]`, `sql`, `row_count`, `pushdown?`（同联邦查询的实际执行方式）；`join_result_{左表字母}_{右表字母}` 为 `left`、`right` 或 `both`（FULL JOIN 以两侧行是否存在判定，关联键可为 NULL）；联邦执行使用剩余服务端预算和远端取消；499 / 504 |
 | POST | `/api/save_query_to_duckdb` | 对象 | 见 §2 `saveQueryToDuckDB` |
 
 ## 9.3 AI（统一 Agent Engine；`agentApi.ts`/`aiApi.ts`，后端 `routers/ai.py`，OpenAPI tag `AI`）
@@ -390,4 +394,4 @@ Quack 任务元数据另保留 `quack_service_revision`，即受理时服务 `up
 
 本地保存将远端 SQL 执行一次，直接写入隔离客户端拥有的临时 DuckDB 文件（storage `v2.0.0`）；关闭写入挂载后，在本地连接池以唯一别名 `READ_ONLY` 挂载，沿用现有 staging、重名保护和原子发布，并在退出时卸载。两阶段沿用同一取消 ID。内部传输不使用 Parquet 或文本 CAST，保留原生类型、UNION 活动成员、VARIANT 内大整数、微秒间隔和时区时间偏移。
 
-CSV 直接 COPY，使用 DuckDB 的自然文本表示。Parquet 导出先将远端 SQL 执行一次到隔离客户端的原生临时表，再检查类型，避免 DESCRIBE 重放远端 SQL。Parquet 不是全部 DuckDB 类型的无损容器：HUGEINT/UHUGEINT、INTERVAL、TIME WITH TIME ZONE、VARIANT、ENUM、BIT、定长 ARRAY 以及包含这些类型的 LIST/STRUCT/MAP 等整列导出为 VARCHAR 文本；保留整数位数、间隔微秒和原时区偏移，但不声称文本仍具有原生类型。DECIMAL 保留精度与标度，TIMESTAMP_NS 保留纳秒。含 UNION 的列（包括静态嵌套 UNION）拒绝 Parquet 导出，返回 HTTP 400 `QUACK_UNSUPPORTED_PARQUET_TYPE`，不生成下载文件；可选择 CSV 文本导出，或保存为本地表以保留成员标签。
+CSV 由 DuckDB COPY 生成正文，使用 DuckDB 的自然文本表示，文件以 UTF-8 BOM 开头。Parquet 导出先将远端 SQL 执行一次到隔离客户端的原生临时表，再检查类型，避免 DESCRIBE 重放远端 SQL。Parquet 不是全部 DuckDB 类型的无损容器：HUGEINT/UHUGEINT、INTERVAL、TIME WITH TIME ZONE、VARIANT、ENUM、BIT、定长 ARRAY 以及包含这些类型的 LIST/STRUCT/MAP 等整列导出为 VARCHAR 文本；保留整数位数、间隔微秒和原时区偏移，但不声称文本仍具有原生类型。DECIMAL 保留精度与标度，TIMESTAMP_NS 保留纳秒。含 UNION 的列（包括静态嵌套 UNION）拒绝 Parquet 导出，返回 HTTP 400 `QUACK_UNSUPPORTED_PARQUET_TYPE`，不生成下载文件；可选择 CSV 文本导出，或保存为本地表以保留成员标签。

@@ -285,7 +285,8 @@ def test_csv_export_preserves_numeric_flags_and_real_booleans():
 
         download = client.get(data["download_url"])
         assert download.status_code == 200
-        lines = download.text.strip().splitlines()
+        assert download.content.startswith(b"\xef\xbb\xbf")
+        lines = download.content.decode("utf-8-sig").strip().splitlines()
         assert lines == ["numeric_flag,boolean_flag", "0,false", "1,true"]
     finally:
         if file_id:

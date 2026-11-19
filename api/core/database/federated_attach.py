@@ -33,6 +33,7 @@ from core.database.duckdb_engine import (
 )
 from core.database.duckdb_pool import interruptible_connection
 from core.database.connection_registry import connection_registry
+from core.database.oracle_source import attach_oracle
 from core.common.exceptions import DatabaseConnectionError, ResourceNotFoundError
 from core.security.encryption import password_encryptor
 
@@ -260,15 +261,23 @@ def attach_databases_on_connection(
     *,
     deadline_monotonic: Optional[float] = None,
     query_id: Optional[str] = None,
+    cleanup_on_failure: bool = False,
 ) -> List[str]:
     """在已有连接上 ATTACH，返回成功 alias 列表。"""
+    cleanup_on_failure = cleanup_on_failure or any(
+        str(config.get("type", "")).lower() == "oracle" for _, config in attach_configs
+    )
     attached: List[str] = []
     for alias, db_config in attach_configs:
+        is_oracle = str(db_config.get("type", "")).lower() == "oracle"
         # 连接池复用：先尝试卸掉同名库，避免「already exists」
-        try:
-            conn.execute(f'DETACH {_quote_identifier(alias)}')
-        except Exception as detach_error:
-            logger.debug("Pre-ATTACH DETACH %s skipped: %s", alias, detach_error)
+        # Oracle catalogs are instance-wide. A competing query must never
+        # detach or reuse a catalog owned by a different request.
+        if not is_oracle:
+            try:
+                conn.execute(f'DETACH {_quote_identifier(alias)}')
+            except Exception as detach_error:
+                logger.debug("Pre-ATTACH DETACH %s skipped: %s", alias, detach_error)
 
         try:
             effective_config = db_config
@@ -302,10 +311,16 @@ def attach_databases_on_connection(
                     effective_config["_application_name"] = (
                         _postgres_application_name(query_id)
                     )
-            attach_sql = build_attach_sql(alias, effective_config)
             logger.info("Executing ATTACH: %s", alias)
-            conn.execute(attach_sql)
+            if is_oracle:
+                attach_oracle(conn, alias, effective_config)
+            else:
+                conn.execute(build_attach_sql(alias, effective_config))
             attached.append(alias)
+        except (DatabaseConnectionError, duckdb.InterruptException):
+            if cleanup_on_failure:
+                detach_databases_on_connection(conn, attached)
+            raise
         except Exception as attach_error:
             if _is_database_already_attached_error(attach_error):
                 logger.warning(
@@ -314,6 +329,8 @@ def attach_databases_on_connection(
                 )
                 attached.append(alias)
                 continue
+            if cleanup_on_failure:
+                detach_databases_on_connection(conn, attached)
             safe_error = redact_connection_secrets(
                 duckdb_error_message(attach_error)
             )
@@ -537,9 +554,9 @@ def execute_sql_with_attach(
     )
 
     attach_configs = resolve_attach_configs(attach_databases)
-    cleaned_sql = normalize_mysql_double_quoted_strings_for_duckdb(
-        sql.rstrip().rstrip(";")
-    )
+    cleaned_sql = sql.rstrip().rstrip(";")
+    if not any(cfg.get("type") == "oracle" for _, cfg in attach_configs):
+        cleaned_sql = normalize_mysql_double_quoted_strings_for_duckdb(cleaned_sql)
     from core.database.federated_execution import federated_execution_scope
 
     timeout_seconds = int(
@@ -616,7 +633,7 @@ def execute_sql_and_persist(
 
     attach_configs = resolve_attach_configs(attach_databases)
     cleaned_sql = sql.rstrip().rstrip(";")
-    if attach_configs:
+    if attach_configs and not any(cfg.get("type") == "oracle" for _, cfg in attach_configs):
         cleaned_sql = normalize_mysql_double_quoted_strings_for_duckdb(cleaned_sql)
     staging_name = f"__stage_{uuid.uuid4().hex}"
     timeout_seconds = int(

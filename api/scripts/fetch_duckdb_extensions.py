@@ -2,7 +2,7 @@
 用法: python scripts/fetch_duckdb_extensions.py [platform] [--full]
 platform ∈ {osx_arm64, osx_amd64, windows_amd64}
 省略 platform 时使用当前 DuckDB engine 的 ``PRAGMA platform``，避免版本升级后的平台名漂移。
---full: 拉取全量扩展(excel+httpfs+mysql+postgres),供 -offline 离线全量包;
+--full: 获取核心扩展和 Oracle 社区扩展，供 -offline 离线包。
         缺省只拉 excel(标准包/更新包)。
 输出: api/extensions/v<ver>/<platform>/<ext>.duckdb_extension
 """
@@ -44,6 +44,8 @@ _HEADERS = {"User-Agent": "Mozilla/5.0"}
 
 
 def main(platform: str, full: bool = False) -> None:
+    if full and platform != DUCK_PLATFORM:
+        raise SystemExit("Offline bundle must be built on the target DuckDB platform")
     exts = FULL_EXTS if full else EXTS
     out = Path(__file__).resolve().parent.parent / "extensions" / DUCK_VERSION / platform
     # 幂等:先清空,避免脚本迭代/重命名遗留旧文件(如 *_scanner)被一并打进包
@@ -59,6 +61,11 @@ def main(platform: str, full: bool = False) -> None:
             data = gzip.decompress(resp.read())
         dest.write_bytes(data)
         print(f"   wrote {dest} ({len(data)} bytes)")
+    if full:
+        # Native INSTALL preserves the community signature's repository metadata.
+        with duckdb.connect(config={"extension_directory": str(out.parents[1])}) as connection:
+            connection.install_extension("oracle_scanner", repository="community")
+            connection.load_extension("oracle_scanner")
 
 
 if __name__ == "__main__":

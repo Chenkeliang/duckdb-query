@@ -21,7 +21,11 @@ from sqlglot import exp
 from core.common.enhanced_error_handler import get_error_handler
 from core.common.config_manager import config_manager
 from core.common.sql_identifiers import quote_identifier
-from core.common.sql_capabilities import is_read_only_sql
+from core.common.sql_capabilities import (
+    is_managed_oracle_read_sql,
+    is_read_only_sql,
+    uses_oracle_write_function,
+)
 from core.common.sql_error_location import (
     build_sql_error_details,
     duckdb_error_message,
@@ -152,7 +156,7 @@ def assert_no_dangerous_write(sql: str, save_as_table: Optional[str]) -> None:
     """
     if is_read_only_sql(sql):
         return
-    if not save_as_table:
+    if not save_as_table and not uses_oracle_write_function(sql):
         created_table, _if_not_exists = _main_table_create_target(sql)
         if created_table:
             return
@@ -911,11 +915,14 @@ def execute_federated_query(
     # 与透视/集合共用 resolve_attach_configs：此处曾另写一份(多了 db_ 前缀归一化),
     # 两份实现对同一个 connection_id 给出不同结果,统一后归一化在公共函数里做。
     attach_configs = resolve_attach_configs(request.attach_databases)
+    has_oracle = any(cfg.get("type") == "oracle" for _, cfg in attach_configs)
+    if has_oracle and not is_managed_oracle_read_sql(request.sql):
+        raise APIValidationError("Oracle connections support read-only queries over attached tables")
 
     # 处理 SQL 查询（MySQL 风格双引号字符串 → DuckDB 单引号）
-    base_sql_query = normalize_mysql_double_quoted_strings_for_duckdb(
-        request.sql.strip()
-    ).rstrip().rstrip(";")
+    base_sql_query = request.sql.strip().rstrip(";")
+    if not has_oracle:
+        base_sql_query = normalize_mysql_double_quoted_strings_for_duckdb(base_sql_query)
     sql_query = base_sql_query
     # 预览:最外层缺用户 LIMIT 时补默认——判定走 has_top_level_limit(AST,注释/字面量/
     # 子查询天然正确),与本地 execute 同一口径(复审 P1);换行追加,行尾注释安全
@@ -1092,16 +1099,17 @@ def execute_federated_query(
             )
         logger.info(f"Federated query {query_id} was cancelled by user")
         # 取消时也尝试清理 ATTACH
-        try:
-            with with_duckdb_connection() as con:
-                for alias in attached_aliases:
-                    try:
-                        con.execute(f'DETACH "{alias}"')
-                        logger.info(f"Cleanup DETACH after cancellation: {alias}")
-                    except Exception:
-                        pass
-        except Exception:
-            pass
+        if not has_oracle:
+            try:
+                with with_duckdb_connection() as con:
+                    for alias in attached_aliases:
+                        try:
+                            con.execute(f'DETACH "{alias}"')
+                            logger.info(f"Cleanup DETACH after cancellation: {alias}")
+                        except Exception:
+                            pass
+            except Exception:
+                pass
         return error_json_response(
             499,
             MessageCode.QUERY_CANCELLED,

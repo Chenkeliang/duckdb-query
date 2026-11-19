@@ -20,6 +20,8 @@ from sqlglot import exp
 from sqlglot.optimizer.scope import Scope
 
 from core.common.config_manager import config_manager
+from core.common.exceptions import ValidationError
+from core.common.sql_capabilities import is_managed_oracle_read_sql, uses_oracle_write_function
 from core.common.sql_error_location import structured_duckdb_errors
 from core.common.sql_identifiers import quote_identifier
 from core.database.connection_registry import connection_registry
@@ -350,6 +352,12 @@ def federated_execution_scope(
     remain in DuckDB. Unsupported native filters execute locally instead of
     using the extension's unsafe collation/constant translation.
     """
+    if uses_oracle_write_function(sql) or (
+        any(config.get("type") == "oracle" for _, config in attach_configs)
+        and not is_managed_oracle_read_sql(sql)
+    ):
+        raise ValidationError("Oracle connections support read-only queries over attached tables")
+
     mysql_aliases = {
         alias for alias, config in attach_configs
         if str(config.get("type", "")).lower() == "mysql"

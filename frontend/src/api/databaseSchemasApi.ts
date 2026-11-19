@@ -53,7 +53,7 @@ export async function listSchemaTablesForConnection(
     return items.map((t) => ({
       name: t.name,
       type: (t.type as ConnectionTableItem['type']) || 'TABLE',
-      row_count: t.row_count ?? 0,
+      row_count: t.row_count,
     }));
   } catch (error) {
     throw handleApiError(error as never, '获取 schema 下表列表失败');

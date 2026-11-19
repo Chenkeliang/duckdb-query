@@ -41,7 +41,7 @@ function formatDate(dateStr: string, locale: string): string {
 const TypeBadge = ({ type }: { type: string }) => {
     const { t } = useTranslation('common');
     const labels: Record<string, string> = {
-        duckdb: 'DuckDB', mysql: 'MySQL', postgresql: 'PostgreSQL', sqlite: 'SQLite',
+        duckdb: 'DuckDB', mysql: 'MySQL', postgresql: 'PostgreSQL', oracle: 'Oracle', sqlite: 'SQLite',
         sql: t('query.tabs.sql'), join: t('query.tabs.join'), set: t('query.tabs.set'), pivot: t('query.tabs.pivot'),
     };
     return (

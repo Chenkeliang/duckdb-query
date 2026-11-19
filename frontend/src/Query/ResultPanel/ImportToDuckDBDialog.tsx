@@ -136,7 +136,7 @@ export const ImportToDuckDBDialog: React.FC<ImportToDuckDBDialogProps> = ({
       const datasource = {
         // Ensure ID doesn't have db_ prefix
         id: source.connectionId?.replace(/^db_/, '') || source.connectionId,
-        type: source.databaseType as 'mysql' | 'postgresql' | 'sqlite' | 'duckdb' | 'file',
+        type: source.databaseType as 'mysql' | 'postgresql' | 'oracle' | 'sqlite' | 'duckdb' | 'file',
       };
 
       const attachDatabases = toAttachDatabasesPayload(source.attachDatabases);

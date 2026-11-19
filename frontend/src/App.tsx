@@ -330,7 +330,7 @@ const AppInner: React.FC = () => {
       const result: { success?: boolean; message?: string; messageCode?: string } | undefined =
         await testDatabaseConnection({
           id: params.id, // Now supported by type
-          type: params.type as "mysql" | "postgresql" | "sqlite" | "duckdb",
+          type: params.type,
           name: params.id || "test-connection",
           params: params.params as Record<string, unknown>,
           useStoredPassword: params.useStoredPassword

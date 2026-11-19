@@ -135,11 +135,11 @@ export interface ColumnInfo {
 
 export interface DataSource {
   id?: string;
-  type: "duckdb" | "mysql" | "postgresql" | "sqlite" | "file";
+  type: DatabaseType | "file";
   name?: string;
 }
 
-export type DatabaseType = "mysql" | "postgresql" | "sqlite" | "duckdb";
+export type DatabaseType = "mysql" | "postgresql" | "oracle" | "sqlite" | "duckdb";
 
 export interface DatabaseConnection {
   id: string;
@@ -156,6 +156,7 @@ export interface DatabaseConnectionParams {
   host?: string;
   port?: number;
   database?: string;
+  service_name?: string;
   username?: string;
   password?: string;
   [key: string]: unknown;

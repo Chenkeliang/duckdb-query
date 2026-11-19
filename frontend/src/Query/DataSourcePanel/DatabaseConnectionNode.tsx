@@ -142,7 +142,7 @@ export const DatabaseConnectionNode: React.FC<DatabaseConnectionNodeProps> = ({
   const isLoading = schemasLoading || tablesLoading;
 
   // PostgreSQL: 显示 schemas
-  const hasSchemas = connection.type === 'postgresql' && schemas.length > 0;
+  const hasSchemas = (connection.type === 'postgresql' || connection.type === 'oracle') && schemas.length > 0;
 
   // MySQL/SQLite/DuckDB: 直接显示表
   const hasTables =

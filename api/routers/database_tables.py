@@ -9,6 +9,7 @@ from core.common.exceptions import (
     ValidationError as APIValidationError,
 )
 from core.database.database_manager import db_manager
+from core.database.oracle_source import oracle_columns, oracle_schemas, oracle_tables
 from core.common.config_manager import config_manager
 from core.security.encryption import password_encryptor
 from utils.response_helpers import (
@@ -219,6 +220,16 @@ def get_database_tables(connection_id: str):
             if hasattr(connection.type, "value")
             else str(connection.type)
         )
+
+        if db_type == "oracle":
+            items = oracle_tables(db_config, "main")[: app_config.max_tables]
+            return create_success_response(
+                data={
+                    "tables": [{"table_name": item["name"], "table_type": item["type"]} for item in items],
+                    "table_count": len(items),
+                },
+                message_code=MessageCode.TABLES_RETRIEVED,
+            )
 
         if db_type == "mysql":
             # MySQL连接
@@ -603,6 +614,12 @@ def list_connection_schemas(connection_id: str):
             else str(connection.type)
         )
 
+        if db_type == "oracle":
+            items = oracle_schemas(connection.params)
+            return create_list_response(
+                items=items, total=len(items), message_code=MessageCode.SCHEMAS_RETRIEVED
+            )
+
         # SQLite/DuckDB do not support schema, return empty list
         if db_type in ["sqlite", "duckdb"]:
             return create_list_response(
@@ -734,10 +751,7 @@ def list_connection_schemas(connection_id: str):
     tags=["Database Management"],
 )
 def list_schema_tables(connection_id: str, schema: str):
-    """获取指定 schema 下的所有表（仅 PostgreSQL）
-    
-    对于 MySQL/SQLite，此端点不适用
-    """
+    """List tables in a PostgreSQL or Oracle schema."""
     try:
         # 获取应用配置
         from core.common.config_manager import config_manager
@@ -752,10 +766,15 @@ def list_schema_tables(connection_id: str, schema: str):
             else str(connection.type)
         )
 
-        # 只支持 PostgreSQL
+        if db_type == "oracle":
+            items = oracle_tables(connection.params, schema)
+            return create_list_response(
+                items=items, total=len(items), message_code=MessageCode.TABLES_RETRIEVED
+            )
+
         if db_type != "postgresql":
             raise APIValidationError(
-                f"This endpoint only supports PostgreSQL, current type: {db_type}",
+                f"This endpoint only supports PostgreSQL and Oracle, current type: {db_type}",
                 details={
                     "connection_id": connection_id,
                     "db_type": db_type,
@@ -859,6 +878,11 @@ def get_table_details(connection_id: str, table_name: str, schema: str | None = 
             if hasattr(connection.type, "value")
             else str(connection.type)
         )
+
+        if db_type == "oracle":
+            return _table_columns_response(
+                table_name, oracle_columns(db_config, schema or "main", table_name)
+            )
 
         if db_type == "mysql":
             # MySQL连接
