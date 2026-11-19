@@ -32,7 +32,7 @@ DuckQuery is an independently developed, local-first data workbench powered by D
 
 ### Desktop (Recommended)
 
-The latest release is **[v2.2.0](https://github.com/Chenkeliang/duckdb-query/releases/tag/v2.2.0)**. Features below describe this release; its source is available at the [v2.2.0 tag](https://github.com/Chenkeliang/duckdb-query/tree/v2.2.0).
+The latest release is **[v2.2.1](https://github.com/Chenkeliang/duckdb-query/releases/tag/v2.2.1)**. Features below describe this release; its source is available at the [v2.2.1 tag](https://github.com/Chenkeliang/duckdb-query/tree/v2.2.1).
 
 Choose the installer for your machine from [GitHub Releases](https://github.com/Chenkeliang/duckdb-query/releases/latest):
 
@@ -51,7 +51,7 @@ Use the standard build when online; some external database connections download 
 Install Docker and Docker Compose, then run:
 
 ```bash
-git clone --branch v2.2.0 --depth 1 https://github.com/Chenkeliang/duckdb-query.git
+git clone --branch v2.2.1 --depth 1 https://github.com/Chenkeliang/duckdb-query.git
 cd duckdb-query
 ./quick-start.sh
 ```
@@ -71,7 +71,7 @@ The script supports configurable build-image mirrors; see the [configuration ref
 | Your task | DuckQuery provides |
 |---|---|
 | Turn scattered files into queryable data | CSV / Excel / Parquet / JSON / JSONL import, table pasting, URL import, and server directory access |
-| Reconcile files against a business database | Cross-source joins with MySQL / PostgreSQL / SQLite / DuckDB, with eligible remote filters optimized |
+| Reconcile files against a business database | Cross-source joins with MySQL / PostgreSQL / SQLite / DuckDB / Oracle, with eligible remote filters optimized |
 | Run computations on remote DuckDB | Independent Quack connections, remote table/column browsing, service-bound read-only SQL tabs, cancellation, background tasks, export, and local saves |
 | Iterate on a query | SQL tabs, table and column completion, error locations, query history, and SQL bookmarks |
 | Analyze without writing every query | Visual JOIN, set-operation, and pivot builders, including statistics without grouping fields, with generated SQL available to inspect |
@@ -88,6 +88,12 @@ The workbench supports Chinese / English, dark / light themes, a command palette
 Add an existing service's address and token in data-source management or the separate **Quack services** group. SQL runs on remote DuckDB; the connection originates from the machine running the DuckQuery backend. A server can expose CSV / Parquet views, DuckDB tables, and other configured data. The client browses the server's actual catalogs and does not configure its MySQL / PostgreSQL sources.
 
 Quack currently supports read-only SQL tabs. Visual JOIN, set operations, pivot, exploration, AI questions/repair for remote SQL, and SQL bookmarks are not integrated. Saving a table writes to local DuckDB, never to the remote service. The browser-only Wasm demo does not support Quack. An explicit first connection test installs the official `httpfs` / `quack` extensions as needed. Current offline bundles do not include `quack`; restricted networks need extensions matching the engine and platform installed in advance. See the [Quack guide (Chinese)](docs/guide/quack-services.md).
+
+### Oracle sources
+
+Install the community extension `oracle_scanner` in Extensions on desktop or Docker, then select Oracle under New Connection. Enter the host, port, service name, and a read-only account. Expand the schema and table to inspect its columns, or double-click a table to prepare preview SQL. The SQL workbench, JOIN, and export run DuckDB SQL, with connections originating from the DuckQuery backend. Unconstrained Oracle `NUMBER` values remain exact text and Oracle `DATE` retains its time. Cancellation discards the result and interrupts DuckDB. The in-flight Oracle call may continue until it returns.
+
+The current driver requires a `12C` password verifier. Oracle 11g accounts use older verifiers that this driver cannot authenticate. See the [oracle_scanner authentication notes](https://github.com/krokozyab/quack-oracle#oracle-offered-the--password-verifier-type-0x-for-this-account).
 
 Local DuckDB, existing database connections, and Quack tables all support arrow-based field/type expansion. Double-click a table or choose **Open preview SQL (100 rows)** from its context menu to fill SQL without executing it. Identical SQL already open for the same Quack service refocuses that tab; edited drafts are preserved. Explicitly creating a query still opens an independent tab.
 
@@ -163,9 +169,9 @@ See the [MCP documentation](mcp/README.md) for client configuration, backend dis
 
 ## Engine and Upgrade Notes
 
-The **latest released app version is v2.2.0**, adding remote read-only Quack SQL, consistent table-structure browsing and preview interactions, and updated chart/AI suggestions. It retains the v2.1.3 Windows overlay-upgrade repair, data exploration, JSON extraction, safe MySQL filtering, and extension management. See the [v2.2.0 release notes](docs/releases/v2.2.0_en.md).
+**v2.2.1** adds read-only Oracle connections, fixes JOIN type inspection and Chinese CSV encoding, and updates the welcome page. See the [v2.2.1 release notes](docs/releases/v2.2.1_en.md).
 
-The app and DuckDB **engine versions** are maintained separately. v2.2.0 continues to use **stable DuckDB 2.0** (`duckdb==2.0.0`, engine `v2.0.0`); v2.1.1 used `1.6.0.dev379` / `v2.0.0-alpha39998`. New databases still use `v2.0.0` storage, existing files are not automatically migrated, and extensions must match the stable engine and platform.
+The app and DuckDB **engine versions** are maintained separately. v2.2.1 continues to use **stable DuckDB 2.0** (`duckdb==2.0.0`, engine `v2.0.0`); v2.1.1 used `1.6.0.dev379` / `v2.0.0-alpha39998`. New databases still use `v2.0.0` storage, existing files are not automatically migrated, and extensions must match the stable engine and platform.
 
 Data exploration suggests operations by actual column types, previews SQL and displays metric cards. It can also discover paths in JSON/VARIANT/text and extract typed columns. Discovery applies current filters before sampling at most 100 rows; sampled paths are not a complete schema. Statistics cover all filtered input. Text extraction preserves large integers by default; missing paths and failed casts return NULL. Desktop and server editions provide this entry; the browser-only Wasm demo does not.
 

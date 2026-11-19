@@ -62,17 +62,15 @@ def infer_column_cast(request: InferCastRequest):
 
     attach_list = request.attach_databases or None
     with with_duckdb_connection() as con:
+        attached = []
         try:
             if attach_list:
-                attach_databases_on_connection(con, resolve_attach_configs(attach_list))
+                attached = attach_databases_on_connection(
+                    con, resolve_attach_configs(attach_list), cleanup_on_failure=True
+                )
             result = analyze_numeric_cast(con, base, request.column)
         finally:
-            # 防御性 detach:按【意图 attach 的别名】清理——部分 attach 失败(前面已成功部分)
-            # 也不把带残留 ATTACH 的连接放回池(detach 对不存在别名安全跳过)。与 pivot 路由一致。
-            if attach_list:
-                detach_databases_on_connection(
-                    con, [db.alias for db in attach_list if getattr(db, "alias", None)]
-                )
+            detach_databases_on_connection(con, attached)
 
     return create_success_response(data=result, message_code=MessageCode.OPERATION_SUCCESS)
 
@@ -81,9 +79,12 @@ def infer_column_cast(request: InferCastRequest):
 def _insight_context(request: InsightTableRequest):
     """Lease and clean up one table's attachments for metadata-only operations."""
     with with_duckdb_connection() as connection:
+        attached = []
         try:
             if request.attach_databases:
-                attach_databases_on_connection(connection, resolve_attach_configs(request.attach_databases))
+                attached = attach_databases_on_connection(
+                    connection, resolve_attach_configs(request.attach_databases), cleanup_on_failure=True
+                )
             reference = _table_ref(request.table_name)
             schema = {
                 str(row[0]): str(row[1]) for row in connection.execute(
@@ -92,8 +93,7 @@ def _insight_context(request: InsightTableRequest):
             }
             yield connection, reference, schema
         finally:
-            if request.attach_databases:
-                detach_databases_on_connection(connection, [db.alias for db in request.attach_databases])
+            detach_databases_on_connection(connection, attached)
 
 
 @router.post("/api/columns/insights", tags=["Columns"])

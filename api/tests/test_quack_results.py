@@ -67,7 +67,7 @@ def test_native_export_precision_and_original_range(remote, format, limited, exp
         download = client.get(payload["download_url"])
         assert download.status_code == 200
         if format == "csv":
-            rows = list(csv.DictReader(io.StringIO(download.text)))
+            rows = list(csv.DictReader(io.StringIO(download.content.decode("utf-8-sig"))))
             assert len(rows) == expected
             assert rows[0]["amount"] == "1234567890123456789.1234567890123456789"
             assert rows[0]["big"] == "170141183460469231731687303715884105727"

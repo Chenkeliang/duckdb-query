@@ -19,6 +19,7 @@ interface ConfigToLoad {
     host?: string;
     port?: number | string;
     database?: string;
+    service_name?: string;
     user?: string;
     username?: string;
     password?: string;
@@ -76,8 +77,9 @@ const DatabaseForm = ({
   const [type, setType] = useState(defaultType);
   const [name, setName] = useState("");
   const [host, setHost] = useState("localhost");
-  const [port, setPort] = useState("3306");
+  const [port, setPort] = useState(defaultType === "oracle" ? "1521" : "3306");
   const [database, setDatabase] = useState("");
+  const [serviceName, setServiceName] = useState("");
   const [username, setUsername] = useState("");
   const [password, setPassword] = useState("");
   const [hasStoredPassword, setHasStoredPassword] = useState(false);
@@ -126,8 +128,9 @@ const DatabaseForm = ({
       setName(configToLoad.name || configToLoad.id || "");
       if (configToLoad.params) {
         setHost(configToLoad.params.host || "localhost");
-        setPort(configToLoad.params.port?.toString() || (configToLoad.type === "postgresql" ? "5432" : "3306"));
+        setPort(configToLoad.params.port?.toString() || (configToLoad.type === "oracle" ? "1521" : configToLoad.type === "postgresql" ? "5432" : "3306"));
         setDatabase(configToLoad.params.database || "");
+        setServiceName(configToLoad.params.service_name || "");
         setUsername(configToLoad.params.user || configToLoad.params.username || "");
         const stored = configToLoad.requiresPassword === true || configToLoad.params.password === "***ENCRYPTED***";
         setHasStoredPassword(stored);
@@ -156,6 +159,7 @@ const DatabaseForm = ({
   const isDuckdb = type === "duckdb";
   const isFileBased = isSqlite || isDuckdb;
   const isPostgreSQL = type === "postgresql";
+  const isOracle = type === "oracle";
 
   const normalizedParams = useMemo(() => {
     const resolvedId =
@@ -171,7 +175,7 @@ const DatabaseForm = ({
           port: Number(port) || undefined,
           user: username.trim(),
           ...(password ? { password } : {}),
-          database: database.trim(),
+          ...(isOracle ? { service_name: serviceName.trim() } : { database: database.trim() }),
           ...(isPostgreSQL && { schema: schema.trim() || "public" })
         };
 
@@ -184,7 +188,7 @@ const DatabaseForm = ({
       useStoredPassword: !!connectionId && hasStoredPassword && !password,
       params
     };
-  }, [type, connectionId, name, host, port, username, password, database, sqlitePath, schema, isPostgreSQL, hasStoredPassword]);
+  }, [type, connectionId, name, host, port, username, password, database, serviceName, sqlitePath, schema, isPostgreSQL, isOracle, hasStoredPassword]);
 
   const validate = () => {
     // 检查连接名称
@@ -214,14 +218,16 @@ const DatabaseForm = ({
       }
 
       // 检查数据库名
-      if (!database.trim()) {
-        const errorMsg = t("page.datasource.connection.validation.requiredDatabase", "请填写数据库名称");
+      if (!(isOracle ? serviceName : database).trim()) {
+        const errorMsg = isOracle
+          ? t("page.datasource.connection.validation.requiredServiceName")
+          : t("page.datasource.connection.validation.requiredDatabase", "请填写数据库名称");
         setError(errorMsg);        return false;
       }
 
       // 验证端口号是否为有效数字
       const portNum = Number(port);
-      if (isNaN(portNum) || portNum < 1 || portNum > 65535) {
+      if (!Number.isInteger(portNum) || portNum < 1 || portNum > 65535) {
         const errorMsg = t("page.datasource.connection.validation.invalidPort", "端口号必须在 1-65535 之间");
         setError(errorMsg);        return false;
       }
@@ -310,6 +316,7 @@ const DatabaseForm = ({
       id: "postgresql",
       label: t("page.datasource.connection.dbTypes.postgresql")
     },
+    { id: "oracle", label: t("page.datasource.connection.dbTypes.oracle") },
     { id: "sqlite", label: t("page.datasource.connection.dbTypes.sqlite") },
     { id: "duckdb", label: t("page.datasource.connection.dbTypes.duckdb") }
   ];
@@ -317,7 +324,7 @@ const DatabaseForm = ({
   return (
     <div className="space-y-6">
         {/* 粘贴连接串，自动识别并回填字段 */}
-        <div className="space-y-2 rounded-lg border border-border bg-surface-elevated/40 p-3">
+        {!isOracle && <div className="space-y-2 rounded-lg border border-border bg-surface-elevated/40 p-3">
           <Label
             htmlFor="conn-str"
             className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground"
@@ -335,18 +342,27 @@ const DatabaseForm = ({
             className="font-mono text-xs"
           />
           {parsedHint && <p className="text-xs text-success">{parsedHint}</p>}
-        </div>
+        </div>}
         {/* 顶部数据库类型切换 Tabs */}
-        <Tabs value={type} onValueChange={setType}>
-          <TabsList className="grid w-full grid-cols-4">
+        <Tabs value={type} onValueChange={(next) => {
+          if (next === "oracle" && type !== "oracle") setPort("1521");
+          if (type === "oracle" && next !== "oracle") setPort(next === "postgresql" ? "5432" : "3306");
+          setType(next);
+        }}>
+          <TabsList className="grid w-full grid-cols-5">
             {dbTabs.map(tab => (
-              <TabsTrigger key={tab.id} value={tab.id}>
+              <TabsTrigger
+                key={tab.id}
+                value={tab.id}
+                disabled={!!connectionId && tab.id !== type && (isOracle || tab.id === "oracle")}
+              >
                 {tab.label}
               </TabsTrigger>
             ))}
           </TabsList>
         </Tabs>
 
+        {isOracle && <p className="text-sm text-muted-foreground">{t("page.datasource.connection.oracleHint")}</p>}
         <form onSubmit={(e) => { e.preventDefault(); if (!loading && !testing) handleConnect(); }}>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-6">
             <div className="space-y-2 md:col-span-2">
@@ -382,7 +398,7 @@ const DatabaseForm = ({
                     id="port"
                     value={port}
                     onChange={e => setPort(e.target.value)}
-                    placeholder="3306"
+                    placeholder={isOracle ? "1521" : "3306"}
                   />
                 </div>
                 <div className="space-y-2">
@@ -412,14 +428,14 @@ const DatabaseForm = ({
                 </div>
                 <div className="space-y-2 md:col-span-2">
                   <Label htmlFor="database">
-                    {t("page.datasource.connection.database")}
+                    {t(isOracle ? "page.datasource.connection.serviceName" : "page.datasource.connection.database")}
                   </Label>
                   <Input
                     id="database"
-                    value={database}
-                    onChange={e => setDatabase(e.target.value)}
+                    value={isOracle ? serviceName : database}
+                    onChange={e => isOracle ? setServiceName(e.target.value) : setDatabase(e.target.value)}
                     placeholder={t(
-                      "page.datasource.connection.databasePlaceholder"
+                      isOracle ? "page.datasource.connection.serviceNamePlaceholder" : "page.datasource.connection.databasePlaceholder"
                     )}
                   />
                 </div>

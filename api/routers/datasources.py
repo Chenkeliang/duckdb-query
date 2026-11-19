@@ -14,6 +14,7 @@ from core.common.exceptions import (
     ValidationError as APIValidationError,
 )
 from fastapi import APIRouter, Query
+from starlette.concurrency import run_in_threadpool
 from utils.response_helpers import (
     MessageCode,
     create_list_response,
@@ -82,7 +83,7 @@ async def test_database_connection(request: dict):
         )
 
         # 执行测试
-        result = db_manager.test_connection(test_request)
+        result = await run_in_threadpool(db_manager.test_connection, test_request)
         result_details = getattr(result, "details", None)
 
         logger.info(f"Test database connection: {request.get('type')} - {result.success}")
@@ -151,7 +152,7 @@ async def refresh_database_connection(id: str):
         )
 
         # 执行测试
-        test_result = db_manager.test_connection(test_request)
+        test_result = await run_in_threadpool(db_manager.test_connection, test_request)
 
         # 更新连接状态
         now = get_current_time()
@@ -230,8 +231,8 @@ async def _handle_save_connection(db_conn, test_connection: bool = True):
     from utils.response_helpers import MessageCode, create_success_response
 
     # 执行核心逻辑：添加/更新 + 测试 + 清理 old engine + 持久化
-    success, test_result = db_manager.add_connection(
-        db_conn, test_connection=test_connection
+    success, test_result = await run_in_threadpool(
+        db_manager.add_connection, db_conn, test_connection=test_connection
     )
 
     if success:

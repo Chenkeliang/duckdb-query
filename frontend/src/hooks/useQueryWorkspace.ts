@@ -170,7 +170,12 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
   } | null>(null);
   const [singleResultSlotLabel, setSingleResultSlotLabel] = useState('');
 
-  const [activeExecution, setActiveExecution] = useState<{ requestId: string; key: string; startedAt: number } | null>(null);
+  const [activeExecution, setActiveExecution] = useState<{
+    requestId: string;
+    key: string;
+    startedAt: number;
+    remote: boolean;
+  } | null>(null);
   const [isResultLoading, setIsResultLoading] = useState(false);
 
   const [isCancelling, setIsCancelling] = useState(false);
@@ -462,7 +467,7 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
       const querySource: TableSource = source || { type: 'duckdb' };
       const { requestId, key, signal } = beginQueryExecution(options);
       if (querySource.type === 'quack') quackRequestIdsRef.current.add(requestId);
-      setActiveExecution({ requestId, key, startedAt: Date.now() });
+      setActiveExecution({ requestId, key, startedAt: Date.now(), remote: querySource.type !== 'duckdb' });
       // 该请求所属槽位是否已被更新的请求取代（同一 Tab 又刷新了一次）——只按本
       // 槽位判断，不看全局，这样其它 Tab 的并发请求不会误伤本请求（回归 #10）
       const isStale = () => latestRequestByKeyRef.current.get(key) !== requestId || signal.aborted;
@@ -789,7 +794,9 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
       }
     }
     setActiveExecution(current => current?.requestId === requestId ? null : current);
-    toast.info(t('query.cancelled'));
+    toast.info(t(activeExecution?.requestId === requestId && activeExecution?.remote
+      ? 'query.cancelRequested'
+      : 'query.cancelled'));
   }, [activeExecution, activeResultTabId, retainQueryResults, retireQueryRequest, t]);
 
   const displayQueryPreview = useCallback(

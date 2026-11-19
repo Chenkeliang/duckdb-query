@@ -17,6 +17,7 @@ from typing import Any, Dict, List, Optional, Tuple
 
 import duckdb
 from core.common.config_manager import config_manager
+from core.common.sql_identifiers import quote_identifier
 from core.common.timezone_utils import get_current_time
 from core.common.exceptions import ValidationError as APIValidationError
 from core.services.query_lineage import with_column_lineage
@@ -225,6 +226,17 @@ def build_multi_table_join_query(
                 for col in source.columns:
                     select_fields.append(_select_field(source, ref_id, col))
 
+    # A NULL join key cannot distinguish an absent row from a present row
+    # with NULL values. Only FULL joins need presence markers on both sides.
+    full_source_ids = {
+        source_id.strip('"')
+        for join in joins
+        if join.join_type in ("full", "full_outer", "outer")
+        for source_id in (join.left_source_id, join.right_source_id)
+    }
+    presence_column = f"__duckquery_join_present_{uuid.uuid4().hex}" if full_source_ids else None
+    presence_columns = dict.fromkeys(full_source_ids, presence_column)
+
     # Add association result columns
     join_result_fields = []
     if joins:
@@ -296,45 +308,10 @@ def build_multi_table_join_query(
                     )
                 join_result_expr = f"CASE WHEN {left_key_col} IS NULL THEN 'right' ELSE 'both' END AS {join_result_column}"
             elif join_type in ["full", "full_outer", "outer"]:
-                # FULL OUTER JOIN: check if both sides key fields are NULL
-                if join.conditions and len(join.conditions) > 0:
-                    left_key_col = f'"{left_table}"."{_escaped_col_name(join.conditions[0].left_column)}"'
-                    right_key_col = (
-                        f'"{right_table}"."{_escaped_col_name(join.conditions[0].right_column)}"'
-                    )
-                else:
-                    # If no conditions, use first column for check
-                    left_cols = (
-                        [
-                            col
-                            for col in sources
-                            if table_ref_id(col.id) == left_table
-                        ][0].columns
-                        if any(table_ref_id(col.id) == left_table for col in sources)
-                        else []
-                    )
-                    right_cols = (
-                        [
-                            col
-                            for col in sources
-                            if table_ref_id(col.id) == right_table
-                        ][0].columns
-                        if any(table_ref_id(col.id) == right_table for col in sources)
-                        else []
-                    )
-                    left_key_col = (
-                        f'"{left_table}"."{_escaped_col_name(left_cols[0])}"'
-                        if left_cols
-                        else f'"{left_table}".rowid'
-                    )
-                    right_key_col = (
-                        f'"{right_table}"."{_escaped_col_name(right_cols[0])}"'
-                        if right_cols
-                        else f'"{right_table}".rowid'
-                    )
+                marker = quote_identifier(presence_column)
                 join_result_expr = f"""CASE
-                    WHEN {left_key_col} IS NULL THEN 'right'
-                    WHEN {right_key_col} IS NULL THEN 'left'
+                    WHEN {quote_identifier(left_table)}.{marker} IS NULL THEN 'right'
+                    WHEN {quote_identifier(right_table)}.{marker} IS NULL THEN 'left'
                     ELSE 'both'
                 END AS {join_result_column}"""
             else:
@@ -367,6 +344,7 @@ def build_multi_table_join_query(
             joins,
             {source.id.strip('"'): source.columns for source in sources},
             attach_alias_set,
+            presence_columns=presence_columns,
         )
 
     query = f"SELECT {select_clause} FROM {from_clause}"
@@ -466,18 +444,24 @@ def _source_table_sql(
     source: Any = None,
     pushdown_where: Optional[str] = None,
     joins: Optional[List[Any]] = None,
+    presence_column: str | None = None,
 ) -> str:
     qualified = format_qualified_table_reference(source_id.strip('"'))
     predicate = pushdown_where if pushdown_where is not None else _source_pushdown_where(source)
     if predicate:
         _assert_safe_predicate(predicate, field="pushdown_where")
-    if attach_aliases:
-        alias = federated_source_sql_alias(source_id, attach_aliases)
+    if attach_aliases or presence_column:
+        alias = (
+            federated_source_sql_alias(source_id, attach_aliases)
+            if attach_aliases else source_id.strip('"')
+        )
         safe_alias = alias.replace('"', '""')
         select_list = _federated_subquery_select_list(
             source, source_id, joins, attach_aliases
-        )
-        if predicate:
+        ) if attach_aliases else "*"
+        if presence_column:
+            select_list += f", TRUE AS {quote_identifier(presence_column)}"
+        if predicate and attach_aliases:
             return (
                 f"(SELECT {select_list} FROM {qualified} WHERE {predicate}) "
                 f'AS "{safe_alias}"'
@@ -502,7 +486,7 @@ def _join_column_ref(
     return f'{_source_table_sql(table_id)}."{safe_col}"'
 
 
-def build_join_chain(sources, joins, table_columns, attach_aliases=None):
+def build_join_chain(sources, joins, table_columns, attach_aliases=None, *, presence_columns=None):
     """
     Build JOIN chain, support multi-table connections and multi-field associations
     """
@@ -519,6 +503,7 @@ def build_join_chain(sources, joins, table_columns, attach_aliases=None):
 
     # Create table mapping
     source_map = {source.id.strip('"'): source for source in sources}
+    presence_columns = presence_columns or {}
 
     # Track tables already joined in query
     joined_tables = set()
@@ -533,6 +518,7 @@ def build_join_chain(sources, joins, table_columns, attach_aliases=None):
         attach_aliases,
         source=source_map.get(first_join.left_source_id.strip('"')),
         joins=joins,
+        presence_column=presence_columns.get(first_join.left_source_id.strip('"')),
     )
     joined_tables.add(left_table)
 
@@ -590,8 +576,12 @@ def build_join_chain(sources, joins, table_columns, attach_aliases=None):
             else join_info["left_source_id"]
         )
         join_source = source_map.get(table_to_join_source.strip('"'))
+        source_sql = _source_table_sql(
+            table_to_join_source, attach_aliases, source=join_source, joins=joins,
+            presence_column=presence_columns.get(table_to_join_source.strip('"')),
+        )
         from_clause += (
-            f" {join_type_sql} {_source_table_sql(table_to_join_source, attach_aliases, source=join_source, joins=joins)}"
+            f" {join_type_sql} {source_sql}"
         )
 
         # Add all JOIN conditions (including multi-field associations)

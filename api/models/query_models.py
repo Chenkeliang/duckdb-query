@@ -16,6 +16,7 @@ class DataSourceType(str, Enum):
     PARQUET = "parquet"
     MYSQL = "mysql"
     POSTGRESQL = "postgresql"
+    ORACLE = "oracle"
     SQLITE = "sqlite"
     DUCKDB = "duckdb"
 

@@ -5,6 +5,7 @@ from typing import Any
 import sqlglot
 from sqlglot import exp
 from sqlglot.lineage import lineage
+from sqlglot.optimizer.normalize_identifiers import normalize_identifiers
 from sqlglot.optimizer.qualify import qualify
 from sqlglot.optimizer.scope import traverse_scope
 from sqlglot.schema import MappingSchema
@@ -44,7 +45,10 @@ def describe_column_lineage(connection: Any, sql: str, count: int) -> list[dict]
                 # Synthetic missing qualifiers are internal and never returned.
                 source.set("catalog", source.args.get("catalog") or exp.to_identifier("_dq_local"))
                 source.set("db", source.args.get("db") or exp.to_identifier("_dq_default"))
-                key = (source.catalog, source.db, source.name)
+                # The qualifier normalizes DuckDB identifiers, including
+                # quoted names. Keep the original spelling in the response.
+                normalized = normalize_identifiers(source.copy(), dialect="duckdb")
+                key = (normalized.catalog, normalized.db, normalized.name)
                 origins[key] = origin
                 schema.add_table(source, {str(row[0]): str(row[1]) for row in rows})
         by_name = any(union.args.get("by_name") for union in tree.find_all(exp.Union))

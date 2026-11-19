@@ -214,6 +214,15 @@ class DatabaseManager:
                 return self._test_mysql_connection(request.params, start_time)
             elif request.type == DataSourceType.POSTGRESQL:
                 return self._test_postgresql_connection(request.params, start_time)
+            elif request.type == DataSourceType.ORACLE:
+                from core.database.oracle_source import open_oracle_catalog
+
+                with open_oracle_catalog(request.params):
+                    return ConnectionTestResponse(
+                        success=True,
+                        message="Oracle connection successful",
+                        latency_ms=(time.time() - start_time) * 1000,
+                    )
             elif request.type == DataSourceType.SQLITE:
                 return self._test_sqlite_connection(request.params, start_time)
             elif request.type == DataSourceType.DUCKDB:

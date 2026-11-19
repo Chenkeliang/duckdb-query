@@ -52,6 +52,7 @@ _READ_ONLY_PRAGMAS = {
     "TABLE_INFO",
     "VERSION",
 }
+_ORACLE_WRITE_PREFIXES = ("ORACLE_EXECUTE", "ORACLE_PLSQL", "ORACLE_CALL_", "ORACLE_SNAPSHOT")
 
 
 def _tokens(sql: str):
@@ -86,6 +87,29 @@ def _has_side_effect_token(tokens: Iterable) -> bool:
         token.token_type not in ignored_types
         and str(token.text).upper() in _SIDE_EFFECT_WORDS
         for token in tokens
+    )
+
+
+def _function_names(tokens: list) -> Iterable[str]:
+    """Yield SQL call names, including quoted names, without inspecting literals."""
+    return (
+        str(token.text).upper()
+        for token, next_token in zip(tokens, tokens[1:])
+        if token.token_type != sqlglot.TokenType.STRING
+        and next_token.token_type == sqlglot.TokenType.L_PAREN
+    )
+
+
+def uses_oracle_write_function(sql: str) -> bool:
+    """Recognize scanner routines with write or procedure side effects."""
+    return any(name.startswith(_ORACLE_WRITE_PREFIXES) for name in _function_names(_tokens(sql)))
+
+
+def is_managed_oracle_read_sql(sql: str) -> bool:
+    """Managed Oracle connections expose attached tables, not native execution."""
+    return is_read_only_sql(sql) and not any(
+        name.startswith("ORACLE_") or name in {"QUERY", "QUERY_TABLE"}
+        for name in _function_names(_tokens(sql))
     )
 
 
@@ -170,6 +194,8 @@ def is_read_only_sql(sql: str) -> bool:
     """
     tokens = _tokens(sql)
     if not tokens or not is_single_statement(sql):
+        return False
+    if any(name.startswith(_ORACLE_WRITE_PREFIXES) for name in _function_names(tokens)):
         return False
     words = _upper_words(tokens)
     first = words[0]

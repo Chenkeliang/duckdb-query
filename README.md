@@ -32,7 +32,7 @@ DuckQuery 是独立开发、基于 DuckDB 的本地优先数据工作台，适�
 
 ### 桌面版（推荐）
 
-最新发布版本为 **[v2.2.0](https://github.com/Chenkeliang/duckdb-query/releases/tag/v2.2.0)**。本文功能说明以该发布版为准；对应源码见 [v2.2.0 标签](https://github.com/Chenkeliang/duckdb-query/tree/v2.2.0)。
+最新发布版本为 **[v2.2.1](https://github.com/Chenkeliang/duckdb-query/releases/tag/v2.2.1)**。本文功能说明以该发布版为准；对应源码见 [v2.2.1 标签](https://github.com/Chenkeliang/duckdb-query/tree/v2.2.1)。
 
 从 [GitHub Releases](https://github.com/Chenkeliang/duckdb-query/releases/latest) 选择与你的电脑匹配的安装包：
 
@@ -51,7 +51,7 @@ DuckQuery 是独立开发、基于 DuckDB 的本地优先数据工作台，适�
 先安装 Docker 与 Docker Compose，然后运行：
 
 ```bash
-git clone --branch v2.2.0 --depth 1 https://github.com/Chenkeliang/duckdb-query.git
+git clone --branch v2.2.1 --depth 1 https://github.com/Chenkeliang/duckdb-query.git
 cd duckdb-query
 ./quick-start.sh
 ```
@@ -71,7 +71,7 @@ cd duckdb-query
 | 你的任务 | DuckQuery 提供的能力 |
 |---|---|
 | 把散落的文件变成可查询的数据 | CSV / Excel / Parquet / JSON / JSONL 导入、表格粘贴、URL 导入、服务器目录读取 |
-| 核对文件与业务库 | 本地表与 MySQL / PostgreSQL / SQLite / DuckDB 跨源关联，支持符合条件的远端筛选优化 |
+| 核对文件与业务库 | 本地表与 MySQL / PostgreSQL / SQLite / DuckDB / Oracle 跨源关联，支持符合条件的远端筛选优化 |
 | 使用远程 DuckDB 计算 | 独立 Quack 服务连接、远程表与字段浏览、绑定服务的只读 SQL 标签；支持取消、转后台、导出与保存到本地 |
 | 反复调整一条查询 | 多标签 SQL 编辑器、表与字段补全、错误位置提示、查询历史、SQL 收藏夹 |
 | 少写 SQL 完成分析 | 可视化关联查询、集合运算与透视表；支持不加分组字段直接统计，可查看生成的 SQL |
@@ -88,6 +88,12 @@ cd duckdb-query
 在数据源管理页或左侧「Quack 服务」分组添加已有服务的地址和 Token。查询由远端 DuckDB 执行，连接从运行 DuckQuery 后端的机器发起。服务器可以暴露 CSV / Parquet 视图、DuckDB 表及其他已配置数据；客户端浏览服务器实际提供的目录，不在这里配置远端 MySQL / PostgreSQL。
 
 当前 Quack 入口仅提供只读 SQL 标签，尚不接入可视化 JOIN、集合、透视、数据探索、远端 SQL 的 AI 问数/修复或 SQL 收藏。保存为表会写入本地 DuckDB，不会写入远端。浏览器内 Wasm Demo 不支持 Quack。首次显式测试连接会按需安装官方 `httpfs` / `quack`；当前离线包未预置 `quack`，受限网络需先安装匹配引擎与平台的扩展。详见 [Quack 使用指南](docs/guide/quack-services.md)。
+
+### Oracle 数据源
+
+在桌面或 Docker 的「扩展」安装社区扩展 `oracle_scanner`，再到「数据库连接 → 新建连接 → Oracle」填写主机、端口、Service Name 和只读账号。从左侧展开 Schema、表和字段，双击生成预览 SQL。SQL 工作台、JOIN 和导出使用 DuckDB SQL，连接由运行 DuckQuery 后端的机器发起。Oracle 无精度声明的 `NUMBER` 保留为文本，Oracle `DATE` 保留时间。取消请求会丢弃结果并中断 DuckDB，Oracle 端可能继续执行当前数据库调用。
+
+当前驱动需要账号使用 `12C` 密码验证格式。Oracle 11g 账号使用的旧验证格式无法通过该驱动登录。参见 [oracle_scanner 认证说明](https://github.com/krokozyab/quack-oracle#oracle-offered-the--password-verifier-type-0x-for-this-account)。
 
 DuckDB 本地表、原有数据库连接表和 Quack 表均可通过箭头展开字段与类型；双击表名或右键选择「打开预览 SQL（100 行）」只填入 SQL，不自动执行。同一服务的相同 Quack SQL 已打开时会切回已有页，已编辑的草稿不会被覆盖；显式新建查询仍创建独立标签。
 
@@ -163,9 +169,9 @@ claude mcp add duckquery -- uvx duckquery-mcp
 
 ## 引擎与升级须知
 
-最新发布的 **应用版本为 v2.2.0**，新增 Quack 远程只读 SQL，统一表结构浏览与预览交互，并更新图表及 AI 推荐。保留 v2.1.3 的 Windows 覆盖升级修复，以及原有数据探索、JSON 提取、安全 MySQL 下推和扩展管理，详见 [v2.2.0 发布说明](docs/releases/v2.2.0.md)。
+**v2.2.1** 新增 Oracle 只读连接，修复 JOIN 类型检查与 CSV 中文编码，并更新欢迎页。详见 [v2.2.1 发布说明](docs/releases/v2.2.1.md)。
 
-应用版本与 DuckDB **引擎版本**分别维护。v2.2.0 继续使用 **DuckDB 2.0 正式版**（`duckdb==2.0.0`，engine `v2.0.0`）；v2.1.1 仍是 `1.6.0.dev379` / `v2.0.0-alpha39998`。新库继续使用 `v2.0.0` 存储格式；旧库不会自动迁移，扩展须匹配正式版引擎和运行平台。
+应用版本与 DuckDB **引擎版本**分别维护。v2.2.1 继续使用 **DuckDB 2.0 正式版**（`duckdb==2.0.0`，engine `v2.0.0`）；v2.1.1 仍是 `1.6.0.dev379` / `v2.0.0-alpha39998`。新库继续使用 `v2.0.0` 存储格式；旧库不会自动迁移，扩展须匹配正式版引擎和运行平台。
 
 “数据探索”按实际字段类型推荐统计方式，确认 SQL 后显示指标卡片；也可采样发现 JSON/VARIANT/文本列中的路径，选择输出类型并提取为列。路径发现先应用当前筛选，最多采样 100 行，不代表完整结构；统计使用完整筛选范围。默认文本提取保留大整数精度，缺失路径或转换失败返回 NULL。此入口用于桌面和服务器版，浏览器内 Wasm Demo 暂不提供。
 

@@ -145,6 +145,10 @@ CATALOG: Dict[str, ExtensionSpec] = {
         "postgres", CATEGORY_DATASOURCE, "连接 PostgreSQL", "Connect to PostgreSQL", None,
         artifact_name="postgres_scanner",
     ),
+    "oracle_scanner": _extension(
+        "oracle_scanner", CATEGORY_DATASOURCE, "连接 Oracle（社区扩展）",
+        "Connect to Oracle (community extension)", source="community",
+    ),
     # ---- 能力增强 ----
     "encodings": _extension("encodings",
         CATEGORY_CAPABILITY,
@@ -431,6 +435,22 @@ def _run_extension_install(name: str) -> None:
     gz_path: Optional[str] = None
     candidate_path: Optional[str] = None
     try:
+        if CATALOG[name].source == "community":
+            # DuckDB 2.0 records the signing repository in the adjacent .info file.
+            # Installing a raw archive would lose this information.
+            import duckdb  # pylint: disable=import-outside-toplevel
+
+            with with_duckdb_connection() as con:
+                extension_dir = con.execute(
+                    "SELECT current_setting('extension_directory')"
+                ).fetchone()[0]
+            with duckdb.connect(config={"extension_directory": extension_dir}) as installer:
+                installer.install_extension(name, repository="community")
+                _set_install_state(name, status="verifying", progress=90)
+                installer.load_extension(name)
+            _set_install_state(name, status="done", progress=100, error=None)
+            return
+
         url, dest_dir, dest_path = _resolve_target_path(name)
         os.makedirs(dest_dir, exist_ok=True)
 

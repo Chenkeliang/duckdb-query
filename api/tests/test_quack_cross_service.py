@@ -110,7 +110,9 @@ def test_same_sql_exports_keep_source_and_precision(twins, format):
         path = config_manager.get_exports_dir() / f'{result["file_id"]}.{format}'
         try:
             if format == 'csv':
-                assert list(csv.DictReader(io.StringIO(client.get(result['download_url']).text))) == [{'amount': amount, 'big': big}]
+                download = client.get(result['download_url'])
+                csv_text = download.content.decode('utf-8-sig')
+                assert list(csv.DictReader(io.StringIO(csv_text))) == [{'amount': amount, 'big': big}]
             else:
                 with duckdb.connect(':memory:') as reader:
                     assert reader.execute('SELECT amount,big FROM read_parquet(?)', [str(path)]).fetchone() == (Decimal(amount), big)

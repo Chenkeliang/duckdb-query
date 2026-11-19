@@ -51,6 +51,7 @@ const TYPE_META: Record<
   { label: string; icon: typeof Database; color: string; bg: string }
 > = {
   mysql: { label: "MySQL", icon: Database, color: "text-ds-mysql", bg: "bg-ds-mysql/12" },
+  oracle: { label: "Oracle", icon: Database, color: "text-foreground", bg: "bg-muted" },
   postgresql: { label: "PostgreSQL", icon: Database, color: "text-ds-pg", bg: "bg-ds-pg/12" },
   // SQLite 标志是羽毛,DuckDB 是鸭子(Lucide 无鸭子取 Bird)——与 utils/databaseTypeIcon 保持一致
   sqlite: { label: "SQLite", icon: Feather, color: "text-ds-sqlite", bg: "bg-ds-sqlite/12" },

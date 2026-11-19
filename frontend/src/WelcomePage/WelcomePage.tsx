@@ -231,9 +231,9 @@ const WelcomePage: React.FC<WelcomePageProps> = ({ onStartUsing }) => {
             <thead>
               <tr className="bg-[#16181C]/60 text-left font-mono text-[12px] text-white/45">
                 <th className="px-5 py-3 font-medium" />
-                <th className="px-5 py-3 font-semibold text-[#F4B43C]">DuckQuery</th>
-                <th className="whitespace-nowrap px-5 py-3 font-medium">DBeaver / TablePlus</th>
-                <th className="whitespace-nowrap px-5 py-3 font-medium">Metabase / Superset</th>
+                <th className="px-5 py-3 font-semibold text-[#F4B43C]">{t('welcome.cmp.desktop')}</th>
+                <th className="whitespace-nowrap px-5 py-3 font-medium">Docker</th>
+                <th className="whitespace-nowrap px-5 py-3 font-medium">{t('welcome.cmp.browser')}</th>
               </tr>
             </thead>
             <tbody className="divide-y divide-white/[0.07]">
@@ -267,7 +267,7 @@ const WelcomePage: React.FC<WelcomePageProps> = ({ onStartUsing }) => {
             <div className="flex h-10 items-center gap-2 border-b border-white/[0.07] bg-white/2 px-4 font-mono text-[11px] text-white/35">
               <span className="h-2.5 w-2.5 rounded-full bg-white/15" /><span className="h-2.5 w-2.5 rounded-full bg-white/15" /><span className="h-2.5 w-2.5 rounded-full bg-white/15" /><span className="ml-2">terminal</span>
             </div>
-            <pre className="overflow-x-auto px-5 py-5 font-mono text-[12.5px] leading-7 text-white/80"><span className="text-white/30">$</span> git clone https://github.com/Chenkeliang/duckdb-query.git{'\n'}<span className="text-white/30">$</span> cd duckdb-query && ./quick-start.sh{'\n'}<span className="text-[#F4B43C]">→ http://localhost:3000</span>  <span className="text-white/30">{t('welcome.terminalReady')}<span className="wp-caret">▌</span></span></pre>
+            <pre className="overflow-x-auto px-5 py-5 font-mono text-[12.5px] leading-7 text-white/80"><span className="text-white/30">$</span> git clone https://github.com/Chenkeliang/duckdb-query.git{'\n'}<span className="text-white/30">$</span> cd duckdb-query && ./quick-start.sh{'\n'}<span className="text-[#F4B43C]">→ http://localhost:48000</span>  <span className="text-white/30">{t('welcome.terminalReady')}<span className="wp-caret">▌</span></span></pre>
           </div>
         </div>
       </section>

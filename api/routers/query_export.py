@@ -3,6 +3,7 @@
 from __future__ import annotations
 
 import asyncio
+from codecs import BOM_UTF8
 import logging
 import os
 import shutil
@@ -173,6 +174,15 @@ def export_query_results(
                 )
                 copy_result = con.execute(prepared_copy).fetchone()
                 row_count = int(copy_result[0]) if copy_result else 0
+                if ext == "csv":
+                    # DuckDB writes UTF-8 without a signature. Stream a copy so
+                    # Excel can detect the encoding without loading large exports.
+                    with TemporaryDirectory(dir=exports_dir) as staging_dir:
+                        staged_path = os.path.join(staging_dir, "export.csv")
+                        with open(file_path, "rb") as original, open(staged_path, "wb") as staged:
+                            staged.write(BOM_UTF8)
+                            shutil.copyfileobj(original, staged)
+                        os.replace(staged_path, file_path)
                 finalize_query_if_not_cancelled(query_id)
         finally:
             timer.cancel()

@@ -68,6 +68,7 @@ import {
   extractAttachDatabases,
   formatTableReference,
   createTableReference,
+  generateExternalTableReference,
   getSourceFromSelectedTable,
   resolveBusinessSql,
 } from '@/utils/sqlUtils';
@@ -1124,7 +1125,7 @@ const EmptyState: React.FC = () => {
       className="flex-1"
       icon={GitMerge}
       title={t('query.join.emptyTitle', '开始关联查询')}
-      description={t('query.join.emptyDescription', '双击左侧数据源面板中的表来添加到关联查询。第一个添加的表将作为主表。')}
+      description={t('query.join.emptyDescription', '单击左侧的表名添加到关联查询。第一张表作为主表。')}
     />
   );
 };
@@ -1609,19 +1610,23 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
       const payloadFor = (label: string, column: string) => {
         const table = activeTables.find((tb) => getTableName(tb) === label);
         if (!table) return null;
-        const ref = createTableReference(table, attachDatabases);
-        const qualified = ref.isExternal && ref.alias ? `${ref.alias}.${ref.name}` : ref.name;
+        const { qualifiedName, attachDatabase } = generateExternalTableReference(table);
         return {
-          table_name: qualified,
+          table_name: qualifiedName,
           column,
-          attach_databases: toAttachDatabasesPayload(attachDatabases),
+          attach_databases: toAttachDatabasesPayload(attachDatabase ? [attachDatabase] : undefined),
         };
       };
       const lp = payloadFor(conflict.leftLabel, conflict.leftColumn);
       const rp = payloadFor(conflict.rightLabel, conflict.rightColumn);
       if (!lp || !rp) return null;
       try {
-        const [lr, rr] = await Promise.all([inferColumnCast(lp), inferColumnCast(rp)]);
+        const leftAlias = lp.attach_databases?.[0]?.alias;
+        // DuckDB catalogs are shared by pooled connections. Wait for the first
+        // request to detach when both sides need the same catalog name.
+        const [lr, rr] = leftAlias && leftAlias === rp.attach_databases?.[0]?.alias
+          ? [await inferColumnCast(lp), await inferColumnCast(rp)]
+          : await Promise.all([inferColumnCast(lp), inferColumnCast(rp)]);
         const decision = decideConflictCast(lr, rr);
         if (decision.unsafe) {
           const side = decision.unsafe.side === 'left'
@@ -1642,7 +1647,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
         return null;
       }
     },
-    [activeTables, attachDatabases, t]
+    [activeTables, t]
   );
 
   // 检查是否所有 JOIN 配置都有有效的关联列
@@ -2004,7 +2009,7 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
 
           {/* 提示信息 - 留在左侧或中间 */}
           <span className="text-muted-foreground text-xs hidden @3xl:inline-block">
-            {t('query.join.hint', '双击左侧数据源添加表')}
+            {t('query.join.hint', '单击左侧的表名添加表')}
           </span>
         </div>
 
