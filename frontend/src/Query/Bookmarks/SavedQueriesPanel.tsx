@@ -1,6 +1,6 @@
 import React, { useState } from 'react';
 import { useTranslation } from 'react-i18next';
-import { Star, Trash2, Play, Search, Calendar, Hash, Loader2 } from 'lucide-react';
+import { Star, Trash2, Play, Copy, Search, Calendar, Hash, Loader2 } from 'lucide-react';
 import { Button } from '@/components/ui/button';
 import { EmptyState } from '@/components/EmptyState';
 import { Input } from '@/components/ui/input';
@@ -11,11 +11,11 @@ import {
     SheetHeader,
     SheetTitle,
 } from '@/components/ui/sheet';
-import { ScrollArea } from '@/components/ui/scroll-area';
 import { Badge } from '@/components/ui/badge';
 import { SQLSnippet } from '@/components/SQLSnippet';
 import { useSavedQueries, SavedQuery } from '../hooks/useSavedQueries';
 import { extractJoinWorkspaceFromSql } from '@/Query/JoinQuery/joinWorkspaceSnapshot';
+import { showErrorToast, showSuccessToast } from '@/utils/toastHelpers';
 
 export interface SavedQueriesPanelProps {
     open: boolean;
@@ -97,6 +97,16 @@ export const SavedQueriesPanel: React.FC<SavedQueriesPanelProps> = ({
         onOpenChange(false);
     };
 
+    const handleCopy = async (item: SavedQuery) => {
+        const { sql } = extractJoinWorkspaceFromSql(item.sql);
+        try {
+            await navigator.clipboard.writeText(sql);
+            showSuccessToast(t, undefined, t('common.copied'));
+        } catch {
+            showErrorToast(t, undefined, t('query.result.copyFailed'));
+        }
+    };
+
     const handleDelete = async (id: string) => {
         if (confirm(t('query.bookmark.confirmDelete', '确定要删除这个收藏吗？'))) {
             await deleteQuery(id);
@@ -127,7 +137,7 @@ export const SavedQueriesPanel: React.FC<SavedQueriesPanelProps> = ({
                     </div>
                 </SheetHeader>
 
-                <ScrollArea className="min-h-0 flex-1">
+                <div className="min-h-0 min-w-0 flex-1 overflow-x-hidden overflow-y-auto">
                     <div>
                         {isLoading ? (
                             <div role="status" className="flex items-center justify-center gap-2 py-12 text-sm text-muted-foreground">
@@ -163,7 +173,7 @@ export const SavedQueriesPanel: React.FC<SavedQueriesPanelProps> = ({
                                         <SQLSnippet
                                             sql={formatSqlPreview(item.sql)}
                                             maxHeight="9rem"
-                                            className="border-border bg-background text-foreground"
+                                            className="select-text wrap-anywhere border-border bg-background text-foreground"
                                         />
 
                                         <div className="flex flex-wrap items-center justify-between gap-2 text-xs text-muted-foreground">
@@ -177,6 +187,14 @@ export const SavedQueriesPanel: React.FC<SavedQueriesPanelProps> = ({
                                             </div>
 
                                             <div className="flex items-center gap-2">
+                                                <Button
+                                                    size="sm"
+                                                    variant="quiet"
+                                                    onClick={() => void handleCopy(item)}
+                                                >
+                                                    <Copy className="size-3.5" />
+                                                    {t('query.bookmark.copySql')}
+                                                </Button>
                                                 <Button
                                                     size="sm"
                                                     variant="subtle"
@@ -201,7 +219,7 @@ export const SavedQueriesPanel: React.FC<SavedQueriesPanelProps> = ({
                             </div>
                         )}
                     </div>
-                </ScrollArea>
+                </div>
             </SheetContent>
         </Sheet>
     );

@@ -32,7 +32,7 @@ DuckQuery 是独立开发、基于 DuckDB 的本地优先数据工作台，适�
 
 ### 桌面版（推荐）
 
-最新发布版本为 **[v2.2.1](https://github.com/Chenkeliang/duckdb-query/releases/tag/v2.2.1)**。本文功能说明以该发布版为准；对应源码见 [v2.2.1 标签](https://github.com/Chenkeliang/duckdb-query/tree/v2.2.1)。
+最新发布版本为 **[v2.2.2](https://github.com/Chenkeliang/duckdb-query/releases/tag/v2.2.2)**。本文功能说明以该发布版为准；对应源码见 [v2.2.2 标签](https://github.com/Chenkeliang/duckdb-query/tree/v2.2.2)。
 
 从 [GitHub Releases](https://github.com/Chenkeliang/duckdb-query/releases/latest) 选择与你的电脑匹配的安装包：
 
@@ -51,7 +51,7 @@ DuckQuery 是独立开发、基于 DuckDB 的本地优先数据工作台，适�
 先安装 Docker 与 Docker Compose，然后运行：
 
 ```bash
-git clone --branch v2.2.1 --depth 1 https://github.com/Chenkeliang/duckdb-query.git
+git clone --branch v2.2.2 --depth 1 https://github.com/Chenkeliang/duckdb-query.git
 cd duckdb-query
 ./quick-start.sh
 ```
@@ -169,9 +169,9 @@ claude mcp add duckquery -- uvx duckquery-mcp
 
 ## 引擎与升级须知
 
-**v2.2.1** 新增 Oracle 只读连接，修复 JOIN 类型检查与 CSV 中文编码，并更新欢迎页。详见 [v2.2.1 发布说明](docs/releases/v2.2.1.md)。
+**v2.2.2** 修复收藏夹中超长 SQL 挤出操作按钮的问题，并新增「复制 SQL」。详见 [v2.2.2 发布说明](docs/releases/v2.2.2.md)。
 
-应用版本与 DuckDB **引擎版本**分别维护。v2.2.1 继续使用 **DuckDB 2.0 正式版**（`duckdb==2.0.0`，engine `v2.0.0`）；v2.1.1 仍是 `1.6.0.dev379` / `v2.0.0-alpha39998`。新库继续使用 `v2.0.0` 存储格式；旧库不会自动迁移，扩展须匹配正式版引擎和运行平台。
+应用版本与 DuckDB **引擎版本**分别维护。v2.2.2 继续使用 **DuckDB 2.0 正式版**（`duckdb==2.0.0`，engine `v2.0.0`）；v2.1.1 仍是 `1.6.0.dev379` / `v2.0.0-alpha39998`。新库继续使用 `v2.0.0` 存储格式；旧库不会自动迁移，扩展须匹配正式版引擎和运行平台。
 
 “数据探索”按实际字段类型推荐统计方式，确认 SQL 后显示指标卡片；也可采样发现 JSON/VARIANT/文本列中的路径，选择输出类型并提取为列。路径发现先应用当前筛选，最多采样 100 行，不代表完整结构；统计使用完整筛选范围。默认文本提取保留大整数精度，缺失路径或转换失败返回 NULL。此入口用于桌面和服务器版，浏览器内 Wasm Demo 暂不提供。
 

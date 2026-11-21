@@ -723,6 +723,7 @@
       "hint": "Click the star button in the editor to add a bookmark",
       "usageCount": "Usage count",
       "createdDate": "Created date",
+      "copySql": "Copy SQL",
       "use": "Use",
       "save": "Bookmark",
       "saveDialog": {

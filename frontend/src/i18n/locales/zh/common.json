@@ -723,6 +723,7 @@
       "hint": "在编辑器中点击星标按钮添加收藏",
       "usageCount": "使用次数",
       "createdDate": "创建日期",
+      "copySql": "复制 SQL",
       "use": "使用",
       "save": "收藏",
       "saveDialog": {

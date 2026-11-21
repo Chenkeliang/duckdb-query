@@ -32,7 +32,7 @@ DuckQuery is an independently developed, local-first data workbench powered by D
 
 ### Desktop (Recommended)
 
-The latest release is **[v2.2.1](https://github.com/Chenkeliang/duckdb-query/releases/tag/v2.2.1)**. Features below describe this release; its source is available at the [v2.2.1 tag](https://github.com/Chenkeliang/duckdb-query/tree/v2.2.1).
+The latest release is **[v2.2.2](https://github.com/Chenkeliang/duckdb-query/releases/tag/v2.2.2)**. Features below describe this release; its source is available at the [v2.2.2 tag](https://github.com/Chenkeliang/duckdb-query/tree/v2.2.2).
 
 Choose the installer for your machine from [GitHub Releases](https://github.com/Chenkeliang/duckdb-query/releases/latest):
 
@@ -51,7 +51,7 @@ Use the standard build when online; some external database connections download 
 Install Docker and Docker Compose, then run:
 
 ```bash
-git clone --branch v2.2.1 --depth 1 https://github.com/Chenkeliang/duckdb-query.git
+git clone --branch v2.2.2 --depth 1 https://github.com/Chenkeliang/duckdb-query.git
 cd duckdb-query
 ./quick-start.sh
 ```
@@ -169,9 +169,9 @@ See the [MCP documentation](mcp/README.md) for client configuration, backend dis
 
 ## Engine and Upgrade Notes
 
-**v2.2.1** adds read-only Oracle connections, fixes JOIN type inspection and Chinese CSV encoding, and updates the welcome page. See the [v2.2.1 release notes](docs/releases/v2.2.1_en.md).
+**v2.2.2** restores bookmark actions for long SQL and adds **Copy SQL**. See the [v2.2.2 release notes](docs/releases/v2.2.2_en.md).
 
-The app and DuckDB **engine versions** are maintained separately. v2.2.1 continues to use **stable DuckDB 2.0** (`duckdb==2.0.0`, engine `v2.0.0`); v2.1.1 used `1.6.0.dev379` / `v2.0.0-alpha39998`. New databases still use `v2.0.0` storage, existing files are not automatically migrated, and extensions must match the stable engine and platform.
+The app and DuckDB **engine versions** are maintained separately. v2.2.2 continues to use **stable DuckDB 2.0** (`duckdb==2.0.0`, engine `v2.0.0`); v2.1.1 used `1.6.0.dev379` / `v2.0.0-alpha39998`. New databases still use `v2.0.0` storage, existing files are not automatically migrated, and extensions must match the stable engine and platform.
 
 Data exploration suggests operations by actual column types, previews SQL and displays metric cards. It can also discover paths in JSON/VARIANT/text and extract typed columns. Discovery applies current filters before sampling at most 100 rows; sampled paths are not a complete schema. Statistics cover all filtered input. Text extraction preserves large integers by default; missing paths and failed casts return NULL. Desktop and server editions provide this entry; the browser-only Wasm demo does not.
 

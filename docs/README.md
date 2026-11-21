@@ -53,6 +53,7 @@ Quack 远程服务：[`连接、查询与本地保存`](guide/quack-services.md)
 
 | 资源 | 用途 |
 |------|------|
+| [`releases/v2.2.2.md`](releases/v2.2.2.md) · [`English`](releases/v2.2.2_en.md) | v2.2.2：收藏夹长 SQL 布局修复与一键复制 |
 | [`releases/v2.2.1.md`](releases/v2.2.1.md) · [`English`](releases/v2.2.1_en.md) | v2.2.1：Oracle 数据源、JOIN 类型检查与 CSV 编码修复 |
 | [`releases/v2.2.0.md`](releases/v2.2.0.md) · [`English`](releases/v2.2.0_en.md) | v2.2.0：Quack 远程 SQL、字段展开与图表推荐交互 |
 | [`releases/v2.1.3.md`](releases/v2.1.3.md) · [`English`](releases/v2.1.3_en.md) | v2.1.3：Windows 覆盖升级修复与 MCP 0.4.1 |
