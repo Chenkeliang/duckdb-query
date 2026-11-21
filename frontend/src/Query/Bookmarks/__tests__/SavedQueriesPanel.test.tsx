@@ -30,4 +30,16 @@ describe('favorites behavior', () => {
     expect(screen.getByText('Join example')).toBeInTheDocument();
     expect(screen.queryByText('Other query')).not.toBeInTheDocument();
   });
+  it('copies the entire saved SQL without loading it or closing the drawer', async () => {
+    const user = userEvent.setup();
+    const close = vi.fn();
+    const load = vi.fn();
+    render(<SavedQueriesPanel open onOpenChange={close} onLoad={load} />);
+
+    await user.click(screen.getAllByRole('button', { name: 'query.bookmark.copySql' })[0]);
+
+    await expect(navigator.clipboard.readText()).resolves.toBe('SELECT 42 AS result');
+    expect(load).not.toHaveBeenCalled();
+    expect(close).not.toHaveBeenCalled();
+  });
 });
