@@ -52,6 +52,8 @@ interface DatabaseFormProps {
 
 export interface ConnectionTestResult { success: boolean; message: string }
 
+const DEFAULT_PORTS: Record<string, string> = { postgresql: "5432", oracle: "1521", doris: "9030" };
+
 /**
  * New database form using shadcn/ui components.
  * Emits normalized params for test/save, without touching legacy components.
@@ -77,7 +79,8 @@ const DatabaseForm = ({
   const [type, setType] = useState(defaultType);
   const [name, setName] = useState("");
   const [host, setHost] = useState("localhost");
-  const [port, setPort] = useState(defaultType === "oracle" ? "1521" : "3306");
+  const [port, setPort] = useState(defaultType === "oracle" || defaultType === "doris"
+    ? DEFAULT_PORTS[defaultType] : "3306");
   const [database, setDatabase] = useState("");
   const [serviceName, setServiceName] = useState("");
   const [username, setUsername] = useState("");
@@ -128,7 +131,7 @@ const DatabaseForm = ({
       setName(configToLoad.name || configToLoad.id || "");
       if (configToLoad.params) {
         setHost(configToLoad.params.host || "localhost");
-        setPort(configToLoad.params.port?.toString() || (configToLoad.type === "oracle" ? "1521" : configToLoad.type === "postgresql" ? "5432" : "3306"));
+        setPort(configToLoad.params.port?.toString() || (DEFAULT_PORTS[configToLoad.type ?? "mysql"] ?? "3306"));
         setDatabase(configToLoad.params.database || "");
         setServiceName(configToLoad.params.service_name || "");
         setUsername(configToLoad.params.user || configToLoad.params.username || "");
@@ -160,6 +163,7 @@ const DatabaseForm = ({
   const isFileBased = isSqlite || isDuckdb;
   const isPostgreSQL = type === "postgresql";
   const isOracle = type === "oracle";
+  const isDoris = type === "doris";
 
   const normalizedParams = useMemo(() => {
     const resolvedId =
@@ -317,6 +321,7 @@ const DatabaseForm = ({
       label: t("page.datasource.connection.dbTypes.postgresql")
     },
     { id: "oracle", label: t("page.datasource.connection.dbTypes.oracle") },
+    { id: "doris", label: t("page.datasource.connection.dbTypes.doris") },
     { id: "sqlite", label: t("page.datasource.connection.dbTypes.sqlite") },
     { id: "duckdb", label: t("page.datasource.connection.dbTypes.duckdb") }
   ];
@@ -324,7 +329,7 @@ const DatabaseForm = ({
   return (
     <div className="space-y-6">
         {/* 粘贴连接串，自动识别并回填字段 */}
-        {!isOracle && <div className="space-y-2 rounded-lg border border-border bg-surface-elevated/40 p-3">
+        {!isOracle && !isDoris && <div className="space-y-2 rounded-lg border border-border bg-surface-elevated/40 p-3">
           <Label
             htmlFor="conn-str"
             className="flex items-center gap-1.5 text-xs font-medium text-muted-foreground"
@@ -345,11 +350,12 @@ const DatabaseForm = ({
         </div>}
         {/* 顶部数据库类型切换 Tabs */}
         <Tabs value={type} onValueChange={(next) => {
-          if (next === "oracle" && type !== "oracle") setPort("1521");
-          if (type === "oracle" && next !== "oracle") setPort(next === "postgresql" ? "5432" : "3306");
+          if (next !== type && (isOracle || isDoris || next === "oracle" || next === "doris")) {
+            setPort(DEFAULT_PORTS[next] ?? "3306");
+          }
           setType(next);
         }}>
-          <TabsList className="grid w-full grid-cols-5">
+          <TabsList className="grid w-full grid-cols-6">
             {dbTabs.map(tab => (
               <TabsTrigger
                 key={tab.id}
@@ -363,6 +369,7 @@ const DatabaseForm = ({
         </Tabs>
 
         {isOracle && <p className="text-sm text-muted-foreground">{t("page.datasource.connection.oracleHint")}</p>}
+        {isDoris && <p className="text-sm text-muted-foreground">{t("page.datasource.connection.dorisHint")}</p>}
         <form onSubmit={(e) => { e.preventDefault(); if (!loading && !testing) handleConnect(); }}>
           <div className="grid grid-cols-1 md:grid-cols-2 gap-5 pt-6">
             <div className="space-y-2 md:col-span-2">
@@ -398,7 +405,7 @@ const DatabaseForm = ({
                     id="port"
                     value={port}
                     onChange={e => setPort(e.target.value)}
-                    placeholder={isOracle ? "1521" : "3306"}
+                    placeholder={DEFAULT_PORTS[type] ?? "3306"}
                   />
                 </div>
                 <div className="space-y-2">

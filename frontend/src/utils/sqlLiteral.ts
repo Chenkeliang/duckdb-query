@@ -16,3 +16,12 @@ export function escapeSqlLiteralBody(value: string): string {
 export function sqlStringLiteral(value: string): string {
   return `'${escapeSqlLiteralBody(value)}'`;
 }
+
+/** Doris recognizes backslash escapes inside a string. */
+export function dorisSqlStringLiteral(value: string): string {
+  return sqlStringLiteral(value.replace(/\\/g, '\\\\'));
+}
+
+export function quoteDorisIdentifier(value: string): string {
+  return '`' + value.replace(/`/g, '``') + '`';
+}

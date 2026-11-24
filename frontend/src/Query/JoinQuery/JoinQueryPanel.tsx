@@ -1773,7 +1773,11 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
     }
     const source: TableSource =
       attachDatabases.length > 0
-        ? { type: 'federated', attachDatabases }
+        ? {
+            type: 'federated', attachDatabases,
+            ...(activeTables.some((table) => normalizeSelectedTable(table).connection?.type === 'doris')
+              ? { dorisNative: false } : {}),
+          }
         : tableSource || { type: 'duckdb' };
     const startTime = Date.now();
     const requestId =
@@ -1861,7 +1865,11 @@ export const JoinQueryPanel: React.FC<JoinQueryPanelProps> = ({
 
       const source: TableSource =
         attachDatabases.length > 0
-          ? { type: 'federated', attachDatabases }
+          ? {
+              type: 'federated', attachDatabases,
+              ...(activeTables.some((table) => normalizeSelectedTable(table).connection?.type === 'doris')
+                ? { dorisNative: false } : {}),
+            }
           : tableSource || { type: 'duckdb' };
 
       await onExecute(sql, source, { baseSql: generateSQL(false) ?? undefined });

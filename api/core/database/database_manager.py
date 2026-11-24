@@ -212,6 +212,17 @@ class DatabaseManager:
         try:
             if request.type == DataSourceType.MYSQL:
                 return self._test_mysql_connection(request.params, start_time)
+            elif request.type == DataSourceType.DORIS:
+                from core.database.doris_source import connect_doris
+
+                with connect_doris(request.params) as connection, connection.cursor() as cursor:
+                    cursor.execute("SELECT VERSION()")
+                    return ConnectionTestResponse(
+                        success=True,
+                        message="Doris connection successful",
+                        latency_ms=(time.time() - start_time) * 1000,
+                        database_info={"version": cursor.fetchone()[0], "type": "Doris"},
+                    )
             elif request.type == DataSourceType.POSTGRESQL:
                 return self._test_postgresql_connection(request.params, start_time)
             elif request.type == DataSourceType.ORACLE:

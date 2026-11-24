@@ -19,6 +19,7 @@ import {
 import type { SelectedTable } from '@/types/SelectedTable';
 import type { TableSource } from '@/types/queryWorkspace';
 import { generateExternalTableReference } from '@/utils/sqlUtils';
+import { normalizeSelectedTable } from '@/utils/tableUtils';
 import { PivotFilters, pivotFiltersToApi, type PivotFilterRow } from '@/Query/PivotTable/PivotFilters';
 import { showErrorToast } from '@/utils/toastHelpers';
 
@@ -90,7 +91,10 @@ function InsightsEditor({ table, onExecute, onResultViewRequest, onCancel, isCan
     setExecuting(true);
     try {
       const source: TableSource = reference.attachDatabase
-        ? { type: 'federated', attachDatabases: [reference.attachDatabase] } : { type: 'duckdb' };
+        ? {
+            type: 'federated', attachDatabases: [reference.attachDatabase],
+            ...(normalizeSelectedTable(table).connection?.type === 'doris' ? { dorisNative: false } : {}),
+          } : { type: 'duckdb' };
       await onExecute(query.data.sql, source, { baseSql: query.data.sql });
       onResultViewRequest?.(mode === 'metrics' ? 'metrics' : 'table');
     } catch (error) { showErrorToast(t, error as Error); }

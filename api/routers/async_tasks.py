@@ -59,7 +59,7 @@ EXPORTS_DIR = str(config_manager.get_exports_dir())
 # 初始化任务工具类
 task_utils = TaskUtils(EXPORTS_DIR)
 
-SUPPORTED_EXTERNAL_TYPES = {"mysql", "postgresql", "oracle", "sqlite", "duckdb"}
+SUPPORTED_EXTERNAL_TYPES = {"mysql", "postgresql", "oracle", "sqlite", "duckdb", "doris"}
 
 # 单一来源,避免下载与桌面直写两条路径各写一份格式白名单。
 LOCAL_EXPORT_FORMATS = ("csv", "parquet", "json", "xlsx")
@@ -357,6 +357,7 @@ class AsyncQueryRequest(BaseModel):
     # 联邦查询支持：需要 ATTACH 的外部数据库列表
     attach_databases: Optional[List[AttachDatabase]] = None
     quack_service_id: Optional[str] = Field(default=None, min_length=1)
+    doris_native: bool = True
     # 自定义表名撞已有表时是否允许覆盖；默认 False，避免静默 CREATE OR REPLACE 毁数据
     overwrite: bool = False
     # 最终行数选择:False=移除页面最外层 LIMIT;True=保留或补 max_query_rows。
@@ -454,6 +455,7 @@ def submit_async_query(
             "is_federated": is_federated,
             "overwrite": request.overwrite,
             "apply_row_limit": request.apply_row_limit,
+            **({"doris_native": False} if not request.doris_native else {}),
             **quack_metadata,
         }
 
@@ -478,6 +480,7 @@ def submit_async_query(
                 attach_list,
                 request.overwrite,
                 request.apply_row_limit,
+                **({"doris_native": False} if not request.doris_native else {}),
             )
         else:
             # 普通查询：使用原有执行函数
@@ -790,6 +793,7 @@ def retry_async_task(
                 attach_list,
                 overwrite=True,
                 apply_row_limit=apply_row_limit,
+                **({"doris_native": False} if payload.get("doris_native") is False else {}),
             )
         else:
             background_tasks.add_task(
@@ -1306,6 +1310,8 @@ def execute_async_federated_query(
     attach_databases: Optional[List[Dict[str, str]]] = None,
     overwrite: bool = False,
     apply_row_limit: bool = False,
+    *,
+    doris_native: bool = True,
 ):
     """
     执行异步联邦查询（后台任务）
@@ -1354,9 +1360,11 @@ def execute_async_federated_query(
         logger.info(f"Databases to ATTACH: {attach_databases}")
 
         # 行数范围按最终选择,与本地异步、导出、保存路径使用同一公共 helper。
-        from routers.query_sql_utils import apply_row_limit_choice
+        from routers.query_sql_utils import apply_federated_row_limit_choice
 
-        clean_sql = apply_row_limit_choice(sql, apply_row_limit)
+        clean_sql = apply_federated_row_limit_choice(
+            sql, apply_row_limit, attach_databases, doris_native=doris_native,
+        )
         logger.info(f"Federated query ({'limited' if apply_row_limit else 'full'}): {clean_sql}")
 
         # 确定表名（洗空则回退 task_id 名，不建空名表）
@@ -1385,6 +1393,7 @@ def execute_async_federated_query(
             attach_databases,
             query_id=task_id,
             overwrite=overwrite,
+            **({"doris_native": False} if not doris_native else {}),
         )
         row_count = metadata_snapshot.get("row_count", 0)
         columns = [

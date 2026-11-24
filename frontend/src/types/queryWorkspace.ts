@@ -13,6 +13,7 @@ export interface TableSource {
   databaseType?: DatabaseType;
   schema?: string;
   attachDatabases?: AttachDatabase[];
+  dorisNative?: boolean;
 }
 
 export interface LastQuery {

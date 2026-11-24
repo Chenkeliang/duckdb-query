@@ -21,8 +21,10 @@ from pydantic import BaseModel
 
 from core.database.duckdb_engine import validate_query_syntax, with_duckdb_connection
 from core.database.duckdb_pool import interruptible_connection
+from core.database.doris_source import doris_relation_columns, doris_tables
 from core.database.federated_attach import (
     attach_databases_on_connection,
+    duckdb_attach_configs,
     detach_databases_on_connection,
     finalize_query_if_not_cancelled,
     format_qualified_table_reference,
@@ -184,6 +186,8 @@ def _cache_key(alias: str, db_config: dict) -> str:
 
 def _scan_attached_tables(alias: str, db_config: dict) -> List[str]:
     """ATTACH 一个别名并枚举其表(含 schema),返回限定名列表。只取元数据,不采样。"""
+    if db_config.get("type") == "doris":
+        return [f"{alias}.{table['name']}" for table in doris_tables(db_config)]
     with with_duckdb_connection() as con:
         attached = attach_databases_on_connection(con, [(alias, db_config)])
         try:
@@ -342,9 +346,12 @@ def _inspect_table(ctx: AgentRunCtx, args: InspectTableArgs) -> ToolResult:
             attached: list[str] = []
             try:
                 if is_alias and ctx.attach_configs:
-                    attached = attach_databases_on_connection(con, ctx.attach_configs)
+                    attached = attach_databases_on_connection(con, duckdb_attach_configs(ctx.attach_configs))
                 ref = format_qualified_table_reference(name)
-                rows = con.execute(f"DESCRIBE {ref}").fetchall()
+                remote = doris_relation_columns(ref, ctx.attach_configs)
+                rows = [(col["name"], col["type"]) for col in remote] if remote is not None else (
+                    con.execute(f"DESCRIBE {ref}").fetchall()
+                )
                 cols = ", ".join(f"{r[0]} {r[1]}" for r in rows)
                 parts = [f"{name}({cols})"]
                 if not is_alias:
@@ -406,7 +413,7 @@ def _describe_tables(ctx: AgentRunCtx, args: DescribeTablesArgs) -> ToolResult:
             attached: list[str] = []
             try:
                 if any("." in n for n in names) and ctx.attach_configs:
-                    attached = attach_databases_on_connection(con, ctx.attach_configs)
+                    attached = attach_databases_on_connection(con, duckdb_attach_configs(ctx.attach_configs))
                 for name in names:
                     alias = name.split(".", 1)[0].lower() if "." in name else ""
                     if alias and alias not in authorized:
@@ -414,7 +421,10 @@ def _describe_tables(ctx: AgentRunCtx, args: DescribeTablesArgs) -> ToolResult:
                         continue
                     try:
                         ref = format_qualified_table_reference(name)
-                        rows = con.execute(f"DESCRIBE {ref}").fetchall()
+                        remote = doris_relation_columns(ref, ctx.attach_configs)
+                        rows = [(col["name"], col["type"]) for col in remote] if remote is not None else (
+                            con.execute(f"DESCRIBE {ref}").fetchall()
+                        )
                     except Exception as exc:  # noqa: BLE001  单表失败不拖垮整批
                         lines.append(f"{name}: error: {str(exc)[:160]}")
                         continue
@@ -462,15 +472,20 @@ def _execute_guarded_query(
     started_at: float,
 ) -> ToolResult:
     """Validate and execute one already-authorized Agent query."""
-    ok, err = validate_query_syntax(sql, con=con)
-    if not ok:
+    def validation_result(error: str) -> ToolResult:
         ctx.sql_rejected += 1
         return ToolResult(
-            model_text=f"error: {duckdb_error_message(err)[:400]}",
+            model_text=f"error: {duckdb_error_message(error)[:400]}",
             ui_summary="query failed validation",
             ok=False,
             elapsed_ms=int((time.time() - started_at) * 1000),
         )
+
+    has_doris = len(duckdb_attach_configs(ctx.attach_configs)) != len(ctx.attach_configs)
+    if not has_doris:
+        ok, err = validate_query_syntax(sql, con=con)
+        if not ok:
+            return validation_result(err)
     from routers.query_sql_utils import (  # pylint: disable=import-outside-toplevel
         ensure_query_has_limit,
         has_top_level_limit,
@@ -486,6 +501,10 @@ def _execute_guarded_query(
         with federated_execution_scope(
             con, exec_sql, ctx.attach_configs, ctx.run_id
         ) as execution:
+            if has_doris:
+                ok, err = validate_query_syntax(execution.sql, con=con)
+                if not ok:
+                    return validation_result(err)
             bounded_sql = (
                 f"SELECT * FROM (\n{execution.sql.rstrip().rstrip(';')}\n) "
                 f"AS _agent_result LIMIT {ROW_CAP + 1}"
@@ -531,7 +550,7 @@ def _execute_guarded(
             if ctx.attach_configs:
                 attached = attach_databases_on_connection(
                     con,
-                    ctx.attach_configs,
+                    duckdb_attach_configs(ctx.attach_configs),
                     deadline_monotonic=deadline_monotonic,
                     query_id=ctx.run_id,
                 )

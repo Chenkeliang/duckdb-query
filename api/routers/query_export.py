@@ -22,6 +22,7 @@ from core.common.sql_capabilities import is_read_only_sql
 from core.database.duckdb_engine import with_duckdb_connection
 from core.database.duckdb_pool import interruptible_connection
 from core.database.federated_attach import (
+    duckdb_attach_configs,
     attach_databases_on_connection,
     detach_databases_on_connection,
     finalize_query_if_not_cancelled,
@@ -65,6 +66,7 @@ class QueryResultExportRequest(BaseModel):
     format: Literal["parquet", "csv"] = "parquet"
     attach_databases: Optional[List[AttachDatabase]] = None
     quack_service_id: Optional[str] = Field(default=None, min_length=1)
+    doris_native: bool = True
     # 行数范围最终选择:False(默认)=移除页面最外层 LIMIT;True=保留或补默认 LIMIT。
     apply_row_limit: bool = False
 
@@ -99,7 +101,7 @@ def _export_execution_context(request, sql_query, query_id, deadline):
             if attach_configs:
                 attached_aliases = attach_databases_on_connection(
                     connection,
-                    attach_configs,
+                    duckdb_attach_configs(attach_configs),
                     deadline_monotonic=deadline,
                     query_id=query_id,
                 )
@@ -107,6 +109,7 @@ def _export_execution_context(request, sql_query, query_id, deadline):
                 with federated_execution_scope(
                     connection, embedded_sql, attach_configs, query_id,
                     materialize_result=False,
+                    **({"doris_native": True} if request.doris_native and len(duckdb_attach_configs(attach_configs)) != len(attach_configs) else {}),
                 ) as execution:
                     yield connection, execution.sql
         finally:
@@ -121,12 +124,13 @@ def export_query_results(
 ):
     """将 SQL 查询结果导出为 Parquet 或 CSV 文件（服务端 COPY，避免浏览器内存限制）。"""
     from routers.query_sql_utils import (
-        apply_row_limit_choice,
+        apply_federated_row_limit_choice,
         prepare_query_for_embedding,
     )
 
-    sql_query = apply_row_limit_choice(
-        request.sql.strip().rstrip(";"), request.apply_row_limit
+    sql_query = apply_federated_row_limit_choice(
+        request.sql.strip().rstrip(";"), request.apply_row_limit, request.attach_databases,
+        doris_native=request.doris_native,
     )
     if not sql_query:
         raise APIValidationError("SQL cannot be empty")

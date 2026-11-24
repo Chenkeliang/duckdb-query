@@ -16,10 +16,11 @@ DEPTH_LIMIT = 16
 def column_insight(name: str, data_type: str) -> dict:
     """Recommend supported operations by actual type, without name heuristics."""
     kind = data_type.upper().strip()
-    structured = kind.startswith(("JSON", "VARIANT", "STRUCT", "MAP", "UNION")) or "[" in kind
+    structured = kind.startswith(("JSON", "VARIANT", "ARRAY<", "STRUCT", "MAP", "UNION")) or "[" in kind
     text = kind.startswith(("VARCHAR", "CHAR", "TEXT", "STRING"))
     numeric = bool(re.fullmatch(
-        r"(?:U?(?:TINYINT|SMALLINT|INTEGER|INT|BIGINT|HUGEINT)|FLOAT|DOUBLE|REAL|DECIMAL\(\d+,\d+\)|NUMERIC\(\d+,\d+\))", kind
+        r"(?:U?(?:TINYINT|SMALLINT|INTEGER|INT|BIGINT|HUGEINT)|LARGEINT|FLOAT|DOUBLE|REAL|"
+        r"(?:DECIMAL(?:V[23])?|NUMERIC)\(\d+\s*,\s*\d+\))", kind
     ))
     temporal = kind.startswith(("DATE", "TIME", "INTERVAL"))
     operations = ["COUNT"]

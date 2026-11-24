@@ -15,9 +15,11 @@ from pydantic import BaseModel, Field
 from core.common.sql_identifiers import quote_identifier
 from core.data.ingestion_precision import analyze_numeric_cast
 from core.database.duckdb_engine import with_duckdb_connection
+from core.database.doris_source import doris_relation_columns
 from core.database.federated_execution import federated_execution_scope, inspect_federated_pushdown
 from core.database.federated_attach import (
     attach_databases_on_connection,
+    duckdb_attach_configs,
     detach_databases_on_connection,
     format_qualified_table_reference,
     resolve_attach_configs,
@@ -58,17 +60,23 @@ def infer_column_cast(request: InferCastRequest):
     reason ∈ None|empty|non_numeric|binary_float|scientific|overflow(不安全原因)。"""
     qcol = quote_identifier(request.column)
     where = _build_where_clause(request.filters or [])
-    base = f"(SELECT {qcol} FROM {_table_ref(request.table_name)} {where})"
+    select_sql = f"SELECT {qcol} FROM {_table_ref(request.table_name)} {where}"
 
     attach_list = request.attach_databases or None
+    configs = resolve_attach_configs(attach_list) if attach_list else []
+    native = duckdb_attach_configs(configs)
     with with_duckdb_connection() as con:
         attached = []
         try:
-            if attach_list:
+            if native:
                 attached = attach_databases_on_connection(
-                    con, resolve_attach_configs(attach_list), cleanup_on_failure=True
+                    con, native, cleanup_on_failure=True
                 )
-            result = analyze_numeric_cast(con, base, request.column)
+            if len(native) != len(configs):
+                with federated_execution_scope(con, select_sql, configs) as execution:
+                    result = analyze_numeric_cast(con, f"({execution.sql})", request.column)
+            else:
+                result = analyze_numeric_cast(con, f"({select_sql})", request.column)
         finally:
             detach_databases_on_connection(con, attached)
 
@@ -81,12 +89,15 @@ def _insight_context(request: InsightTableRequest):
     with with_duckdb_connection() as connection:
         attached = []
         try:
-            if request.attach_databases:
+            configs = resolve_attach_configs(request.attach_databases) if request.attach_databases else []
+            native = duckdb_attach_configs(configs)
+            if native:
                 attached = attach_databases_on_connection(
-                    connection, resolve_attach_configs(request.attach_databases), cleanup_on_failure=True
+                    connection, native, cleanup_on_failure=True
                 )
             reference = _table_ref(request.table_name)
-            schema = {
+            columns = doris_relation_columns(reference, configs)
+            schema = {column["name"]: column["type"] for column in columns} if columns is not None else {
                 str(row[0]): str(row[1]) for row in connection.execute(
                     f"DESCRIBE SELECT * FROM {reference}"
                 ).fetchall()
@@ -127,7 +138,9 @@ def get_json_paths(request: JsonPathsRequest):
                 f"FROM {reference} {where} LIMIT {SAMPLE_LIMIT}"
             )
             configs = resolve_attach_configs(request.attach_databases)
-            with federated_execution_scope(connection, sql, configs, stream_candidates=True) as execution:
+            with federated_execution_scope(
+                connection, sql, configs, stream_candidates=True, doris_sample_limit=SAMPLE_LIMIT,
+            ) as execution:
                 rows = connection.execute(execution.sql).fetchall()
             result = discover_json_paths([row[0] for row in rows])
         return create_success_response(data=result, message_code=MessageCode.OPERATION_SUCCESS)

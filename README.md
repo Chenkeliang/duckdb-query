@@ -32,7 +32,7 @@ DuckQuery 是独立开发、基于 DuckDB 的本地优先数据工作台，适�
 
 ### 桌面版（推荐）
 
-最新发布版本为 **[v2.2.2](https://github.com/Chenkeliang/duckdb-query/releases/tag/v2.2.2)**。本文功能说明以该发布版为准；对应源码见 [v2.2.2 标签](https://github.com/Chenkeliang/duckdb-query/tree/v2.2.2)。
+最新发布版本为 **[v2.3.0](https://github.com/Chenkeliang/duckdb-query/releases/tag/v2.3.0)**。本文功能说明以该发布版为准；对应源码见 [v2.3.0 标签](https://github.com/Chenkeliang/duckdb-query/tree/v2.3.0)。
 
 从 [GitHub Releases](https://github.com/Chenkeliang/duckdb-query/releases/latest) 选择与你的电脑匹配的安装包：
 
@@ -51,7 +51,7 @@ DuckQuery 是独立开发、基于 DuckDB 的本地优先数据工作台，适�
 先安装 Docker 与 Docker Compose，然后运行：
 
 ```bash
-git clone --branch v2.2.2 --depth 1 https://github.com/Chenkeliang/duckdb-query.git
+git clone --branch v2.3.0 --depth 1 https://github.com/Chenkeliang/duckdb-query.git
 cd duckdb-query
 ./quick-start.sh
 ```
@@ -71,7 +71,7 @@ cd duckdb-query
 | 你的任务 | DuckQuery 提供的能力 |
 |---|---|
 | 把散落的文件变成可查询的数据 | CSV / Excel / Parquet / JSON / JSONL 导入、表格粘贴、URL 导入、服务器目录读取 |
-| 核对文件与业务库 | 本地表与 MySQL / PostgreSQL / SQLite / DuckDB / Oracle 跨源关联，支持符合条件的远端筛选优化 |
+| 核对文件与业务库 | 本地表与 MySQL / PostgreSQL / SQLite / DuckDB / Oracle / Doris 跨源关联，支持符合条件的远端筛选优化 |
 | 使用远程 DuckDB 计算 | 独立 Quack 服务连接、远程表与字段浏览、绑定服务的只读 SQL 标签；支持取消、转后台、导出与保存到本地 |
 | 反复调整一条查询 | 多标签 SQL 编辑器、表与字段补全、错误位置提示、查询历史、SQL 收藏夹 |
 | 少写 SQL 完成分析 | 可视化关联查询、集合运算与透视表；支持不加分组字段直接统计，可查看生成的 SQL |
@@ -105,7 +105,7 @@ AI 推荐只在点击后请求你配置的模型，发送当前 SQL、字段、�
 
 ## 从数据到结果
 
-1. **接入数据。** 拖入 CSV、Excel、Parquet 或 JSON，粘贴表格，或连接 MySQL、PostgreSQL、SQLite、DuckDB。
+1. **接入数据。** 拖入 CSV、Excel、Parquet 或 JSON，粘贴表格，或连接 MySQL、PostgreSQL、SQLite、DuckDB、Oracle、Doris。
 2. **查询或提问。** 手写 SQL；用可视化界面构建关联、集合运算或透视表；也可以打开智能体，限定数据源与表后直接提问。
 3. **检查与交付。** 查看表格、图表和列来源，核对 SQL，把结果导出或保存为本地表。执行中的只读查询可以转到后台，保持后端运行即可稍后从任务面板取回结果。
 
@@ -169,9 +169,9 @@ claude mcp add duckquery -- uvx duckquery-mcp
 
 ## 引擎与升级须知
 
-**v2.2.2** 修复收藏夹中超长 SQL 挤出操作按钮的问题，并新增「复制 SQL」。详见 [v2.2.2 发布说明](docs/releases/v2.2.2.md)。
+**v2.3.0** 新增 Doris 只读连接、原生 SQL 和跨库查询。详见 [v2.3.0 发布说明](docs/releases/v2.3.0.md)。
 
-应用版本与 DuckDB **引擎版本**分别维护。v2.2.2 继续使用 **DuckDB 2.0 正式版**（`duckdb==2.0.0`，engine `v2.0.0`）；v2.1.1 仍是 `1.6.0.dev379` / `v2.0.0-alpha39998`。新库继续使用 `v2.0.0` 存储格式；旧库不会自动迁移，扩展须匹配正式版引擎和运行平台。
+应用版本与 DuckDB **引擎版本**分别维护。v2.3.0 继续使用 **DuckDB 2.0 正式版**（`duckdb==2.0.0`，engine `v2.0.0`）；v2.1.1 仍是 `1.6.0.dev379` / `v2.0.0-alpha39998`。新库继续使用 `v2.0.0` 存储格式；旧库不会自动迁移，扩展须匹配正式版引擎和运行平台。
 
 “数据探索”按实际字段类型推荐统计方式，确认 SQL 后显示指标卡片；也可采样发现 JSON/VARIANT/文本列中的路径，选择输出类型并提取为列。路径发现先应用当前筛选，最多采样 100 行，不代表完整结构；统计使用完整筛选范围。默认文本提取保留大整数精度，缺失路径或转换失败返回 NULL。此入口用于桌面和服务器版，浏览器内 Wasm Demo 暂不提供。
 

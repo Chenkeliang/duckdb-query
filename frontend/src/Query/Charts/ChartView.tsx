@@ -22,6 +22,7 @@ export interface ChartSource {
   baseSql?: string | null;
   attachDatabases?: { alias: string; connectionId: string }[];
   requiresFederated?: boolean;
+  dorisNative?: boolean;
 }
 export interface ChartViewProps {
   columns: ColumnInfo[];
@@ -86,11 +87,14 @@ export function ChartView({ columns, rows, truncated, source, aiEnabled, locale 
   const aggregation = useMutation({
     mutationFn: async (request: { ticket: number; spec: ChartSpec; scope: 'current' | 'query'; source: ChartSource; previewLimit: number }) => {
       const sql = buildChartSql(request.scope === 'query' ? request.source.baseSql ?? request.source.sql! : request.source.sql!, request.spec, columns,
-        { previewLimit: request.scope === 'current' ? request.previewLimit : undefined });
+        { previewLimit: request.scope === 'current' ? request.previewLimit : undefined, dorisNative: request.source.dorisNative });
       const response = request.source.quackServiceId
         ? await executeQuackQuery(request.source.quackServiceId, sql, { isPreview: true })
         : request.source.requiresFederated && request.source.attachDatabases?.length
-        ? await executeFederatedQuery({ sql, attachDatabases: request.source.attachDatabases, isPreview: true })
+        ? await executeFederatedQuery({
+            sql, attachDatabases: request.source.attachDatabases, isPreview: true,
+            ...(request.source.dorisNative !== undefined ? { dorisNative: request.source.dorisNative } : {}),
+          })
         : await executeDuckDBSQL(sql);
       return plotAggregation(response.data ?? [], request.spec, rowLabel, dates.includes(request.spec.x ?? ''));
     },
@@ -160,7 +164,7 @@ export function ChartView({ columns, rows, truncated, source, aiEnabled, locale 
       ? <div className="flex h-full items-center justify-center p-4 text-center text-sm text-muted-foreground">{t('query.chart.noValidDates')}</div>
       : <ChartCanvas spec={shown.spec} {...shown.plot} locale={locale} unit={unit.trim()} onElementClick={onDrilldown ? (dim, event) => {
       const sql = buildDrilldownSql(shown.spec, dim, shown.scope === 'query' ? source.baseSql ?? source.sql : source.sql,
-        { previewLimit: shown.scope === 'current' ? rows.length : undefined });
+        { previewLimit: shown.scope === 'current' ? rows.length : undefined, dorisNative: source.dorisNative });
       if (sql) setDrilldown({ sql, dim, x: event.clientX, y: event.clientY });
     } : undefined} />;
 

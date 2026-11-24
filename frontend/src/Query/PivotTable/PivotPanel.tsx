@@ -332,7 +332,9 @@ export const PivotPanel: React.FC<PivotPanelProps> = ({
         if (!sql) return;
         setIsExecuting(true);
         try {
-            await onExecute(sql, tableSource, { baseSql: baseSql ?? undefined });
+            const source = tableSource?.databaseType === 'doris'
+                ? { ...tableSource, dorisNative: false } : tableSource;
+            await onExecute(sql, source, { baseSql: baseSql ?? undefined });
         } finally {
             setIsExecuting(false);
         }

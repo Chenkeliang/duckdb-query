@@ -15,6 +15,7 @@ class DataSourceType(str, Enum):
     JSON = "json"
     PARQUET = "parquet"
     MYSQL = "mysql"
+    DORIS = "doris"
     POSTGRESQL = "postgresql"
     ORACLE = "oracle"
     SQLITE = "sqlite"
@@ -118,6 +119,7 @@ class FederatedQueryRequest(BaseModel):
     """
 
     sql: str = Field(..., description="SQL 查询语句")
+    doris_native: bool = True
     attach_databases: Optional[List[AttachDatabase]] = Field(
         None, description="需要 ATTACH 的外部数据库列表"
     )

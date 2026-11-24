@@ -550,6 +550,7 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
             connectionId: currentAttachments.attachDatabases[0]?.connectionId,
             connectionName: currentAttachments.attachDatabases[0]?.alias,
             attachDatabases: currentAttachments.attachDatabases,
+            ...(executionSource?.dorisNative !== undefined ? { dorisNative: executionSource.dorisNative } : {}),
           }
           : { type: 'duckdb' };
 
@@ -732,6 +733,7 @@ export const SQLQueryPanel: React.FC<SQLQueryPanelProps> = ({
       {/* 异步任务对话框 */}
       <AsyncTaskDialog
         quackServiceId={isQuack ? executionSource.connectionId : undefined}
+        dorisNative={executionSource?.dorisNative}
         open={asyncDialogOpen}
         onOpenChange={setAsyncDialogOpen}
         sql={businessSql}

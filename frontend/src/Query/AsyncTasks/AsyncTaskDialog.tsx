@@ -43,6 +43,7 @@ export interface AttachDatabase {
 
 export interface AsyncTaskDialogProps {
   quackServiceId?: string;
+  dorisNative?: boolean;
   /** 是否打开 */
   open: boolean;
   /** 关闭回调 */
@@ -102,6 +103,7 @@ function validateTableName(name: string): { valid: boolean; error?: string } {
  */
 export const AsyncTaskDialog: React.FC<AsyncTaskDialogProps> = ({
   quackServiceId,
+  dorisNative,
   open,
   onOpenChange,
   sql,
@@ -146,6 +148,7 @@ export const AsyncTaskDialog: React.FC<AsyncTaskDialogProps> = ({
         task_type: 'query',
         apply_row_limit: applyRowLimit,
         ...(quackServiceId ? { quack_service_id: quackServiceId } : {}),
+        ...(dorisNative === false ? { doris_native: false } : {}),
       };
 
       if (customTableName.trim()) {

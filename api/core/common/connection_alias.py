@@ -55,13 +55,13 @@ def build_attach_list_from_datasource(
 ) -> Optional[List[Dict[str, str]]]:
     """
     从请求中的 datasource 字典构建单库 attach 配置。
-    支持 mysql / postgresql / oracle / sqlite / duckdb。
+    支持 mysql / postgresql / oracle / doris / sqlite / duckdb。
     """
     if not isinstance(datasource, dict):
         return None
 
     datasource_type = (datasource.get("type") or "").lower()
-    supported = {"mysql", "postgresql", "oracle", "sqlite", "duckdb"}
+    supported = {"mysql", "postgresql", "oracle", "doris", "sqlite", "duckdb"}
     if datasource_type not in supported:
         return None
 

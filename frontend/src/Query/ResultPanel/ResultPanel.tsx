@@ -220,7 +220,8 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
     baseSql: effectiveSaveSql ?? null,
     attachDatabases: effectiveAttachDatabases,
     requiresFederated: effectiveSource?.type === 'federated',
-  }), [effectiveSQL, effectiveSaveSql, effectiveAttachDatabases, effectiveSource?.type, effectiveSource?.connectionId]);
+    dorisNative: effectiveSource?.dorisNative ?? (effectiveSource?.databaseType === 'doris' ? true : undefined),
+  }), [effectiveSQL, effectiveSaveSql, effectiveAttachDatabases, effectiveSource?.type, effectiveSource?.connectionId, effectiveSource?.databaseType, effectiveSource?.dorisNative]);
 
   // AI 报错医生（LLM 解释并修复），仅在 AI 开启时露出入口
   const aiEnabled = useAiEnabled();
@@ -326,6 +327,7 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
       }
       const result = await exportQueryResults({
         quack_service_id: effectiveSource?.type === 'quack' ? effectiveSource.connectionId : undefined,
+        ...(effectiveSource?.dorisNative === false ? { doris_native: false } : {}),
         sql,
         format: 'parquet',
         apply_row_limit: applyRowLimit,
@@ -477,6 +479,7 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
         {activeSaveSql && (
           <AsyncTaskDialog
             quackServiceId={activeSource?.type === 'quack' ? activeSource.connectionId : undefined}
+            dorisNative={activeSource?.dorisNative}
             open={importDialogOpen}
             onOpenChange={setImportDialogOpen}
             sql={activeSaveSql}
@@ -653,6 +656,7 @@ export const ResultPanel: React.FC<ResultPanelProps> = ({
       {saveSql && (
         <AsyncTaskDialog
           quackServiceId={saveSource?.type === 'quack' ? saveSource.connectionId : undefined}
+          dorisNative={saveSource?.dorisNative}
           open={importDialogOpen}
           onOpenChange={setImportDialogOpen}
           sql={saveSql}

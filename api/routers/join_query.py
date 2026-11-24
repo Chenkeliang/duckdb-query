@@ -16,6 +16,8 @@ from datetime import datetime, time
 from typing import Any, Dict, List, Optional, Tuple
 
 import duckdb
+import sqlglot
+from sqlglot import exp
 from core.common.config_manager import config_manager
 from core.common.sql_identifiers import quote_identifier
 from core.common.timezone_utils import get_current_time
@@ -29,6 +31,7 @@ from core.data.file_datasource_manager import (
 )
 from core.data.file_utils import load_file_to_duckdb
 from core.database.database_manager import db_manager
+from core.database.doris_source import doris_columns
 from core.database.duckdb_engine import (
     build_single_table_query,
     timed_fetch_query_records,
@@ -66,7 +69,7 @@ from utils.response_helpers import (
     error_json_response,
 )
 from routers.query_sql_utils import (
-    apply_row_limit_choice,
+    apply_federated_row_limit_choice,
     ensure_query_has_limit,
     get_join_type_sql,
 )
@@ -104,9 +107,18 @@ def load_federated_table_columns(
     con: Any,
     source_id: str,
     attach_aliases: set[str],
+    *,
+    doris_sources: Optional[dict[str, dict]] = None,
 ) -> List[Dict[str, str]]:
     """ATTACH 后通过 DESCRIBE 拉取列名，供未传 columns 的联邦 JOIN 构建 SELECT。"""
     qualified = format_qualified_table_reference(source_id.strip('"'))
+    if doris_sources:
+        table = sqlglot.parse_one(qualified, into=exp.Table, read="duckdb")
+        config = doris_sources.get((table.catalog or table.db).lower())
+        if config is not None:
+            if table.catalog and table.db.lower() != str(config.get("database", "")).lower():
+                raise APIValidationError("Doris joins support only the configured database")
+            return [{"name": column["name"]} for column in doris_columns(config, table.name)]
     try:
         rows = con.execute(f"DESCRIBE {qualified}").fetchall()
         # DESCRIBE 首列即 column_name
@@ -122,6 +134,7 @@ def build_multi_table_join_query(
     *,
     federated_attach: bool = False,
     attach_aliases: Optional[set[str]] = None,
+    doris_sources: Optional[dict[str, dict]] = None,
 ):
     """
     Build multi-table JOIN query
@@ -182,7 +195,7 @@ def build_multi_table_join_query(
         for source in sources:
             if all_explicit_empty and attach_alias_set:
                 source.columns = load_federated_table_columns(
-                    con, source.id, attach_alias_set
+                    con, source.id, attach_alias_set, doris_sources=doris_sources,
                 )
             elif not hasattr(source, "columns") or source.columns is None:
                 source.columns = []
@@ -653,15 +666,18 @@ def perform_query(
     with conn_ctx as con:
         attached_aliases: List[str] = []
         attach_configs = []
+        doris_sources = {}
         timer = threading.Timer(timeout_s, _on_timeout) if query_id else None
         if timer:
             timer.start()
         try:
             if federated_attach:
                 attach_configs = resolve_attach_configs(query_request.attach_databases)
+                doris_sources = {alias.lower(): cfg for alias, cfg in attach_configs
+                                 if cfg.get("type") == "doris"}
                 attached_aliases = attach_databases_on_connection(
                     con,
-                    attach_configs,
+                    [(alias, cfg) for alias, cfg in attach_configs if cfg.get("type") != "doris"],
                     deadline_monotonic=deadline,
                     query_id=query_id,
                 )
@@ -705,7 +721,7 @@ def perform_query(
                     # 显式传空列表([])代表用户取消勾选了该表全部列，不能当作"全部"处理
                     if source.columns is None:
                         source.columns = load_federated_table_columns(
-                            con, source.id, attach_alias_set
+                            con, source.id, attach_alias_set, doris_sources=doris_sources,
                         )
 
             if len(query_request.joins) > 0:
@@ -714,6 +730,7 @@ def perform_query(
                     con,
                     federated_attach=federated_attach,
                     attach_aliases=attach_alias_set,
+                    doris_sources=doris_sources,
                 )
             else:
                 # 单表查询 - 使用 build_single_table_query 来处理表名
@@ -897,11 +914,15 @@ def save_query_to_duckdb(request: dict = Body(...)):
             # 已有的数据——同名重存(overwrite)时新查询意外返回 0 行,不能把旧的
             # 有效数据换成空表再删掉,必须让旧数据原封不动地留在原地。
             metadata_snapshot = execute_sql_and_persist(
-                apply_row_limit_choice(sql_query, apply_row_limit),
+                apply_federated_row_limit_choice(
+                    sql_query, apply_row_limit, attach_list,
+                    doris_native=request.get("doris_native") is not False,
+                ),
                 table_alias,
                 attach_list,
                 query_id=query_id,
                 reject_empty=True,
+                **({"doris_native": False} if request.get("doris_native") is False else {}),
             )
         except Exception as exec_error:
             logger.error(f"Query execution/persist failed: {str(exec_error)}")

@@ -88,6 +88,7 @@ export interface UseQueryWorkspaceReturn {
   displayQueryPreview: (
     response: {
       pushdown?: PushdownInfo | null;
+      doris_native?: boolean;
       data?: unknown[];
       columns?: string[] | ColumnInfo[] | Array<{ name: string }>;
       column_types?: Array<{ name: string; duckdb_type: string }>;
@@ -215,6 +216,7 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
   const buildQueryResult = useCallback((
     response: {
       pushdown?: PushdownInfo | null;
+      doris_native?: boolean;
       data?: unknown[];
       columns?: string[] | ColumnInfo[] | Array<{ name: string }>;
       column_types?: Array<{ name: string; duckdb_type: string }>;
@@ -267,6 +269,7 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
       signal?: AbortSignal
     ): Promise<{
       pushdown?: PushdownInfo | null;
+      doris_native?: boolean;
       data?: unknown[];
       columns?: string[] | ColumnInfo[];
       column_types?: Array<{ name: string; duckdb_type: string }>;
@@ -297,6 +300,8 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
         const result = await executeFederatedQuery({
           sql,
           attachDatabases,
+          ...(source.dorisNative !== undefined || source.databaseType === 'doris'
+            ? { dorisNative: source.dorisNative ?? true } : {}),
           // 页面查询=预览语义:与本地 DuckDB 路径(executeDuckDBSQL 默认 is_preview:true)一致,
           // 最外层缺用户 LIMIT 时由后端补系统默认。此前恒 false,联邦查询在页面上会无上限全量
           // 执行(复审:联邦 isPreview)。后端按 AST 判定,面板烤入的外层 LIMIT/用户 LIMIT 不受影响。
@@ -308,6 +313,7 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
         return {
           data: result.data || [],
           pushdown: result.pushdown,
+          doris_native: result.doris_native,
           columns: result.columns || [],
           column_types: result.column_types,
           execTime,
@@ -334,7 +340,11 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
       baseSql?: string
     ) => {
       const result = buildQueryResult(response);
-      const query: LastQuery = { sql, source, ...(baseSql ? { baseSql } : {}) };
+      const query: LastQuery = {
+        sql,
+        source: response.doris_native === undefined ? source : { ...source, dorisNative: response.doris_native },
+        ...(baseSql ? { baseSql } : {}),
+      };
       const slotLabel = deriveSingleResultSlotLabel(sql);
 
       if (retainQueryResults) {
@@ -367,7 +377,11 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
       baseSql?: string
     ) => {
       const result = buildQueryResult(response);
-      const query: LastQuery = { sql, source, ...(baseSql ? { baseSql } : {}) };
+      const query: LastQuery = {
+        sql,
+        source: response.doris_native === undefined ? source : { ...source, dorisNative: response.doris_native },
+        ...(baseSql ? { baseSql } : {}),
+      };
 
       if (retainQueryResults) {
         setResultTabs((prev) =>
@@ -803,6 +817,7 @@ export const useQueryWorkspace = (): UseQueryWorkspaceReturn => {
     (
       response: {
         pushdown?: PushdownInfo | null;
+        doris_native?: boolean;
         data?: unknown[];
         columns?: string[] | ColumnInfo[] | Array<{ name: string }>;
         column_types?: Array<{ name: string; duckdb_type: string }>;

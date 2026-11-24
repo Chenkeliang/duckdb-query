@@ -255,6 +255,13 @@ def resolve_attach_configs(
     return configs
 
 
+def duckdb_attach_configs(
+    configs: list[tuple[str, dict[str, Any]]],
+) -> list[tuple[str, dict[str, Any]]]:
+    """Doris reads are provided by the execution scope instead of DuckDB ATTACH."""
+    return [(alias, config) for alias, config in configs if config.get("type") != "doris"]
+
+
 def attach_databases_on_connection(
     conn: Any,
     attach_configs: List[Tuple[str, Dict[str, Any]]],
@@ -264,6 +271,8 @@ def attach_databases_on_connection(
     cleanup_on_failure: bool = False,
 ) -> List[str]:
     """在已有连接上 ATTACH，返回成功 alias 列表。"""
+    if any(config.get("type") == "doris" for _, config in attach_configs):
+        raise DatabaseConnectionError("Doris connections execute directly in the SQL workbench")
     cleanup_on_failure = cleanup_on_failure or any(
         str(config.get("type", "")).lower() == "oracle" for _, config in attach_configs
     )
@@ -555,7 +564,7 @@ def execute_sql_with_attach(
 
     attach_configs = resolve_attach_configs(attach_databases)
     cleaned_sql = sql.rstrip().rstrip(";")
-    if not any(cfg.get("type") == "oracle" for _, cfg in attach_configs):
+    if not any(cfg.get("type") in {"oracle", "doris"} for _, cfg in attach_configs):
         cleaned_sql = normalize_mysql_double_quoted_strings_for_duckdb(cleaned_sql)
     from core.database.federated_execution import federated_execution_scope
 
@@ -571,7 +580,7 @@ def execute_sql_with_attach(
             if attach_configs:
                 attached = attach_databases_on_connection(
                     conn,
-                    attach_configs,
+                    duckdb_attach_configs(attach_configs),
                     deadline_monotonic=deadline,
                     query_id=query_id,
                 )
@@ -603,6 +612,7 @@ def execute_sql_and_persist(
     overwrite: bool = True,
     *,
     native_source: Optional[Tuple[str, str]] = None,
+    doris_native: bool = True,
 ) -> Dict[str, Any]:
     """在一个连接内 ATTACH(如有)→ 执行到临时表 → 视 reject_empty 决定是否
     DROP+RENAME 覆盖目标表 → 取行数/列信息 → DETACH。
@@ -633,7 +643,7 @@ def execute_sql_and_persist(
 
     attach_configs = resolve_attach_configs(attach_databases)
     cleaned_sql = sql.rstrip().rstrip(";")
-    if attach_configs and not any(cfg.get("type") == "oracle" for _, cfg in attach_configs):
+    if attach_configs and not any(cfg.get("type") in {"oracle", "doris"} for _, cfg in attach_configs):
         cleaned_sql = normalize_mysql_double_quoted_strings_for_duckdb(cleaned_sql)
     staging_name = f"__stage_{uuid.uuid4().hex}"
     timeout_seconds = int(
@@ -656,7 +666,7 @@ def execute_sql_and_persist(
                 configure_mysql_fresh_connections(conn, attach_configs)
                 attached = attach_databases_on_connection(
                     conn,
-                    attach_configs,
+                    duckdb_attach_configs(attach_configs),
                     deadline_monotonic=deadline,
                     query_id=query_id,
                 )
@@ -670,6 +680,7 @@ def execute_sql_and_persist(
                     with federated_execution_scope(
                         conn, cleaned_sql, attach_configs, query_id,
                         materialize_result=False,
+                        **({"doris_native": doris_native} if len(duckdb_attach_configs(attach_configs)) != len(attach_configs) else {}),
                     ) as execution:
                         create_query_staging_table(
                             conn, execution.sql, staging_name

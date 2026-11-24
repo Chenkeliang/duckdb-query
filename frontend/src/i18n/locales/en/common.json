@@ -1446,8 +1446,10 @@
         "serviceName": "Service name",
         "serviceNamePlaceholder": "For example, FREEPDB1",
         "oracleHint": "Install oracle_scanner from Extensions first and use a read-only Oracle account.",
+        "dorisHint": "Use a read-only account and the Doris FE query port. Run queries in the SQL workbench.",
         "dbTypes": {
           "oracle": "Oracle",
+          "doris": "Doris",
           "mysql": "MySQL",
           "postgresql": "PostgreSQL",
           "sqlite": "SQLite",

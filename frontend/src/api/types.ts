@@ -100,10 +100,12 @@ export interface PushdownInfo {
   mode: 'remote-count' | 'candidate' | 'local' | 'explicit-remote';
   sources: number;
   pushed_sources: number;
+  doris_reads?: { relation: string; rows: number; columns: string[]; filters: number }[];
 }
 
 export interface QueryResponse {
   pushdown?: PushdownInfo | null;
+  doris_native?: boolean;
   success: boolean;
   data?: Record<string, unknown>[];
   columns?: ColumnInfo[];
@@ -139,7 +141,7 @@ export interface DataSource {
   name?: string;
 }
 
-export type DatabaseType = "mysql" | "postgresql" | "oracle" | "sqlite" | "duckdb";
+export type DatabaseType = "mysql" | "postgresql" | "oracle" | "doris" | "sqlite" | "duckdb";
 
 export interface DatabaseConnection {
   id: string;
@@ -244,6 +246,7 @@ export interface TaskResult {
 
 export interface CreateTaskRequest {
   quack_service_id?: string;
+  doris_native?: boolean;
   sql: string;
   name?: string;
   custom_table_name?: string;
