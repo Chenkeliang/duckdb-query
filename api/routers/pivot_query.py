@@ -2,6 +2,7 @@
 """Pivot query HTTP routes (generate/preview)."""
 
 import logging
+from functools import partial
 from typing import Any, Dict, List, Optional
 
 import duckdb
@@ -14,10 +15,12 @@ from core.database.duckdb_engine import (
 from core.database.duckdb_pool import interruptible_connection
 from core.database.federated_attach import (
     attach_databases_on_connection,
+    duckdb_attach_configs,
     detach_databases_on_connection,
     execute_sql_with_attach,
     resolve_attach_configs,
 )
+from core.database.federated_execution import federated_execution_scope
 from core.services.pivot_query_generator import (
     PivotColumnLimitError,
     generate_pivot_query_sql,
@@ -64,6 +67,28 @@ def _build_preview_count_sql(sql: str) -> str:
     return f"SELECT COUNT(*) AS total_rows FROM ({cleaned}) AS preview_count"
 
 
+def _fetch_pivot_probe(connection, configs, sql: str) -> list:
+    with federated_execution_scope(connection, sql, configs) as execution:
+        return connection.execute(execution.sql).fetchall()
+
+
+def _generate_with_sources(request, resolved_casts, attach_list):
+    configs = resolve_attach_configs(attach_list) if attach_list else []
+    native = duckdb_attach_configs(configs)
+    with with_duckdb_connection() as con:
+        attached = attach_databases_on_connection(con, native, cleanup_on_failure=True) if native else []
+        try:
+            options = {}
+            if len(native) != len(configs):
+                options["fetch_probe"] = partial(_fetch_pivot_probe, con, configs)
+            return generate_pivot_query_sql(
+                request.config, pivot_config=request.pivot_config,
+                resolved_casts=resolved_casts, connection=con, **options,
+            )
+        finally:
+            detach_databases_on_connection(con, attached)
+
+
 def _generate_pivot_query(request: PivotQueryRequest):
     """Generate pivot query SQL."""
     try:
@@ -85,21 +110,7 @@ def _generate_pivot_query(request: PivotQueryRequest):
         # 列上限探测/列值采样须在【已 ATTACH】连接上跑,否则联邦透视看不到外部表(回归修复)。
         # 生成器保持纯:不自开连接,用这里 ATTACH 好的连接。
         attach_list = getattr(request, "attach_databases", None) or None
-        with with_duckdb_connection() as con:
-            attached = []
-            try:
-                if attach_list:
-                    attached = attach_databases_on_connection(
-                        con, resolve_attach_configs(attach_list), cleanup_on_failure=True
-                    )
-                generation = generate_pivot_query_sql(
-                    request.config,
-                    pivot_config=request.pivot_config,
-                    resolved_casts=resolved_casts_map,
-                    connection=con,
-                )
-            finally:
-                detach_databases_on_connection(con, attached)
+        generation = _generate_with_sources(request, resolved_casts_map, attach_list)
 
         combined_warnings = list(validation_result.warnings or [])
         combined_warnings.extend(generation.warnings)
@@ -167,21 +178,7 @@ def _preview_pivot_query(
         attach_list = getattr(request, "attach_databases", None) or None
 
         # 生成期的列上限探测/采样须在已 ATTACH 连接上(联邦透视看得到外部表);生成器不自开连接。
-        with with_duckdb_connection() as con:
-            attached = []
-            try:
-                if attach_list:
-                    attached = attach_databases_on_connection(
-                        con, resolve_attach_configs(attach_list), cleanup_on_failure=True
-                    )
-                generation = generate_pivot_query_sql(
-                    request.config,
-                    pivot_config=request.pivot_config,
-                    resolved_casts=resolved_casts_map,
-                    connection=con,
-                )
-            finally:
-                detach_databases_on_connection(con, attached)
+        generation = _generate_with_sources(request, resolved_casts_map, attach_list)
 
         preview_limit = request.limit
         if preview_limit is None or preview_limit <= 0:

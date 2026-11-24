@@ -3,7 +3,9 @@
 
 import logging
 from dataclasses import dataclass
-from typing import Any, Dict, List, Optional
+from typing import Any, Callable, Dict, List, Optional
+
+from core.common.exceptions import ValidationError
 
 from models.pivot_query_models import (
     AggregationFunction,
@@ -57,6 +59,7 @@ def generate_pivot_query_sql(
     app_config: Optional[Any] = None,
     resolved_casts: Optional[Dict[str, str]] = None,
     connection=None,
+    fetch_probe: Optional[Callable[[str], list]] = None,
 ) -> GeneratedPivotQuery:
     """Generate pivot SQL (HTTP /api/pivot-query/*)。connection:路由传入的已 ATTACH 连接,
     供列上限探测/列值采样使用(联邦透视必需,否则自开的新连接看不到外部表)。"""
@@ -85,6 +88,7 @@ def generate_pivot_query_sql(
         pivot_config=pivot_config,
         casts_map=resolved_casts,
         connection=connection,
+        fetch_probe=fetch_probe,
     )
 
     warnings.extend(pivot_result.get("warnings", []))
@@ -181,7 +185,9 @@ def _pivot_column_cap() -> int:
         return 300
 
 
-def _enforce_pivot_column_cap(base_sql: str, target_col: str, connection=None) -> None:
+def _enforce_pivot_column_cap(
+    base_sql: str, target_col: str, connection=None, fetch_probe=None
+) -> None:
     """单列维度去重值 > pivot_max_columns 时抛 PivotColumnLimitError(Codex #3:超限报错,
     不静默采样出「看似完整、实际少算」的结果)。只探到 cap+1 即止;内省失败不阻断
     (交由后续 native pivot 尝试/兜底报错)。connection:路由传入的已 ATTACH 连接(联邦必需)。"""
@@ -194,9 +200,12 @@ def _enforce_pivot_column_cap(base_sql: str, target_col: str, connection=None) -
             f"SELECT DISTINCT {qcol} AS v FROM base WHERE {qcol} IS NOT NULL "
             f"LIMIT {cap + 1})"
         )
-        with _conn_ctx(connection) as con:
-            distinct_n = con.execute(probe).fetchone()[0]
-    except PivotColumnLimitError:
+        if fetch_probe:
+            distinct_n = fetch_probe(probe)[0][0]
+        else:
+            with _conn_ctx(connection) as con:
+                distinct_n = con.execute(probe).fetchone()[0]
+    except (PivotColumnLimitError, ValidationError):
         raise
     except Exception:  # pylint: disable=broad-except
         return
@@ -209,6 +218,7 @@ def _generate_pivot_transformation_sql(
     pivot_config: PivotConfig,
     casts_map: Optional[Dict[str, str]] = None,
     connection=None,
+    fetch_probe=None,
 ) -> Dict[str, Any]:
     # 无行/列维度时直接对筛选后的 base 聚合,不进入 PIVOT 或追加重复的总计行。
     if not pivot_config.rows and not pivot_config.columns:
@@ -252,18 +262,23 @@ def _generate_pivot_transformation_sql(
                 f"WHERE {_quote_identifier(target_col)} IS NOT NULL\n"
                 f"LIMIT {int(max_values)}"
             )
-            with _conn_ctx(connection) as con:  # 用路由传入的已 ATTACH 连接(联邦必需)
-                rows = con.execute(introspect_sql).fetchall()
+            if fetch_probe:
+                rows = fetch_probe(introspect_sql)
+            else:
+                with _conn_ctx(connection) as con:
+                    rows = con.execute(introspect_sql).fetchall()
             # Preserve original values as string form; _format_literal will escape
             values: List[str] = [str(raw) for (raw,) in rows]
             return values or None
-        except Exception as _:
+        except ValidationError:
+            raise
+        except Exception:
             return None
 
     # 列数上限强制检查(Codex #3):单列维度、非手动选列时,列去重值超过 pivot_max_columns
     # 即报错——不再静默采样。手动选列(manual_values)视为用户显式选择,跳过。
     if pivot_config.columns and len(pivot_config.columns) == 1 and not manual_values:
-        _enforce_pivot_column_cap(base_sql, pivot_config.columns[0], connection)
+        _enforce_pivot_column_cap(base_sql, pivot_config.columns[0], connection, fetch_probe)
 
     # 检查是否设置了列数量限制
     # 如果设置了限制，我们不能使用动态 PIVOT（因为它会返回所有列），

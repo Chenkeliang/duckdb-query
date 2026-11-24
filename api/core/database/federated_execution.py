@@ -25,6 +25,8 @@ from core.common.sql_capabilities import is_managed_oracle_read_sql, uses_oracle
 from core.common.sql_error_location import structured_duckdb_errors
 from core.common.sql_identifiers import quote_identifier
 from core.database.connection_registry import connection_registry
+from core.database.doris_join import native_doris_source, prepare_doris_join, stage_native_doris_result
+from core.database.doris_source import doris_native_sql
 from core.database.federated_attach import (
     remote_cancellation_scope,
     single_threaded_mysql_persistence,
@@ -344,6 +346,8 @@ def federated_execution_scope(
     include_suggestions: bool = False,
     materialize_result: bool = True,
     stream_candidates: bool = False,
+    doris_native: bool = False,
+    doris_sample_limit: int | None = None,
 ) -> Iterator[PreparedFederatedQuery]:
     """Prepare, execute and clean a query under one remote cancellation lease.
 
@@ -362,6 +366,7 @@ def federated_execution_scope(
         alias for alias, config in attach_configs
         if str(config.get("type", "")).lower() == "mysql"
     }
+    has_doris = any(config.get("type") == "doris" for _, config in attach_configs)
     prepared = PreparedFederatedQuery(sql=sql, display_sql=sql)
     if not attach_configs:
         _raise_if_cancelled(query_id)
@@ -372,8 +377,8 @@ def federated_execution_scope(
     previous_optimizers = None
     yielded = False
     cleanup_failed = False
-    owns_registration = bool(mysql_aliases and query_id is None)
-    effective_id = query_id or ("prepared:" + uuid.uuid4().hex if mysql_aliases else None)
+    owns_registration = bool((mysql_aliases or has_doris) and query_id is None)
+    effective_id = query_id or ("prepared:" + uuid.uuid4().hex if owns_registration else None)
     timer = None
     timed_out = threading.Event()
     if owns_registration:
@@ -391,8 +396,23 @@ def federated_execution_scope(
             _raise_if_cancelled(effective_id)
             with structured_duckdb_errors(connection):
                 try:
+                    doris_reads = []
+                    if has_doris:
+                        native_source = native_doris_source(sql, attach_configs) if doris_native else None
+                        if native_source:
+                            alias, config = native_source
+                            remote_sql, _ = doris_native_sql(sql, alias, config)
+                            prepared.sql = stage_native_doris_result(
+                                connection, remote_sql, config, names, effective_id,
+                            )
+                        else:
+                            prepared.sql, doris_reads = prepare_doris_join(
+                                connection, sql, attach_configs, names,
+                                lambda: _raise_if_cancelled(effective_id), effective_id,
+                                sample_limit=doris_sample_limit,
+                            )
                     with remote_cancellation_scope(connection, effective_id, attach_configs):
-                        if include_suggestions:
+                        if include_suggestions and not has_doris:
                             logical_sql, suggestions, warnings = optimize_federated_sql(
                                 connection, sql, {alias for alias, _ in attach_configs},
                                 config_manager.get_app_config(), mysql_aliases=mysql_aliases,
@@ -409,10 +429,17 @@ def federated_execution_scope(
                             # unchanged sources must not receive lossy predicates.
                             connection.execute("SET disabled_optimizers=?", [",".join(sorted(disabled | _LOCAL_FILTER_OPTIMIZERS))])
                             _prepare_mysql_sources(
-                                connection, prepared, sql, attach_configs, mysql_aliases,
+                                connection, prepared, prepared.sql if has_doris else sql, attach_configs, mysql_aliases,
                                 effective_id, names, materialize_result,
                                 stream_candidates=stream_candidates,
                             )
+                        if doris_reads:
+                            prepared.pushdown = {
+                                **(prepared.pushdown or {
+                                    "mode": "local", "sources": len(doris_reads), "pushed_sources": 0,
+                                }),
+                                "doris_reads": doris_reads,
+                            }
                         _raise_if_cancelled(effective_id)
                         yielded = True
                         yield prepared

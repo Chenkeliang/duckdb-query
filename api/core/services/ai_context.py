@@ -11,8 +11,10 @@ import logging
 from typing import Any, List, Optional
 
 from core.database.duckdb_engine import with_duckdb_connection
+from core.database.doris_source import doris_relation_columns
 from core.database.federated_attach import (
     attach_databases_on_connection,
+    duckdb_attach_configs,
     detach_databases_on_connection,
     format_qualified_table_reference,
     resolve_attach_configs,
@@ -59,15 +61,18 @@ def build_schema_text(
         attached: list[str] = []
         try:
             if attach_configs:
-                attached = attach_databases_on_connection(con, attach_configs)
+                attached = attach_databases_on_connection(con, duckdb_attach_configs(attach_configs))
             for name in tables[:_MAX_DETAIL_TABLES]:
                 candidates = [name]
-                if "." not in name and attached:
-                    candidates += [f"{alias}.{name}" for alias in attached]
+                if "." not in name and attach_configs:
+                    candidates += [f"{alias}.{name}" for alias, _ in attach_configs]
                 for cand in candidates:
                     try:
                         ref = format_qualified_table_reference(cand)
-                        rows = con.execute(f"DESCRIBE {ref}").fetchall()
+                        remote = doris_relation_columns(ref, attach_configs)
+                        rows = [(col["name"], col["type"]) for col in remote] if remote is not None else (
+                            con.execute(f"DESCRIBE {ref}").fetchall()
+                        )
                         cols = ", ".join(f"{r[0]} {r[1]}" for r in rows)
                         lines.append(f"{name}({cols})")
                         block = _sampled_block(con, cand, ref, rows, sample_budget)

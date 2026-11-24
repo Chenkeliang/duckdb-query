@@ -234,7 +234,7 @@ class DuckDBConnectionPool:
         except Exception as e:
             # 注意 conn_id 可能为 0(首个连接),必须 is not None 判定,
             # 否则 conn 0 的回滚/释放被跳过 → 连接泄漏(Codex P1-7)
-            if conn_id is not None:
+            if conn_id is not None and conn_id in self._connections:
                 logger.debug(f"[POOL_DEBUG] Connection exception, attempting rollback: conn_id={conn_id}, error={e}")
                 # 失败后先回滚(清理可能的中断事务)
                 try:
@@ -246,7 +246,8 @@ class DuckDBConnectionPool:
                     self._mark_connection_error(conn_id, str(e))
             raise
         finally:
-            if conn_id is not None:
+            # interruptible_connection already closes and removes cancelled leases.
+            if conn_id is not None and conn_id in self._connections:
                 # 释放前确保事务已提交（DuckDB 在某些情况下可能有未提交的隐式事务）
                 try:
                     logger.debug(f"[POOL_DEBUG] COMMIT before releasing connection: conn_id={conn_id}")

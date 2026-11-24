@@ -9,6 +9,7 @@ from core.common.exceptions import (
     ValidationError as APIValidationError,
 )
 from core.database.database_manager import db_manager
+from core.database.doris_source import doris_columns, doris_tables
 from core.database.oracle_source import oracle_columns, oracle_schemas, oracle_tables
 from core.common.config_manager import config_manager
 from core.security.encryption import password_encryptor
@@ -221,8 +222,9 @@ def get_database_tables(connection_id: str):
             else str(connection.type)
         )
 
-        if db_type == "oracle":
-            items = oracle_tables(db_config, "main")[: app_config.max_tables]
+        if db_type in {"oracle", "doris"}:
+            items = oracle_tables(db_config, "main") if db_type == "oracle" else doris_tables(db_config)
+            items = items[: app_config.max_tables]
             return create_success_response(
                 data={
                     "tables": [{"table_name": item["name"], "table_type": item["type"]} for item in items],
@@ -620,6 +622,12 @@ def list_connection_schemas(connection_id: str):
                 items=items, total=len(items), message_code=MessageCode.SCHEMAS_RETRIEVED
             )
 
+        if db_type == "doris":
+            return create_list_response(
+                items=[{"name": connection.params["database"]}],
+                total=1, message_code=MessageCode.SCHEMAS_RETRIEVED,
+            )
+
         # SQLite/DuckDB do not support schema, return empty list
         if db_type in ["sqlite", "duckdb"]:
             return create_list_response(
@@ -772,6 +780,14 @@ def list_schema_tables(connection_id: str, schema: str):
                 items=items, total=len(items), message_code=MessageCode.TABLES_RETRIEVED
             )
 
+        if db_type == "doris":
+            if schema != connection.params["database"]:
+                raise APIValidationError("Doris metadata supports only the configured database")
+            items = doris_tables(connection.params)[: app_config.max_tables]
+            return create_list_response(
+                items=items, total=len(items), message_code=MessageCode.TABLES_RETRIEVED
+            )
+
         if db_type != "postgresql":
             raise APIValidationError(
                 f"This endpoint only supports PostgreSQL and Oracle, current type: {db_type}",
@@ -883,6 +899,11 @@ def get_table_details(connection_id: str, table_name: str, schema: str | None = 
             return _table_columns_response(
                 table_name, oracle_columns(db_config, schema or "main", table_name)
             )
+
+        if db_type == "doris":
+            if schema and schema != db_config["database"]:
+                raise APIValidationError("Doris metadata supports only the configured database")
+            return _table_columns_response(table_name, doris_columns(db_config, table_name))
 
         if db_type == "mysql":
             # MySQL连接

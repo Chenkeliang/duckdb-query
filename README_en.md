@@ -32,7 +32,7 @@ DuckQuery is an independently developed, local-first data workbench powered by D
 
 ### Desktop (Recommended)
 
-The latest release is **[v2.2.2](https://github.com/Chenkeliang/duckdb-query/releases/tag/v2.2.2)**. Features below describe this release; its source is available at the [v2.2.2 tag](https://github.com/Chenkeliang/duckdb-query/tree/v2.2.2).
+The latest release is **[v2.3.0](https://github.com/Chenkeliang/duckdb-query/releases/tag/v2.3.0)**. Features below describe this release; its source is available at the [v2.3.0 tag](https://github.com/Chenkeliang/duckdb-query/tree/v2.3.0).
 
 Choose the installer for your machine from [GitHub Releases](https://github.com/Chenkeliang/duckdb-query/releases/latest):
 
@@ -51,7 +51,7 @@ Use the standard build when online; some external database connections download 
 Install Docker and Docker Compose, then run:
 
 ```bash
-git clone --branch v2.2.2 --depth 1 https://github.com/Chenkeliang/duckdb-query.git
+git clone --branch v2.3.0 --depth 1 https://github.com/Chenkeliang/duckdb-query.git
 cd duckdb-query
 ./quick-start.sh
 ```
@@ -71,7 +71,7 @@ The script supports configurable build-image mirrors; see the [configuration ref
 | Your task | DuckQuery provides |
 |---|---|
 | Turn scattered files into queryable data | CSV / Excel / Parquet / JSON / JSONL import, table pasting, URL import, and server directory access |
-| Reconcile files against a business database | Cross-source joins with MySQL / PostgreSQL / SQLite / DuckDB / Oracle, with eligible remote filters optimized |
+| Reconcile files against a business database | Cross-source joins with MySQL / PostgreSQL / SQLite / DuckDB / Oracle / Doris, with eligible remote filters optimized |
 | Run computations on remote DuckDB | Independent Quack connections, remote table/column browsing, service-bound read-only SQL tabs, cancellation, background tasks, export, and local saves |
 | Iterate on a query | SQL tabs, table and column completion, error locations, query history, and SQL bookmarks |
 | Analyze without writing every query | Visual JOIN, set-operation, and pivot builders, including statistics without grouping fields, with generated SQL available to inspect |
@@ -105,7 +105,7 @@ AI suggestions contact your configured model only after a click, sending current
 
 ## From Data to Results
 
-1. **Connect.** Drop CSV, Excel, Parquet, or JSON files; paste a table; or connect MySQL, PostgreSQL, SQLite, or DuckDB.
+1. **Connect.** Drop CSV, Excel, Parquet, or JSON files; paste a table; or connect MySQL, PostgreSQL, SQLite, DuckDB, Oracle, or Doris.
 2. **Query or ask.** Write SQL, use the visual JOIN / set-operation / pivot builders, or open the agent and choose the data sources and tables it can access.
 3. **Review and deliver.** Inspect the grid, charts, column origins, and SQL. Export results or save them as local tables. Move an active read-only query to the background and retrieve its result from the task panel later while the backend stays running.
 
@@ -169,9 +169,9 @@ See the [MCP documentation](mcp/README.md) for client configuration, backend dis
 
 ## Engine and Upgrade Notes
 
-**v2.2.2** restores bookmark actions for long SQL and adds **Copy SQL**. See the [v2.2.2 release notes](docs/releases/v2.2.2_en.md).
+**v2.3.0** adds read-only Doris connections, native SQL, and cross-source queries. See the [v2.3.0 release notes](docs/releases/v2.3.0_en.md).
 
-The app and DuckDB **engine versions** are maintained separately. v2.2.2 continues to use **stable DuckDB 2.0** (`duckdb==2.0.0`, engine `v2.0.0`); v2.1.1 used `1.6.0.dev379` / `v2.0.0-alpha39998`. New databases still use `v2.0.0` storage, existing files are not automatically migrated, and extensions must match the stable engine and platform.
+The app and DuckDB **engine versions** are maintained separately. v2.3.0 continues to use **stable DuckDB 2.0** (`duckdb==2.0.0`, engine `v2.0.0`); v2.1.1 used `1.6.0.dev379` / `v2.0.0-alpha39998`. New databases still use `v2.0.0` storage, existing files are not automatically migrated, and extensions must match the stable engine and platform.
 
 Data exploration suggests operations by actual column types, previews SQL and displays metric cards. It can also discover paths in JSON/VARIANT/text and extract typed columns. Discovery applies current filters before sampling at most 100 rows; sampled paths are not a complete schema. Statistics cover all filtered input. Text extraction preserves large integers by default; missing paths and failed casts return NULL. Desktop and server editions provide this entry; the browser-only Wasm demo does not.
 

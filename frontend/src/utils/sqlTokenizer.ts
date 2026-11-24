@@ -58,7 +58,7 @@ export class SQLTokenizer {
   private pos: number = 0;
   private length: number;
 
-  constructor(sql: string) {
+  constructor(sql: string, private readonly dialect: 'standard' | 'doris' = 'standard') {
     this.sql = sql;
     this.length = sql.length;
   }
@@ -90,9 +90,9 @@ export class SQLTokenizer {
     const startPos = this.pos;
     const char = this.sql[this.pos];
 
-    // 单行注释 --
-    if (char === '-' && this.peek(1) === '-') {
-      this.skipSingleLineComment();
+    // Doris also supports # line comments.
+    if ((char === '-' && this.peek(1) === '-') || (char === '#' && this.dialect === 'doris')) {
+      this.skipSingleLineComment(char === '#' ? 1 : 2);
       return null;
     }
 
@@ -117,8 +117,8 @@ export class SQLTokenizer {
     }
 
     // 字符串字面量 '...'
-    if (char === "'") {
-      return this.readString();
+    if (char === "'" || (this.dialect === 'doris' && char === '"')) {
+      return this.readString(char);
     }
 
     // 双引号标识符 "..."
@@ -196,8 +196,8 @@ export class SQLTokenizer {
   /**
    * 跳过单行注释
    */
-  private skipSingleLineComment(): void {
-    this.pos += 2; // 跳过 --
+  private skipSingleLineComment(prefixLength: number): void {
+    this.pos += prefixLength;
     while (this.pos < this.length && this.sql[this.pos] !== '\n') {
       this.pos++;
     }
@@ -225,17 +225,20 @@ export class SQLTokenizer {
   /**
    * 读取字符串字面量
    */
-  private readString(): Token {
+  private readString(quote: string): Token {
     const startPos = this.pos;
     this.pos++; // 跳过开始引号
     let value = '';
 
     while (this.pos < this.length) {
       const char = this.sql[this.pos];
-      if (char === "'") {
+      if (this.dialect === 'doris' && char === '\\' && this.pos + 1 < this.length) {
+        value += this.sql[this.pos + 1];
+        this.pos += 2;
+      } else if (char === quote) {
         // 检查是否是转义的引号 ''
-        if (this.peek(1) === "'") {
-          value += "'";
+        if (this.peek(1) === quote) {
+          value += quote;
           this.pos += 2;
         } else {
           this.pos++; // 跳过结束引号
@@ -390,7 +393,7 @@ export class SQLTokenizer {
 /**
  * 便捷函数：将 SQL 字符串转换为 token 流
  */
-export function tokenizeSQL(sql: string): Token[] {
-  const tokenizer = new SQLTokenizer(sql);
+export function tokenizeSQL(sql: string, dialect?: 'standard' | 'doris'): Token[] {
+  const tokenizer = new SQLTokenizer(sql, dialect);
   return tokenizer.tokenize();
 }

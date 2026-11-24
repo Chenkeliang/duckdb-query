@@ -118,6 +118,20 @@ class ForegroundQueries:
 foreground_queries = ForegroundQueries()
 
 
+def _native_doris_has_limit(sql: str, attachments) -> bool | None:
+    """Recognize a native read query that the DuckDB tokenizer cannot classify."""
+    from core.database.doris_join import native_doris_source
+    from core.database.doris_source import parse_doris_read_query
+    from core.database.federated_attach import resolve_attach_configs
+
+    try:
+        if native_doris_source(sql, resolve_attach_configs(attachments)):
+            return parse_doris_read_query(sql).args.get("limit") is not None
+    except BaseAPIException:
+        pass  # The route owns validation and error responses.
+    return None
+
+
 def track_foreground_query(function):
     """Track the two synchronous SQL endpoints while preserving their signatures."""
     signature = inspect.signature(function)
@@ -129,14 +143,24 @@ def track_foreground_query(function):
         request_id = arguments.get("x_request_id")
         if not isinstance(request_id, str) or not request_id:
             request_id = getattr(request, "request_id", None)
-        if not isinstance(request_id, str) or not request_id or getattr(request, "save_as_table", None) or not is_read_only_sql(request.sql):
+        if not isinstance(request_id, str) or not request_id or getattr(request, "save_as_table", None):
             return function(*args, **kwargs)
         attachments = getattr(request, "attach_databases", None) or []
+        if is_read_only_sql(request.sql):
+            limited = has_top_level_limit(request.sql)
+        elif len(attachments) == 1 and getattr(request, "doris_native", False):
+            limited = _native_doris_has_limit(request.sql, attachments)
+            if limited is None:
+                return function(*args, **kwargs)
+        else:
+            return function(*args, **kwargs)
         metadata = {
-            "apply_row_limit": bool(getattr(request, "is_preview", True)) or has_top_level_limit(request.sql),
+            "apply_row_limit": bool(getattr(request, "is_preview", True)) or limited,
             "is_federated": bool(attachments),
             "attach_databases": [item.model_dump() for item in attachments],
         }
+        if getattr(request, "doris_native", None) is False:
+            metadata["doris_native"] = False
         service_id = arguments.get("service_id") or getattr(request, "quack_service_id", None)
         if service_id:
             from core.services.quack_results import quack_source_metadata

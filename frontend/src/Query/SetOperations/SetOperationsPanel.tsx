@@ -582,7 +582,10 @@ export const SetOperationsPanel: React.FC<SetOperationsPanelProps> = ({
     setIsExecuting(true);
     try {
       // baseSql = 无系统 LIMIT 的基础 SQL:异步/导出用它才是真全量(复审 P1)
-      await onExecute(sqlForExecute, tableSource, { baseSql: generatedBaseSql ?? undefined });
+      const source: TableSource | undefined = activeTables.some(
+        (table) => normalizeSelectedTable(table).connection?.type === 'doris',
+      ) ? { type: 'federated', attachDatabases, dorisNative: false } : tableSource;
+      await onExecute(sqlForExecute, source, { baseSql: generatedBaseSql ?? undefined });
     } finally {
       setIsExecuting(false);
     }

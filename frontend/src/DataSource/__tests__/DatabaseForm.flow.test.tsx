@@ -11,6 +11,24 @@ const connection = {
 };
 
 describe('connection form workflow', () => {
+  it('uses the Doris FE port and sends the selected driver type', async () => {
+    const user = userEvent.setup();
+    const test = vi.fn();
+    render(<DatabaseForm onTest={test} />);
+
+    await user.click(screen.getByRole('tab', { name: 'page.datasource.connection.dbTypes.doris' }));
+    expect(screen.getByLabelText('page.datasource.connection.port')).toHaveValue('9030');
+    await user.type(screen.getByLabelText('page.datasource.connection.name'), 'Reporting');
+    await user.type(screen.getByLabelText('page.datasource.connection.username'), 'reader');
+    await user.type(screen.getByLabelText('page.datasource.connection.database'), 'analytics');
+    await user.click(screen.getByRole('button', { name: 'page.datasource.connection.test' }));
+
+    expect(test).toHaveBeenCalledWith(expect.objectContaining({
+      type: 'doris',
+      params: expect.objectContaining({ port: 9030, user: 'reader', database: 'analytics' }),
+    }));
+  });
+
   it('saves on Enter and retains stored-password semantics', async () => {
     const save = vi.fn(); const test = vi.fn();
     render(<DatabaseForm configToLoad={connection} onSave={save} onTest={test} />);

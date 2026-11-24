@@ -118,12 +118,22 @@
 
 | 方法 | 路径 | 成功体 | `data` 要点 | 前端入口 |
 |------|------|--------|-------------|----------|
-| GET | `/api/datasources/databases/{id}/schemas` | **列表** | `items[]`: `{ name, table_count? }`；PostgreSQL=用户 schemas，Oracle=扩展发现的可访问所有者，MySQL=所连库，SQLite/DuckDB=空 | `listConnectionSchemas` |
-| GET | `/api/datasources/databases/{id}/schemas/{schema}/tables` | **列表** | PostgreSQL／Oracle，Oracle 返回表和视图名称与类型，不执行行数统计 | `listSchemaTablesForConnection` |
+| GET | `/api/datasources/databases/{id}/schemas` | **列表** | `items[]`: `{ name, table_count? }`；PostgreSQL=用户 schemas，Oracle=扩展发现的可访问所有者，MySQL/Doris=所连库，SQLite/DuckDB=空 | `listConnectionSchemas` |
+| GET | `/api/datasources/databases/{id}/schemas/{schema}/tables` | **列表** | PostgreSQL／Oracle／Doris；Oracle 和 Doris 返回表和视图名称与类型，无行数统计 | `listSchemaTablesForConnection` |
 | GET | `/api/datasources/databases/{id}/tables` | 对象 | `tables[]`（非 `items`） | `listConnectionTablesFlat`（**前端已用**） |
 | GET | `/api/datasources/databases/{id}/tables/detail` | 对象 | 默认 `table_name`, `columns`, `indexes?`, `table_comment?`；`columns_only=true` 仅返回 `{table_name, columns: [{name, type, ...}], column_count}`，不采样、不统计行数、不读取索引；PG 保留类型长度/精度。`table_name` / 可选 `schema` 按原接口传入 | `getExternalTableDetail` / `getExternalTableStructure`；`ContextMenu` / `useTableColumns` |
 
 Oracle 连接类型为 `oracle`，沿用连接测试、保存、更新和刷新端点。`params` 使用 `host, port?, service_name, user, password`，默认端口 1521，Schema 由目录单独选择。连接测试和元数据执行要求当前后端已安装签名社区扩展 `oracle_scanner`。表详情返回挂载后的 DuckDB 列类型，平铺列表使用默认 Schema。联邦 SQL 沿用既有 `attach_databases`，Oracle 挂载固定只读，需使用 Oracle 只读用户。查询工作台通过普通表引用读取 Oracle，不接受 Oracle 原生执行函数或动态 SQL 表函数。扩展列表用 `source=community` 区分安装来源。
+
+Doris 连接类型为 `doris`，参数为 `host, port?, database, user, password?`，默认 FE 查询端口 9030。通过平铺表和表结构接口浏览指定数据库。仅选择一个 Doris 连接时，SQL 工作台通过 MySQL 协议执行只读 Doris SQL。原生 SQL 的保存、服务端导出和后台查询沿用现有接口，把 Doris 实际返回的结果流式交给 DuckDB。每次原生结果暂存最多 1,000,000 行和约 256 MiB 的结果数据，超限报错，不发布部分结果。Doris TIME 以 DuckDB INTERVAL 传回，保留超过 24 小时的时长。查询取消沿用 `X-Request-ID` 和现有任务取消接口。
+
+`/api/duckdb/federated-query`、`/api/query-results/export`、异步任务提交与查询结果保存接受可选的 `doris_native`。默认 `true`，单 Doris 来源按 Doris 方言执行；可视化面板生成 DuckDB SQL 时传 `false`，预览、保存、导出及任务重试沿用同一方言。前台查询转后台时保留此标记。联邦查询包含 Doris 来源时在结果返回实际执行的 `doris_native`，供图表聚合、下钻及重跑使用。混合数据源始终交给 DuckDB。
+
+原生 Doris 查询按 Doris 方言验证单条只读语句，支持 `#` 行注释及终止分号后的注释。普通注释不参与命令判断，原始 SQL 仍随查询结果和任务元数据返回。
+
+结构化 JOIN（`/api/query`）和混合 SQL 查询通过 `attach_databases` 识别 Doris 来源。SQL 编辑器混合 Doris 与本地表时，以 `main.表名` 显式标记本地来源。后端将 Doris 输入流式写入请求级临时表，由 DuckDB 执行精确关联。对可证明安全的单表整数、日期和时间筛选在 Doris 侧预过滤，同时保留本地条件。每次联邦查询的 Doris 输入暂存预算为 100,000 行、64 MiB，发现超限即报错。最终预览 LIMIT 只限制结果。响应 `pushdown.doris_reads[]` 提供表、列、读取行数及下推条件数。
+
+Doris JOIN 类型检查、透视、集合操作、数据探索和 AI 问数通过同一联邦读取路径获取数据。联邦读取将 JSON、VARIANT、ARRAY、STRUCT 及字符串键的 MAP 作为 JSON 投影。DuckDB DECIMAL 最大精度为 38，超出该精度的 Doris 列无法参与联邦数值计算。显式 JSON 字段采样在无筛选或所有筛选均可安全下推时，直接限制远端读取行数。
 
 ## 4. 数据源连接（`dataSourceApi.ts`）
 

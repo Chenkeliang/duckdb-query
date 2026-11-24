@@ -19,19 +19,24 @@ import threading
 import time
 import logging
 from dataclasses import dataclass, field
-from typing import Callable, Dict, List, Optional
-
-import duckdb
+from typing import Callable, Dict, List, Optional, Protocol
 
 logger = logging.getLogger(__name__)
 _PENDING_CANCELLATION_TTL_SECONDS = 60.0
 _MAX_PENDING_CANCELLATIONS = 2048
 
 
+class InterruptibleConnection(Protocol):
+    """A query session whose current operation can be interrupted."""
+
+    def interrupt(self) -> None:
+        """Interrupt the current operation."""
+
+
 @dataclass
 class ConnectionRecord:
     """连接注册记录"""
-    connection: duckdb.DuckDBPyConnection
+    connection: InterruptibleConnection
     task_id: str
     thread_id: int
     start_time: float
@@ -40,6 +45,7 @@ class ConnectionRecord:
     cancel_requested: bool = False
     publication_completed: bool = False
     retain_publication: bool = False
+    remote_only: bool = False
 
 
 class ConnectionRegistry:
@@ -69,9 +75,11 @@ class ConnectionRegistry:
     def register(
         self, 
         task_id: str, 
-        connection: duckdb.DuckDBPyConnection,
+        connection: InterruptibleConnection,
         sql: str = "",
         retain_publication: bool = False,
+        *,
+        remote_only: bool = False,
     ) -> None:
         """注册连接到注册表"""
         with self._lock:
@@ -93,6 +101,7 @@ class ConnectionRegistry:
                 sql_preview=sql[:200] if sql else "",
                 cancel_requested=cancel_requested,
                 retain_publication=retain_publication,
+                remote_only=remote_only,
             )
             logger.info(f"Registered connection for task {task_id}")
     
@@ -208,7 +217,7 @@ class ConnectionRegistry:
 
         try:
             connection.interrupt()
-            logger.info("Interrupted local query for task %s", task_id)
+            logger.info("Interrupted query session for task %s", task_id)
         except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.warning("Failed to interrupt local query for task %s: %s", task_id, exc)
 
@@ -250,7 +259,7 @@ class ConnectionRegistry:
         try:
             connection.interrupt()
             local_interrupted = True
-            logger.info("Interrupted local query for task %s", task_id)
+            logger.info("Interrupted query session for task %s", task_id)
         except Exception as exc:  # pylint: disable=broad-exception-caught
             logger.warning("Failed to interrupt local query for task %s: %s", task_id, exc)
 
@@ -271,6 +280,15 @@ class ConnectionRegistry:
             True 如果成功调用 interrupt()
             False 如果任务不存在
         """
+        def interrupt_connection(connection: InterruptibleConnection) -> bool:
+            try:
+                connection.interrupt()
+                logger.info(f"Interrupted task {task_id}")
+                return True
+            except Exception as e:
+                logger.error(f"Failed to interrupt task {task_id}: {e}")
+                raise
+
         with self._lock:
             record = self._registry.get(task_id)
             if not record:
@@ -280,38 +298,41 @@ class ConnectionRegistry:
                 logger.info("Cancellation arrived after task %s publication", task_id)
                 return False
             record.cancel_requested = True
-            
-            try:
-                record.connection.interrupt()
-                logger.info(f"Interrupted task {task_id}")
-                return True
-            except Exception as e:
-                logger.error(f"Failed to interrupt task {task_id}: {e}")
-                raise
+            if not record.remote_only:
+                return interrupt_connection(record.connection)
+        return interrupt_connection(record.connection)
     
     def interrupt_all(self) -> int:
-        """中断所有在飞查询（用于优雅停机）。
+        """Interrupt local queries and dispatch remote cancellation without waiting."""
+        def interrupt_session(task_id: str, callback: Callable[[], bool | None]) -> bool:
+            try:
+                callback()
+                return True
+            except Exception as exc:  # pylint: disable=broad-exception-caught
+                logger.warning("Failed to interrupt task %s on shutdown: %s", task_id, exc)
+                return False
 
-        逐个对已注册连接调用 interrupt()，让阻塞中的重查询尽快抛出中断，
-        使 uvicorn 能迅速 drain 在飞请求、跑完 lifespan shutdown(连接池
-        close_all + WAL checkpoint)、在桌面壳的 5s 窗口内干净退出——避免
-        重查询占着不放 → 超时 SIGKILL → 脏 WAL → 重启降级。单条 interrupt
-        失败不影响其余。返回成功中断的数量。
-        """
+        interrupted = 0
+        remote = []
         with self._lock:
-            interrupted = 0
-            for task_id, record in list(self._registry.items()):
-                try:
-                    if record.publication_completed:
-                        continue
-                    record.cancel_requested = True
-                    record.connection.interrupt()
-                    interrupted += 1
-                except Exception as e:  # pylint: disable=broad-exception-caught
-                    logger.warning(f"Failed to interrupt task {task_id} on shutdown: {e}")
-            if interrupted:
-                logger.info(f"Interrupted {interrupted} in-flight query(ies) on shutdown")
-            return interrupted
+            for record in tuple(self._registry.values()):
+                if record.publication_completed:
+                    continue
+                record.cancel_requested = True
+                if record.remote_only:
+                    remote.append((record.task_id, record.connection.interrupt))
+                else:
+                    interrupted += interrupt_session(record.task_id, record.connection.interrupt)
+                remote.extend((record.task_id, callback) for callback in record.remote_interrupts)
+        for task_id, callback in remote:
+            try:
+                threading.Thread(
+                    target=interrupt_session, args=(task_id, callback), daemon=True,
+                ).start()
+                interrupted += 1
+            except RuntimeError as exc:
+                logger.warning("Failed to dispatch cancellation for task %s: %s", task_id, exc)
+        return interrupted
 
     def cleanup_stale(
         self,

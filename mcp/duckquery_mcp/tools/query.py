@@ -58,11 +58,13 @@ async def run_sql(
 async def federated_query(
     client: DuckQueryClient, cfg: Config, *, sql: str, attach_databases: list, confirm: bool = False
 ) -> Any:
-    """Run SQL across attached external DBs (MySQL/PostgreSQL/SQLite/DuckDB) + local tables.
+    """Run SQL across MySQL/PostgreSQL/Oracle/Doris/SQLite/DuckDB and local tables.
 
     attach_databases: [{"alias": "m", "connection_id": "SORDER"}]. Connection ids from
     list_connections (e.g. "db_SORDER") are accepted — the "db_" prefix is normalized.
     Reference an attached table as alias.table, e.g. SELECT * FROM m.orders LIMIT 100.
+    With a single Doris connection, queries use native Doris SQL. Qualify a
+    local DuckDB table as main.table when joining it with a Doris table.
 
     Mutating or unknown SQL needs confirmation, then remains subject to the backend's
     stricter query policy — see run_sql.

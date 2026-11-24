@@ -99,14 +99,11 @@ export const DatabaseConnectionNode: React.FC<DatabaseConnectionNodeProps> = ({
     isExpanded
   );
 
-  // 对于 MySQL/SQLite/DuckDB，直接加载表列表
+  const usesFlatTables = ['mysql', 'doris', 'sqlite', 'duckdb'].includes(connection.type);
   const { tables, isLoading: tablesLoading } = useSchemaTables(
     connection.id,
     '', // 空 schema 表示直接获取表
-    isExpanded &&
-      (connection.type === 'mysql' ||
-        connection.type === 'sqlite' ||
-        connection.type === 'duckdb')
+    isExpanded && usesFlatTables
   );
 
   const handleToggle = () => {
@@ -144,12 +141,7 @@ export const DatabaseConnectionNode: React.FC<DatabaseConnectionNodeProps> = ({
   // PostgreSQL: 显示 schemas
   const hasSchemas = (connection.type === 'postgresql' || connection.type === 'oracle') && schemas.length > 0;
 
-  // MySQL/SQLite/DuckDB: 直接显示表
-  const hasTables =
-    (connection.type === 'mysql' ||
-      connection.type === 'sqlite' ||
-      connection.type === 'duckdb') &&
-    tables.length > 0;
+  const hasTables = usesFlatTables && tables.length > 0;
 
   // 按类型取图标(SQLite→Feather,DuckDB→Bird),颜色沿用原映射
   const TypeIcon = getDatabaseTypeIcon(connection.type);

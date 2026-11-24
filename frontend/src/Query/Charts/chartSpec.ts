@@ -1,6 +1,6 @@
 /** 查询结果图表 —— 纯函数:列分类 / 默认 spec / 校验 / 生成聚合 SQL / 客户端聚合。 */
 
-import { sqlStringLiteral } from '@/utils/sqlLiteral';
+import { dorisSqlStringLiteral, quoteDorisIdentifier, sqlStringLiteral } from '@/utils/sqlLiteral';
 import { tokenizeSQL } from '@/utils/sqlTokenizer';
 import { combineChartValues } from './chartNumbers';
 import {
@@ -28,9 +28,14 @@ export interface ColumnInfo {
   type: string;
 }
 
+interface ChartSqlOptions {
+  previewLimit?: number;
+  dorisNative?: boolean;
+}
+
 /** DuckDB 标识符转义:内部双引号翻倍,避免列名注入。 */
-function q(id: string): string {
-  return `"${String(id).replace(/"/g, '""')}"`;
+function q(id: string, dorisNative?: boolean): string {
+  return dorisNative ? quoteDorisIdentifier(id) : `"${String(id).replace(/"/g, '""')}"`;
 }
 
 // 类型判定统一走 utils/duckdbTypes(别名/源库原生名在那里归一),
@@ -118,8 +123,8 @@ export function validateSpec(spec: ChartSpec, columns: ColumnInfo[]): ChartSpec 
 }
 
 /** Keep business restrictions and comments intact; only remove the statement terminator. */
-function chartInnerSql(sql: string, previewLimit?: number): string {
-  const tokens = tokenizeSQL(sql);
+function chartInnerSql(sql: string, { previewLimit, dorisNative }: ChartSqlOptions): string {
+  const tokens = tokenizeSQL(sql, dorisNative ? 'doris' : 'standard');
   const last = tokens[tokens.length - 1];
   const inner = (last?.type === 'semicolon'
     ? sql.slice(0, last.position) + sql.slice(last.position + last.raw.length)
@@ -127,33 +132,37 @@ function chartInnerSql(sql: string, previewLimit?: number): string {
   return previewLimit == null ? inner : `SELECT * FROM (\n${inner}\n) AS _preview LIMIT ${previewLimit}`;
 }
 
-function xExpr(spec: ChartSpec): string {
+function xExpr(spec: ChartSpec, dorisNative?: boolean): string {
   // xBin 仅 day/month(由 validateSpec/UI 保证),x 转义防注入
-  if (spec.xBin && spec.x) return `date_trunc('${spec.xBin}', ${q(spec.x)})`;
-  return q(spec.x as string);
+  const field = q(spec.x as string, dorisNative);
+  if (!spec.xBin) return field;
+  return dorisNative
+    ? `date_trunc(${field}, '${spec.xBin}')`
+    : `date_trunc('${spec.xBin}', ${field})`;
 }
 
 /** 指标列表达式:非数值列 TRY_CAST 成 DOUBLE 再聚合(数值形字符串可算,转不动的为 NULL 被聚合忽略)。
  *  count 例外:对任何类型都合法且需数每个非空值,转型反而会漏计转不动的行。 */
-function metricColExpr(col: string, agg: AggFn, columns?: ColumnInfo[]): string {
-  if (agg === 'count') return q(col);
+function metricColExpr(col: string, agg: AggFn, columns?: ColumnInfo[], dorisNative?: boolean): string {
+  const field = q(col, dorisNative);
+  if (agg === 'count') return field;
   const info = (columns || []).find((c) => c.name === col);
-  if (info && !isNumericType(info.type)) return `TRY_CAST(${q(col)} AS DOUBLE)`;
-  return q(col);
+  if (info && !isNumericType(info.type)) return `TRY_CAST(${field} AS DOUBLE)`;
+  return field;
 }
 
 /** 把用户 SQL 包成子查询做全量聚合(截断时用)。返回值由调用方按本地/联邦端点执行。 */
-export function buildChartSql(userSql: string, spec: ChartSpec, columns?: ColumnInfo[], options: { previewLimit?: number } = {}): string {
-  const inner = chartInnerSql(userSql, options.previewLimit);
+export function buildChartSql(userSql: string, spec: ChartSpec, columns?: ColumnInfo[], options: ChartSqlOptions = {}): string {
+  const inner = chartInnerSql(userSql, options);
   if (spec.type === 'kpi') {
-    const metric = spec.y[0] ? `${spec.agg}(${metricColExpr(spec.y[0], spec.agg, columns)})` : 'count(*)';
+    const metric = spec.y[0] ? `${spec.agg}(${metricColExpr(spec.y[0], spec.agg, columns, options.dorisNative)})` : 'count(*)';
     return `SELECT ${metric} AS metric FROM (\n${inner}\n) AS _src`;
   }
   const metricSql = spec.y.length
-    ? spec.y.map((col, i) => `${spec.agg}(${metricColExpr(col, spec.agg, columns)}) AS m_${i}`).join(', ')
+    ? spec.y.map((col, i) => `${spec.agg}(${metricColExpr(col, spec.agg, columns, options.dorisNative)}) AS m_${i}`).join(', ')
     : 'count(*) AS m_0';
   // 无维度(空列等退化场景)用常量单桶,避免生成 "null" 列
-  const dimExpr = spec.x ? xExpr(spec) : `'全部'`;
+  const dimExpr = spec.x ? xExpr(spec, options.dorisNative) : `'全部'`;
   return `SELECT ${dimExpr} AS dim, ${metricSql} FROM (\n${inner}\n) AS _src GROUP BY 1 ORDER BY 1 LIMIT 200`;
 }
 
@@ -183,22 +192,24 @@ function binRange(v: string, xBin: 'day' | 'month'): { start: string; end: strin
  * 图表点击下钻:把被点的维度值转成明细 SQL(包裹子查询,复用 buildChartSql 的既有模式)。
  * 不可下钻(KPI / 无维度 / 「其它」「全部」合并桶)时返回 null。
  */
-export function buildDrilldownSql(spec: ChartSpec, clickedDim: string, sourceSql: string | null, options: { previewLimit?: number } = {}): string | null {
+export function buildDrilldownSql(spec: ChartSpec, clickedDim: string, sourceSql: string | null, options: ChartSqlOptions = {}): string | null {
   if (!sourceSql || !spec.x || spec.type === 'kpi') return null;
   if (clickedDim === '其它' || clickedDim === '全部') return null;
 
+  const field = q(spec.x, options.dorisNative);
   let cond: string;
   if (clickedDim === '∅') {
-    cond = `${q(spec.x)} IS NULL`;
+    cond = `${field} IS NULL`;
   } else if (spec.xBin === 'day' || spec.xBin === 'month') {
     const range = binRange(clickedDim, spec.xBin);
     if (!range) return null;
-    cond = `${q(spec.x)} >= DATE '${range.start}' AND ${q(spec.x)} < DATE '${range.end}'`;
+    cond = `${field} >= DATE '${range.start}' AND ${field} < DATE '${range.end}'`;
   } else {
-    cond = `${q(spec.x)} = ${sqlStringLiteral(clickedDim)}`;
+    const literal = options.dorisNative ? dorisSqlStringLiteral(clickedDim) : sqlStringLiteral(clickedDim);
+    cond = `${field} = ${literal}`;
   }
 
-  const inner = chartInnerSql(sourceSql, options.previewLimit);
+  const inner = chartInnerSql(sourceSql, options);
   // 源 SQL 本身已是同条件的下钻结果(在明细图表上再次点击同一桶)时,不再嵌套包裹
   if (inner.endsWith(`AS _src WHERE ${cond} LIMIT 500`)) {
     return inner;

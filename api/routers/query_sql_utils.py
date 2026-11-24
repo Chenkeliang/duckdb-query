@@ -37,6 +37,38 @@ def apply_row_limit_choice(sql: str, apply_limit: bool) -> str:
     return ensure_query_has_limit(sql.strip(), max_rows)
 
 
+def apply_federated_row_limit_choice(
+    sql: str, apply_limit: bool, attach_databases, *, doris_native: bool = True,
+) -> str:
+    """Apply the selected result range in the SQL's execution dialect."""
+    if doris_native and attach_databases and len(attach_databases) == 1:
+        from core.common.config_manager import config_manager
+        from core.common.connection_alias import normalize_connection_id
+        from core.database.database_manager import db_manager
+        from core.database.doris_join import references_local_schema
+        from core.database.doris_source import parse_doris_read_query, render_doris_query
+        from models.query_models import DataSourceType
+
+        attachment = attach_databases[0]
+        alias, connection_id = (
+            (attachment["alias"], attachment["connection_id"])
+            if isinstance(attachment, dict) else (attachment.alias, attachment.connection_id)
+        )
+        source = db_manager.get_connection(normalize_connection_id(connection_id))
+        if source and source.type == DataSourceType.DORIS and not references_local_schema(sql, alias):
+            query = parse_doris_read_query(sql)
+            if not apply_limit:
+                query.set("limit", None)
+                if query.args.get("offset") is not None:
+                    # Doris requires LIMIT with OFFSET. Keep the offset
+                    # without retaining the page-size restriction.
+                    query = query.limit(2**63 - 1)
+            elif query.args.get("limit") is None:
+                query = query.limit(config_manager.get_app_config().max_query_rows)
+            return render_doris_query(query)
+    return apply_row_limit_choice(sql, apply_limit)
+
+
 def _remove_top_level_limit(sql: str) -> str:
     """Remove only the outer LIMIT from a DuckDB query."""
     stripped = _strip_trailing_semicolon_segment(sql.strip())

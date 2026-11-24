@@ -19,10 +19,12 @@ from core.database.duckdb_engine import (
 )
 from core.database.duckdb_pool import interruptible_connection
 from core.database.connection_registry import connection_registry
+from core.database.doris_source import doris_relation_columns
 from core.database.federated_execution import federated_execution_scope
 from core.database.federated_attach import (
     attach_databases_on_connection,
     create_query_staging_table,
+    duckdb_attach_configs,
     detach_databases_on_connection,
     drop_query_staging_table,
     finalize_query_if_not_cancelled,
@@ -81,11 +83,11 @@ def _set_operation_connection(
                 timeout_s = int(config_manager.get_app_config().federated_query_timeout or 300)
                 attached_aliases = attach_databases_on_connection(
                     con,
-                    attach_configs,
+                    duckdb_attach_configs(attach_configs),
                     deadline_monotonic=time.monotonic() + timeout_s,
                     query_id=query_id,
                 )
-                alias_set = {alias.strip() for alias in attached_aliases if alias}
+                alias_set = {alias.strip() for alias, _ in attach_configs if alias}
             yield con, alias_set
         finally:
             if attached_aliases:
@@ -102,11 +104,13 @@ def generate_set_operation_query(request: SetOperationRequest):
     """
     try:
         config = request.config
+        configs = resolve_attach_configs(request.attach_databases) if request.attach_databases else []
+        has_doris = len(duckdb_attach_configs(configs)) != len(configs)
 
         with _set_operation_connection(request) as (con, alias_set):
             sql = generate_set_operation_sql(config, attach_aliases=alias_set)
             estimated_rows = estimate_set_operation_rows(
-                config, con, alias_set
+                config, None if has_doris else con, alias_set
             )
 
         # 构建元数据
@@ -222,6 +226,7 @@ def validate_set_operation(request: SetOperationRequest):
 
         errors = []
         warnings = []
+        configs = resolve_attach_configs(request.attach_databases) if request.attach_databases else []
 
         with _set_operation_connection(request) as (con, alias_set):
             for table in config.tables:
@@ -229,8 +234,8 @@ def validate_set_operation(request: SetOperationRequest):
                     table_ref = format_set_table_reference(
                         table.table_name, alias_set
                     )
-                    check_sql = f"SELECT COUNT(*) FROM {table_ref}"
-                    con.execute(check_sql).fetchone()
+                    if doris_relation_columns(table_ref, configs) is None:
+                        con.execute(f"SELECT COUNT(*) FROM {table_ref}").fetchone()
                 except Exception as e:
                     errors.append(
                         f"Table {table.table_name} does not exist或无法访问: {str(e)}"

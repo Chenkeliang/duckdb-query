@@ -47,6 +47,8 @@ from core.data.file_datasource_manager import (
     file_datasource_manager,
 )
 from core.database.database_manager import db_manager
+from core.database.doris_source import execute_doris_query, parse_doris_read_query
+from core.database.doris_join import native_doris_source
 from core.database.duckdb_engine import (
     _is_federated_connection_lost as is_federated_connection_lost,
     _is_read_only_query as is_read_only_query,
@@ -54,6 +56,7 @@ from core.database.duckdb_engine import (
     with_duckdb_connection,
 )
 from core.database.federated_attach import (
+    duckdb_attach_configs,
     attach_databases_on_connection,
     configure_mysql_fresh_connections,
     create_ordered_query_staging_table,
@@ -907,27 +910,31 @@ def execute_federated_query(
     timeout_s = int(config_manager.get_app_config().federated_query_timeout or 300)
     deadline = time.monotonic() + timeout_s
 
-    # 写拦截:此端点独立于 /execute,历史上漏了这道门,MCP federated_query
-    # 可借多语句/CTE 绕过只读判定送达写操作(Codex P0-4)。与 /execute 同 helper。
-    assert_no_dangerous_write(request.sql, request.save_as_table)
-
     # 预先准备 ATTACH 配置（在连接外验证，避免占用连接时间）。
     # 与透视/集合共用 resolve_attach_configs：此处曾另写一份(多了 db_ 前缀归一化),
     # 两份实现对同一个 connection_id 给出不同结果,统一后归一化在公共函数里做。
     attach_configs = resolve_attach_configs(request.attach_databases)
+    doris = [(alias, config) for alias, config in attach_configs if config.get("type") == "doris"]
+    native_doris = native_doris_source(request.sql, attach_configs) if request.doris_native else None
+    if not native_doris:
+        assert_no_dangerous_write(request.sql, request.save_as_table)
+    # The native adapter validates a single read-only query in the Doris dialect.
     has_oracle = any(cfg.get("type") == "oracle" for _, cfg in attach_configs)
     if has_oracle and not is_managed_oracle_read_sql(request.sql):
         raise APIValidationError("Oracle connections support read-only queries over attached tables")
 
     # 处理 SQL 查询（MySQL 风格双引号字符串 → DuckDB 单引号）
     base_sql_query = request.sql.strip().rstrip(";")
-    if not has_oracle:
+    if not has_oracle and not doris:
         base_sql_query = normalize_mysql_double_quoted_strings_for_duckdb(base_sql_query)
     sql_query = base_sql_query
     # 预览:最外层缺用户 LIMIT 时补默认——判定走 has_top_level_limit(AST,注释/字面量/
     # 子查询天然正确),与本地 execute 同一口径(复审 P1);换行追加,行尾注释安全
     limit = None
-    if request.is_preview and statement_accepts_limit(sql_query) and not has_top_level_limit(sql_query):
+    if native_doris:
+        if request.is_preview and request.save_as_table and parse_doris_read_query(sql_query).args.get("limit") is None:
+            limit = config_manager.get_app_config().max_query_rows
+    elif request.is_preview and statement_accepts_limit(sql_query) and not has_top_level_limit(sql_query):
         limit = config_manager.get_app_config().max_query_rows
         sql_query = ensure_query_has_limit(sql_query, limit)
         logger.info(f"Preview mode, applied LIMIT {limit}")
@@ -944,11 +951,12 @@ def execute_federated_query(
         nonlocal attached_aliases, warnings, saved_table, query_lineage
 
         # 1. ATTACH 所有外部数据库（连接池复用时会容忍已挂载别名）
-        if attach_configs:
+        native_configs = duckdb_attach_configs(attach_configs)
+        if native_configs:
             configure_mysql_fresh_connections(conn, attach_configs)
             attached_aliases = attach_databases_on_connection(
                 conn,
-                attach_configs,
+                native_configs,
                 deadline_monotonic=deadline,
                 query_id=query_id,
             )
@@ -966,6 +974,7 @@ def execute_federated_query(
                         conn, execution_input, attach_configs, query_id,
                         include_suggestions=True,
                         materialize_result=not bool(table_name),
+                        **({"doris_native": True} if native_doris else {}),
                     ) as execution:
                         _opt["sql"] = execution.display_sql
                         _opt["suggestions"] = execution.suggestions or None
@@ -1041,12 +1050,26 @@ def execute_federated_query(
 
     def _on_timeout():
         timed_out["v"] = True
-        connection_registry.interrupt_with_remote(query_id)
+        connection_registry.interrupt_with_remote(
+            query_id, pending_if_missing=bool(native_doris and not request.save_as_table),
+        )
 
     result_columns: list = []
     result_records: list = []
     query_column_types = []
     try:
+        if native_doris and not request.save_as_table:
+            alias, config = native_doris
+            timer = threading.Timer(timeout_s, _on_timeout)
+            timer.start()
+            try:
+                data = execute_doris_query(
+                    request.sql, alias, config,
+                    is_preview=bool(request.is_preview), query_id=query_id,
+                )
+                return create_success_response(data=data, message_code=MessageCode.QUERY_EXECUTED)
+            finally:
+                timer.cancel()
         with single_threaded_mysql_persistence(attach_configs):
             with interruptible_connection(query_id, sql_query) as conn:
                 timer = threading.Timer(timeout_s, _on_timeout)
@@ -1072,7 +1095,8 @@ def execute_federated_query(
             "data": result_records,
             "row_count": len(result_records),
             "execution_time_ms": execution_time,
-            "attached_databases": attached_aliases,
+            "attached_databases": attached_aliases + [alias for alias, _ in doris],
+            **({"doris_native": bool(native_doris)} if doris else {}),
             "sql_query": sql_query,
             "optimized_sql": _opt["sql"],
             "suggestions": _opt["suggestions"],
@@ -1099,7 +1123,7 @@ def execute_federated_query(
             )
         logger.info(f"Federated query {query_id} was cancelled by user")
         # 取消时也尝试清理 ATTACH
-        if not has_oracle:
+        if not has_oracle and not doris:
             try:
                 with with_duckdb_connection() as con:
                     for alias in attached_aliases:

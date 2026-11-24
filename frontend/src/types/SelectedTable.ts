@@ -7,7 +7,7 @@
 /**
  * 数据库连接类型
  */
-export type DatabaseType = 'mysql' | 'postgresql' | 'oracle' | 'sqlite' | 'duckdb';
+export type DatabaseType = 'mysql' | 'postgresql' | 'oracle' | 'doris' | 'sqlite' | 'duckdb';
 
 /**
  * 数据源类型
@@ -70,6 +70,7 @@ export const DATABASE_TYPE_ICONS: Record<DatabaseType, string> = {
   mysql: '🐬',
   postgresql: '🐘',
   oracle: '🗄️',
+  doris: '🗄️',
   sqlite: '📄',
   duckdb: '🦆',
 };
@@ -81,6 +82,7 @@ export const DATABASE_TYPE_LABELS: Record<DatabaseType, string> = {
   mysql: 'MySQL',
   postgresql: 'PostgreSQL',
   oracle: 'Oracle',
+  doris: 'Doris',
   sqlite: 'SQLite',
   duckdb: 'DuckDB',
 };

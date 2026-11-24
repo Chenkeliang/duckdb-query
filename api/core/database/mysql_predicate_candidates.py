@@ -135,20 +135,46 @@ def source_predicates(source: MySQLSource, key_limit: int) -> list[tuple[str, li
     return output
 
 
+def _pivot_scope_proxy(node: exp.Expression) -> exp.Expression:
+    # SQLGlot omits simplified DuckDB PIVOT from scope traversal. Expose its
+    # input and CTEs for analysis with their original source positions.
+    if not isinstance(node, exp.Pivot) or not node.args.get("using"):
+        return node
+    proxy = exp.select("*").from_(node.this.copy())
+    if node.args.get("with_"):
+        proxy.set("with_", node.args["with_"].copy())
+    return proxy
+
+
 def find_mysql_sources(
     sql: str, attach_configs: list[tuple[str, dict[str, Any]]], key_limit: int,
+    *, source_type: str = "mysql",
 ) -> tuple[list[MySQLSource], Optional[exp.Expression]]:
-    """Resolve physical sources with scope-aware CTE and alias handling."""
-    tree = sqlglot.parse_one(sql, read="duckdb")
-    if not isinstance(tree, exp.Query) or tree.find(exp.TableSample) is not None:
+    """Resolve SQL sources for a MySQL-protocol connection type."""
+    try:
+        tree = sqlglot.parse_one(sql, read="duckdb")
+    except sqlglot.errors.ParseError:
+        if source_type != "doris":
+            raise
+        from core.common.sql_capabilities import remove_top_level_row_limit
+
+        tree = sqlglot.parse_one(remove_top_level_row_limit(sql), read="duckdb")
+        if not isinstance(tree, exp.Pivot):
+            raise
+    scope_tree = tree
+    if source_type == "doris" and tree is not None and any(
+        pivot.args.get("using") for pivot in tree.find_all(exp.Pivot)
+    ):
+        scope_tree = tree.transform(_pivot_scope_proxy)
+    if not isinstance(scope_tree, exp.Query) or tree.find(exp.TableSample) is not None:
         return [], tree
-    scopes = list(traverse_scope(tree))
+    scopes = list(traverse_scope(scope_tree))
     if any(scope.is_correlated_subquery for scope in scopes):
         return [], tree
     configs = {
         fold_identifier(alias): (alias, config)
         for alias, config in attach_configs
-        if str(config.get("type", "")).lower() == "mysql"
+        if str(config.get("type", "")).lower() == source_type
     }
     sources = []
     for scope in scopes:
@@ -185,7 +211,8 @@ def find_mysql_sources(
                 for column in scope.columns
             ):
                 continue
-            source.predicates = source_predicates(source, key_limit)
+            if source_type == "mysql":
+                source.predicates = source_predicates(source, key_limit)
             where = scope.expression.args.get("where")
             source.conditions = list(_and_terms(where.this if where is not None else None))
             sources.append(source)

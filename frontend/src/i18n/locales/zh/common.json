@@ -1447,8 +1447,10 @@
         "serviceName": "服务名（Service Name）",
         "serviceNamePlaceholder": "例如 FREEPDB1",
         "oracleHint": "请先在「扩展」安装 oracle_scanner，并使用 Oracle 只读账号。",
+        "dorisHint": "请填写 Doris FE 查询端口，并使用只读账号。在 SQL 工作台执行查询。",
         "dbTypes": {
           "oracle": "Oracle",
+          "doris": "Doris",
           "mysql": "MySQL",
           "postgresql": "PostgreSQL",
           "sqlite": "SQLite",

@@ -33,6 +33,7 @@ export interface ExecuteQueryOptions {
 }
 
 export interface FederatedQueryOptions extends ExecuteQueryOptions {
+    dorisNative?: boolean;
     attachDatabases?: Array<{
         alias: string;
         connectionId: string;
@@ -141,6 +142,7 @@ export async function executeFederatedQuery(options: FederatedQueryOptions): Pro
         timeout = getFederatedQueryTimeout(),
         requestId,
         signal,
+        dorisNative,
     } = options;
 
     // Demo:联邦查询(连 MySQL/PG)在浏览器内不可用;入口已被 DemoLock 锁住,这里兜底
@@ -150,11 +152,12 @@ export async function executeFederatedQuery(options: FederatedQueryOptions): Pro
     }
 
     try {
-        const normalizedSql = normalizeMysqlDoubleQuotedStringsForDuckdb(sql);
+        const normalizedSql = dorisNative === undefined ? normalizeMysqlDoubleQuotedStringsForDuckdb(sql) : sql;
 
         const requestBody: Record<string, unknown> = {
             sql: normalizedSql,
             is_preview: isPreview,
+            ...(dorisNative === false ? { doris_native: false } : {}),
         };
 
         const attachPayload = toAttachDatabasesPayload(attachDatabases);
@@ -292,7 +295,8 @@ export async function saveQueryToDuckDB(
     tableAlias: string,
     queryData: Record<string, unknown>[] | null = null,
     attachDatabases?: { alias: string; connection_id: string }[],
-    applyRowLimit: boolean = false
+    applyRowLimit: boolean = false,
+    dorisNative?: boolean
 ): Promise<{ success: boolean; table_name?: string; message?: string; messageCode?: string }> {
     try {
         const requestData: Record<string, unknown> = {
@@ -301,6 +305,7 @@ export async function saveQueryToDuckDB(
             table_alias: tableAlias,
             // 保存选择:false(默认)=移除页面最外层 LIMIT;true=保留或补 max_query_rows
             apply_row_limit: applyRowLimit,
+            ...(dorisNative === false ? { doris_native: false } : {}),
         };
 
         if (queryData && queryData.length > 0) {
